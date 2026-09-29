@@ -4,10 +4,13 @@ import SwiftUI
 struct VetMedApp: App {
     @StateObject private var app = VetAppModel()
     @Environment(\.scenePhase) private var scenePhase
+    @AppStorage(AccentTheme.storageKey) private var theme: AccentTheme = .klinik
     var body: some Scene {
         WindowGroup {
-            RootView().environmentObject(app).tint(Color(red: 0.10, green: 0.40, blue: 0.36))
+            RootView().environmentObject(app)
                 .overlay { if scenePhase != .active { PrivacyCover() } }
+                .tint(theme.primary)
+                .environment(\.accentTheme, theme)
                 .task {
                     #if DEBUG
                     if ProcessInfo.processInfo.arguments.contains("--qa-full-pipeline") {
@@ -36,15 +39,26 @@ struct VetMedApp: App {
     }
 }
 struct PrivacyCover: View {
+    @Environment(\.accentTheme) private var theme
     var body: some View {
         ZStack {
-            Color(.systemBackground).ignoresSafeArea()
-            VStack(spacing: 16) { Image(systemName: "cross.case.fill").font(.system(size: 48)).foregroundStyle(.teal); Text("VetMed").font(.largeTitle.bold()); Text("Deine Fälle bleiben geschützt.").foregroundStyle(.secondary) }
+            AmbientBackground()
+            VStack(spacing: 18) {
+                Image(systemName: "cross.case.fill").font(.system(size: 44, weight: .semibold)).foregroundStyle(.white)
+                    .frame(width: 96, height: 96)
+                    .background(theme.gradient, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+                    .shadow(color: theme.primary.opacity(0.4), radius: 18, y: 8)
+                    .symbolEffect(.breathe, options: .repeat(.continuous))
+                Text("VetMed").font(.system(.largeTitle, design: .rounded, weight: .bold))
+                Text("Deine Fälle bleiben geschützt.").foregroundStyle(.secondary)
+            }
         }
     }
 }
 struct RootView: View {
     @EnvironmentObject private var app: VetAppModel
+    @Environment(\.accentTheme) private var theme
+    @AppStorage(AppearanceMode.storageKey) private var appearance: AppearanceMode = .system
     var body: some View {
         Group {
             if VetAppModel.isDiagnosticLaunch {
@@ -52,7 +66,7 @@ struct RootView: View {
             } else if !app.workspaceReady {
                 ZStack {
                     PrivacyCover()
-                    VStack { Spacer(); Button("Lokale Daten öffnen") { Task { await app.unlock() } }.buttonStyle(.borderedProminent).padding(.bottom, 90) }
+                    VStack { Spacer(); Button("Lokale Daten öffnen") { Task { await app.unlock() } }.buttonStyle(.glassProminent).controlSize(.large).padding(.bottom, 90) }
                 }
             } else {
                 TabView(selection: $app.activeTab) {
@@ -65,13 +79,26 @@ struct RootView: View {
                             }
                     }.tabItem { Label("Chat", systemImage: "bubble.left.and.bubble.right") }.tag(AppTab.chat)
                 }
+                .tabBarMinimizeBehavior(.onScrollDown)
                 .safeAreaInset(edge: .bottom) {
                     if app.busy && !app.activeAnalysisIsVisible {
-                        HStack { ProgressView(); Text(app.workStatus).font(.caption); Spacer(); Button("Abbrechen") { app.cancel() } }.padding().background(.regularMaterial)
+                        HStack(spacing: 12) {
+                            ProgressView()
+                            Text(app.workStatus).font(.caption.weight(.medium)).lineLimit(2).contentTransition(.opacity)
+                            Spacer()
+                            Button("Abbrechen") { app.cancel() }.font(.caption.weight(.semibold))
+                        }
+                        .padding(.horizontal, 18).padding(.vertical, 12)
+                        .glassEffect(.regular.tint(theme.primary.opacity(0.12)), in: .capsule)
+                        .padding(.horizontal, 16).padding(.bottom, 8)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
                 }
+                .animation(.spring(response: 0.45, dampingFraction: 0.85), value: app.busy && !app.activeAnalysisIsVisible)
             }
         }
+        .onAppear { AppearanceSwitcher.apply(appearance, animated: false) }
+        .onChange(of: appearance) { _, mode in AppearanceSwitcher.apply(mode) }
         .alert("Hinweis", isPresented: Binding(get: { app.error != nil }, set: { if !$0 { app.error = nil } })) { Button("OK") { app.error = nil } } message: { Text(app.error ?? "") }
     }
 }
@@ -106,7 +133,10 @@ struct ReportReview: View {
         Form {
             if let report {
                 Section {
-                    Label(report.approvedAt == nil ? "Entwurf · Prüfung erforderlich" : "Fachlich geprüft", systemImage: report.approvedAt == nil ? "doc.badge.clock" : "checkmark.seal").foregroundStyle(.teal)
+                    Label(report.approvedAt == nil ? "Entwurf · Prüfung erforderlich" : "Fachlich geprüft", systemImage: report.approvedAt == nil ? "doc.badge.clock" : "checkmark.seal.fill")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(report.approvedAt == nil ? Color.orange : Color.green)
+                        .symbolEffect(.bounce, value: report.approvedAt != nil)
                     Text(report.modelID.hasPrefix("openai/") ? "Online erstellt · OpenAI" : "Lokal auf dem Gerät erstellt").font(.caption).foregroundStyle(.secondary)
                     DisclosureGroup("Modell & Version") { Text(report.modelID + "\n" + report.modelRevision).font(.caption).textSelection(.enabled) }
                     TextEditor(text: $edited).frame(minHeight: 300).accessibilityIdentifier("report-editor")
@@ -120,13 +150,14 @@ struct ReportReview: View {
                         }
                     }
                     Toggle("Zahlen, Einheiten, Negationen und Vollständigkeit am Original geprüft", isOn: $reviewed)
-                    Button("Diese Version als geprüft markieren") { Task { await app.approve(report.id, at: location) } }.disabled(!reviewed || edited != report.text || report.approvedAt != nil)
+                    Button("Diese Version als geprüft markieren", systemImage: "checkmark.seal") { Task { await app.approve(report.id, at: location) } }.disabled(!reviewed || edited != report.text || report.approvedAt != nil)
+                        .sensoryFeedback(.success, trigger: report.approvedAt != nil)
                 }
                 Section("Exportvorschau") {
                     Text(report.exportText).font(.footnote).textSelection(.enabled)
                 }.disabled(edited != report.text)
             }
-        }.navigationTitle("Bericht prüfen").navigationBarTitleDisplayMode(.inline)
+        }.themedBackground().navigationTitle("Bericht prüfen").navigationBarTitleDisplayMode(.inline)
         .safeAreaInset(edge: .bottom) {
             if let report {
                 HStack(spacing: 16) {
@@ -138,8 +169,8 @@ struct ReportReview: View {
                     Menu {
                         Button("Als Text teilen") { share = SharePayload(content: .text(report.exportText), reportID: report.id, format: "Text") }.accessibilityIdentifier("share-report-text")
                         Button("Als PDF teilen") { do { share = SharePayload(content: .file(try ExportService.pdf(report)), reportID: report.id, format: "PDF") } catch { app.error = error.localizedDescription } }
-                    } label: { Label("Teilen", systemImage: "square.and.arrow.up") }.buttonStyle(.borderedProminent).accessibilityIdentifier("share-report-menu")
-                }.padding().background(.regularMaterial).disabled(edited != report.text)
+                    } label: { Label("Teilen", systemImage: "square.and.arrow.up") }.buttonStyle(.glassProminent).accessibilityIdentifier("share-report-menu")
+                }.buttonStyle(.glass).contentTransition(.symbolEffect(.replace)).padding(.horizontal, 20).padding(.vertical, 10).disabled(edited != report.text)
             }
         }
         .onAppear { edited = report?.text ?? "" }
@@ -157,6 +188,7 @@ struct SettingsView: View {
     @ObservedObject var model: MLXLocalReportEngine
     var body: some View {
         Form {
+            AppearanceSettingsSection()
             Section("Online-Zugang") {
                 NavigationLink("API-Key & Modell") { OnlineReportSettingsView() }
                 Text(app.hasOnlineKey ? "OpenAI · " + app.onlineConfiguration.modelID : "Noch kein API-Key hinterlegt").font(.caption).foregroundStyle(.secondary)
@@ -194,7 +226,7 @@ struct SettingsView: View {
                 if let result = app.diagnosticResult { Text(result).font(.footnote).textSelection(.enabled) }
             }
             #endif
-        }.navigationTitle("Einstellungen")
+        }.themedBackground().navigationTitle("Einstellungen")
     }
 }
 struct OnlineReportSettingsView: View {
@@ -228,7 +260,7 @@ struct OnlineReportSettingsView: View {
                 if app.hasOnlineKey { Button("API-Key entfernen", role: .destructive) { app.removeOnlineKey(); keyDraft = "" }.disabled(app.busy) }
                 Text("Bei Verbindungs- oder Anbieterfehlern bleibt der Auftrag lokal. Es gibt keinen automatischen Wechsel zu einem anderen Anbieter und keinen Versand bei späterer Netzrückkehr.").font(.caption).foregroundStyle(.secondary)
             }
-        }.navigationTitle("Online-Zugang")
+        }.themedBackground().navigationTitle("Online-Zugang")
             .onAppear { modelID = app.onlineConfiguration.modelID }
             .onChange(of: modelID) { _, _ in app.resetOnlineModelVerification() }
             .onChange(of: keyDraft) { _, _ in app.resetOnlineModelVerification() }
@@ -259,7 +291,7 @@ struct VocabularyView: View {
                     Task { await app.saveVocabulary(entries) }
                 }
             }
-        }.navigationTitle("Fachwortliste")
+        }.themedBackground().navigationTitle("Fachwortliste")
     }
 }
 
@@ -267,7 +299,7 @@ struct DeviceDiagnosticsView: View {
     @ObservedObject var model: MLXLocalReportEngine
     var body: some View {
         VStack(spacing: 20) {
-            Image(systemName: "cpu").font(.system(size: 50)).foregroundStyle(.teal)
+            GradientIcon(systemName: "cpu", size: 84).symbolEffect(.pulse, isActive: model.isBusy)
             Text("Technischer Gerätetest").font(.title2.bold())
             Text("Ausschließlich synthetische Testdaten").foregroundStyle(.secondary)
             Text(model.status).multilineTextAlignment(.center)

@@ -4,6 +4,8 @@ struct EncounterEditor: View {
     @EnvironmentObject private var app: VetAppModel
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accentTheme) private var theme
+    @Namespace private var stepNamespace
     let location: EncounterLocation
     @ObservedObject var recorder: AudioRecorder
     @State private var step: EncounterStep = .recording
@@ -31,20 +33,34 @@ struct EncounterEditor: View {
                     Spacer()
                     Button("Falldaten", systemImage: "pencil") { editingCase = true }.font(.subheadline)
                 }
-                HStack(alignment: .top, spacing: 8) {
+                HStack(spacing: 4) {
                     ForEach(EncounterStep.allCases) { value in
-                        Button { step = value } label: {
-                            VStack(spacing: 6) {
-                                Text("\(value.rawValue + 1)").font(.caption.bold()).frame(width: 26, height: 26)
-                                    .background(step == value ? Color.teal : Color.secondary.opacity(0.15), in: Circle())
-                                    .foregroundStyle(step == value ? .white : .primary)
-                                Text(value.title).font(.caption).multilineTextAlignment(.center)
-                            }.frame(maxWidth: .infinity)
+                        let selected = step == value
+                        let done = value.rawValue < (encounter?.suggestedStep.rawValue ?? 0)
+                        Button { withAnimation(.snappy(duration: 0.35)) { step = value } } label: {
+                            HStack(spacing: 5) {
+                                Image(systemName: done && !selected ? "checkmark.circle.fill" : "\(value.rawValue + 1).circle.fill")
+                                    .font(.subheadline).contentTransition(.symbolEffect(.replace)).accessibilityHidden(true)
+                                Text(value.title).font(.caption.weight(.semibold)).lineLimit(1).minimumScaleFactor(0.75)
+                            }
+                            .foregroundStyle(selected ? Color.white : (done ? theme.primary : Color.primary))
+                            .padding(.vertical, 10).padding(.horizontal, 4).frame(maxWidth: .infinity)
+                            .background {
+                                if selected {
+                                    Capsule().fill(theme.gradient)
+                                        .shadow(color: theme.primary.opacity(0.35), radius: 6, y: 3)
+                                        .matchedGeometryEffect(id: "active-step", in: stepNamespace)
+                                }
+                            }
+                            .contentShape(Capsule())
                         }.buttonStyle(.plain).accessibilityIdentifier("workflow-step-\(value.rawValue)")
-                            .accessibilityAddTraits(step == value ? .isSelected : [])
+                            .accessibilityAddTraits(selected ? .isSelected : [])
                             .disabled(app.busy || app.captureInProgress || (value == .report && (encounter?.reports.isEmpty ?? true)))
                     }
-                }.padding(.vertical, 8)
+                }
+                .padding(4).background(Color.primary.opacity(0.06), in: Capsule())
+                .sensoryFeedback(.selection, trigger: step)
+                .padding(.vertical, 4)
             }
             switch step {
             case .recording: recordingContent
@@ -52,7 +68,7 @@ struct EncounterEditor: View {
             case .report: reportContent
             }
             Section { DeleteCaseButton(caseID: location.caseID) { dismiss() } }
-        }.navigationTitle(item?.label ?? "Diktat").navigationBarTitleDisplayMode(.inline)
+        }.themedBackground().navigationTitle(item?.label ?? "Diktat").navigationBarTitleDisplayMode(.inline)
             .scrollDismissesKeyboard(.interactively)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -98,23 +114,47 @@ struct EncounterEditor: View {
     private var recordingContent: some View {
         Section {
             VStack(spacing: 16) {
-                Text(recording ? "Aufnahme läuft" : ((encounter?.audio.isEmpty ?? true) ? "Bereit für dein Diktat" : "Aufnahme pausiert")).font(.title3.bold())
-                Text(Duration.seconds(duration).formatted(.time(pattern: .minuteSecond))).font(.system(size: 40, weight: .medium, design: .rounded)).monospacedDigit()
-                Button {
-                    Task {
-                        if recording { await app.pauseRecording() }
-                        else { await app.record(at: location) }
-                    }
-                } label: {
-                    Label(recording ? "Pause" : ((encounter?.audio.isEmpty ?? true) ? "Aufnahme starten" : "Fortsetzen"), systemImage: recording ? "pause.fill" : "mic.fill")
-                        .font(.headline).frame(maxWidth: .infinity).padding(.vertical, 12)
-                }.buttonStyle(.borderedProminent).tint(recording ? .red : .teal)
-                    .disabled(blocked || app.recordingActionPending || recorder.isTransitioning).accessibilityIdentifier("record-audio")
+                HStack(spacing: 8) {
+                    Image(systemName: recording ? "record.circle.fill" : "record.circle").font(.headline)
+                        .foregroundStyle(recording ? Color.red : Color.secondary)
+                        .symbolEffect(.pulse, isActive: recording)
+                        .contentTransition(.symbolEffect(.replace))
+                        .accessibilityHidden(true)
+                    Text(recording ? "Aufnahme läuft" : ((encounter?.audio.isEmpty ?? true) ? "Bereit für dein Diktat" : "Aufnahme pausiert")).font(.title3.bold())
+                        .contentTransition(.opacity)
+                }
+                Text(Duration.seconds(duration).formatted(.time(pattern: .minuteSecond)))
+                    .font(.system(size: 54, weight: .semibold, design: .rounded)).monospacedDigit()
+                    .contentTransition(.numericText(value: duration))
+                    .animation(.snappy, value: Int(duration))
+                    .foregroundStyle(recording ? Color.red : Color.primary)
+                let recordTitle = recording ? "Pause" : ((encounter?.audio.isEmpty ?? true) ? "Aufnahme starten" : "Fortsetzen")
+                ZStack {
+                    PulseRings(active: recording, color: .red).frame(width: 116, height: 116)
+                    Button {
+                        Task {
+                            if recording { await app.pauseRecording() }
+                            else { await app.record(at: location) }
+                        }
+                    } label: {
+                        Image(systemName: recording ? "pause.fill" : "mic.fill")
+                            .font(.system(size: 40, weight: .semibold)).foregroundStyle(.white)
+                            .contentTransition(.symbolEffect(.replace))
+                            .frame(width: 116, height: 116)
+                            .background { Circle().fill(recording ? AnyShapeStyle(Color.red.gradient) : AnyShapeStyle(theme.gradient)) }
+                            .shadow(color: (recording ? Color.red : theme.primary).opacity(0.45), radius: 18, y: 8)
+                    }.buttonStyle(PressableButtonStyle())
+                        .accessibilityLabel(recordTitle)
+                        .disabled(blocked || app.recordingActionPending || recorder.isTransitioning).accessibilityIdentifier("record-audio")
+                        .sensoryFeedback(recording ? .start : .stop, trigger: recording)
+                }.frame(height: 190).animation(.spring(response: 0.4, dampingFraction: 0.7), value: recording)
+                Text(recordTitle).font(.headline).foregroundStyle(.secondary).contentTransition(.opacity).accessibilityHidden(true)
                 Text("Lass die App während der Aufnahme geöffnet.").font(.footnote).foregroundStyle(.secondary)
                 if app.recordingLocation == location, let error = recorder.error { Text(error).font(.footnote).foregroundStyle(.red) }
                 if let error = encounter?.lastError { Text(error).font(.footnote).foregroundStyle(.secondary) }
                 if !recording {
-                    Button("Text stattdessen eingeben") { step = .transcript }.accessibilityIdentifier("enter-transcript").disabled(blocked)
+                    Button("Text stattdessen eingeben", systemImage: "keyboard") { withAnimation(.snappy(duration: 0.35)) { step = .transcript } }
+                        .buttonStyle(.borderless).accessibilityIdentifier("enter-transcript").disabled(blocked)
                 }
             }.frame(maxWidth: .infinity).padding(.vertical, 16)
         }
@@ -124,7 +164,13 @@ struct EncounterEditor: View {
             Section {
                 TextEditor(text: $transcript).focused($transcriptFocused).frame(minHeight: 250).accessibilityIdentifier("transcript-editor")
                     .disabled(app.busy || app.captureInProgress).autocorrectionDisabled()
-                Text(transcript == lastSavedTranscript ? "Text gespeichert" : "Text wird gespeichert …").font(.caption).foregroundStyle(.secondary).accessibilityIdentifier("transcript-save-status")
+                HStack(spacing: 6) {
+                    Image(systemName: transcript == lastSavedTranscript ? "checkmark.icloud.fill" : "arrow.triangle.2.circlepath")
+                        .foregroundStyle(transcript == lastSavedTranscript ? Color.green : Color.secondary)
+                        .symbolEffect(.rotate, isActive: transcript != lastSavedTranscript)
+                        .contentTransition(.symbolEffect(.replace)).accessibilityHidden(true)
+                    Text(transcript == lastSavedTranscript ? "Text gespeichert" : "Text wird gespeichert …").foregroundStyle(.secondary).accessibilityIdentifier("transcript-save-status")
+                }.font(.caption)
                 Text("Zahlen, Einheiten und Verneinungen bitte am Original prüfen.").font(.footnote).foregroundStyle(.secondary)
                 let numbers = ReportValidator.numbers(transcript).sorted()
                 if !numbers.isEmpty { Text("Zahlen im Text: " + numbers.joined(separator: " · ")).font(.caption).foregroundStyle(.secondary) }
@@ -160,14 +206,21 @@ struct EncounterEditor: View {
                 Section("Berichte") {
                     ForEach(reports.reversed()) { report in
                         Button { reportID = report.id } label: {
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text(report.content.template.title).font(.headline)
-                                Label(report.approvedAt == nil ? "Bitte prüfen" : "Geprüft", systemImage: report.approvedAt == nil ? "doc.text" : "checkmark.seal").font(.subheadline)
-                                Text(report.createdAt.formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(.secondary)
+                            HStack(spacing: 14) {
+                                Image(systemName: report.approvedAt == nil ? "doc.text.fill" : "checkmark.seal.fill").font(.title3)
+                                    .foregroundStyle(report.approvedAt == nil ? Color.orange : Color.green)
+                                    .frame(width: 44, height: 44)
+                                    .background((report.approvedAt == nil ? Color.orange : Color.green).opacity(0.14), in: Circle())
+                                    .accessibilityHidden(true)
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(report.content.template.title).font(.headline).foregroundStyle(.primary)
+                                    Text(report.approvedAt == nil ? "Bitte prüfen" : "Geprüft").font(.subheadline).foregroundStyle(.tint)
+                                    Text(report.createdAt.formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(.secondary)
+                                }
                             }.padding(.vertical, 4)
                         }
                     }
-                    Button("Text bearbeiten oder weiteren Bericht erstellen") { step = .transcript }
+                    Button("Text bearbeiten oder weiteren Bericht erstellen") { withAnimation(.snappy(duration: 0.35)) { step = .transcript } }
                 }
             }
             if let checkpoint = encounter?.reportCheckpoint {
@@ -188,7 +241,7 @@ struct EncounterEditor: View {
                             Task {
                                 if recording { await app.pauseRecording() }
                                 guard !app.captureInProgress else { return }
-                                step = .transcript
+                                withAnimation(.snappy(duration: 0.35)) { step = .transcript }
                                 if encounter?.hasPendingAudio == true { app.transcribe(at: location) }
                             }
                         }.accessibilityIdentifier("finish-dictation").disabled(blocked || recorder.isTransitioning || app.recordingActionPending)
@@ -205,7 +258,8 @@ struct EncounterEditor: View {
                 case .report:
                     if let report = encounter?.reports.last { Button(report.approvedAt == nil ? "Bericht prüfen" : "Bericht ansehen und teilen") { reportID = report.id }.disabled(blocked) }
                 }
-            }.buttonStyle(.borderedProminent).controlSize(.large).frame(maxWidth: .infinity).padding(.horizontal, 20).padding(.vertical, 10).background(.regularMaterial)
+            }.buttonStyle(.glassProminent).controlSize(.large).frame(maxWidth: .infinity).padding(.horizontal, 20).padding(.vertical, 10)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
         }
     }
     private var reportOptions: some View {
@@ -224,7 +278,7 @@ struct EncounterEditor: View {
                         DisclosureGroup("Text vor dem Senden ansehen") { Text(transcript).font(.footnote).textSelection(.enabled) }
                     } else { Text("Für Offline-Berichte muss das lokale Modell in den Einstellungen installiert sein.").font(.footnote) }
                 }
-            }.navigationTitle("Bericht anpassen").navigationBarTitleDisplayMode(.inline)
+            }.themedBackground().navigationTitle("Bericht anpassen").navigationBarTitleDisplayMode(.inline)
                 .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Fertig") { options = false } } }
         }
     }

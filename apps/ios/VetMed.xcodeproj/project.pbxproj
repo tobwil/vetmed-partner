@@ -23,6 +23,7 @@
 		45B0CCC44C05A323E6102DDF /* ModelManifest.json in Resources */ = {isa = PBXBuildFile; fileRef = 387A281B1776A3EC56F42673 /* ModelManifest.json */; };
 		5C2D4BCDC204D0A74E038521 /* ActivitySheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30B892B40B2751B01CF375B4 /* ActivitySheet.swift */; };
 		60249CD1369E3B0BC4B620DD /* SparringView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C1567A0F25587E828093DE5 /* SparringView.swift */; };
+		8B4FAD2E5C3069B7F1E2D4CA /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A3E9C1D4B2F58A6E0D1C3B9 /* Theme.swift */; };
 		6076619A06F179CAC0F5C052 /* SparringTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EFB9E242AB79D71C5DEF7DBB /* SparringTests.swift */; };
 		63A3E57AC476868CF33164EA /* MLXLLM in Frameworks */ = {isa = PBXBuildFile; productRef = 821E3932C364D9C588B7B18E /* MLXLLM */; };
 		647A22BC6BADD6423C7799FB /* Tokenizers in Frameworks */ = {isa = PBXBuildFile; productRef = 2C5C87378C04F2A0DD809A65 /* Tokenizers */; };
@@ -91,6 +92,7 @@
 		59DAD40604F6F2F57E3E93BE /* UITestFixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UITestFixtures.swift; sourceTree = "<group>"; };
 		5BE49736744ED77B5700BB16 /* ExportService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExportService.swift; sourceTree = "<group>"; };
 		5C1567A0F25587E828093DE5 /* SparringView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SparringView.swift; sourceTree = "<group>"; };
+		7A3E9C1D4B2F58A6E0D1C3B9 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		5CEBCDC299F891DE4B60EBB7 /* DeviceQARunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceQARunner.swift; sourceTree = "<group>"; };
 		64EEDE022E94FD5DC39235A5 /* DeviceReadiness.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceReadiness.swift; sourceTree = "<group>"; };
 		65578533E222A6F68F3F9108 /* VetAppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VetAppModel.swift; sourceTree = "<group>"; };
@@ -173,6 +175,7 @@
 				EBD27642F966E7E57BF07D74 /* EncounterWorkflowView.swift */,
 				DF4022602AE43773CD3F32B9 /* NavigationViews.swift */,
 				5C1567A0F25587E828093DE5 /* SparringView.swift */,
+				7A3E9C1D4B2F58A6E0D1C3B9 /* Theme.swift */,
 				4558902B30B3B0A60ECAC3E2 /* VetMedApp.swift */,
 			);
 			path = Views;
@@ -438,6 +441,7 @@
 				D80CE04EE29E208DD5A4300C /* Sparring.swift in Sources */,
 				D43D6DDF51347F375329A5F5 /* SparringService.swift in Sources */,
 				60249CD1369E3B0BC4B620DD /* SparringView.swift in Sources */,
+				8B4FAD2E5C3069B7F1E2D4CA /* Theme.swift in Sources */,
 				65DAD967FE6F272C4F2F9A69 /* UITestFixtures.swift in Sources */,
 				A733074AED043B917D5BA8F4 /* VetAppModel.swift in Sources */,
 				3A304F0FB29380E91CCDDDF8 /* VetMedApp.swift in Sources */,

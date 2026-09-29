@@ -12,7 +12,7 @@ struct ChatMarkdownView: View {
                 case .list(let marker, let indent):
                     HStack(alignment: .firstTextBaseline, spacing: 8) { Text(marker); Text(block.text).frame(maxWidth: .infinity, alignment: .leading) }.padding(.leading, CGFloat(indent * 12))
                 case .quote:
-                    HStack(spacing: 10) { Rectangle().fill(.teal.opacity(0.4)).frame(width: 3); Text(block.text).foregroundStyle(.secondary) }.fixedSize(horizontal: false, vertical: true)
+                    HStack(spacing: 10) { Capsule().fill(.tint).opacity(0.5).frame(width: 3); Text(block.text).foregroundStyle(.secondary) }.fixedSize(horizontal: false, vertical: true)
                 case .code:
                     ScrollView(.horizontal) { Text(block.text).font(.system(.footnote, design: .monospaced)).padding(12) }.background(.quaternary, in: RoundedRectangle(cornerRadius: 10))
                 case .divider: Divider()

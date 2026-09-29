@@ -43,9 +43,12 @@ struct SparringHome: View {
                 Section("Ohne Fall") {
                     ForEach(checks) { check in
                         NavigationLink(value: ChatLocation(caseID: nil, encounterID: check.id)) {
-                            VStack(alignment: .leading, spacing: 5) {
-                                Text(check.title).font(.headline).lineLimit(2)
-                                Text(check.runs.last?.text.isEmpty == false ? String(check.runs.last!.text.prefix(100)) : "Entwurf").font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
+                            HStack(spacing: 14) {
+                                GradientIcon(systemName: "bubble.left.fill", size: 38)
+                                VStack(alignment: .leading, spacing: 5) {
+                                    Text(check.title).font(.headline).lineLimit(2)
+                                    Text(check.runs.last?.text.isEmpty == false ? String(check.runs.last!.text.prefix(100)) : "Entwurf").font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
+                                }
                             }.padding(.vertical, 4)
                         }.accessibilityIdentifier("chat-row-" + check.id.uuidString)
                     }
@@ -55,15 +58,18 @@ struct SparringHome: View {
                 Section("Zu einem Fall") {
                     ForEach(caseChats, id: \.1.id) { item, encounter in
                         NavigationLink(value: ChatLocation(caseID: item.id, encounterID: encounter.id)) {
-                            VStack(alignment: .leading, spacing: 5) {
-                                Text(item.label).font(.headline)
-                                Text(encounter.analysisRuns?.first?.snapshot.draft.question ?? encounter.sparringDraft?.question ?? "Fall-Chat").font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
+                            HStack(spacing: 14) {
+                                GradientIcon(systemName: SpeciesIcon.symbol(for: item.species), size: 38)
+                                VStack(alignment: .leading, spacing: 5) {
+                                    Text(item.label).font(.headline)
+                                    Text(encounter.analysisRuns?.first?.snapshot.draft.question ?? encounter.sparringDraft?.question ?? "Fall-Chat").font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
+                                }
                             }.padding(.vertical, 4)
                         }
                     }
                 }
             }
-        }.navigationTitle("Chats").searchable(text: $search, prompt: "Frage oder Fall suchen")
+        }.themedBackground().navigationTitle("Chats").searchable(text: $search, prompt: "Frage oder Fall suchen")
             .disabled(app.captureInProgress)
             .toolbar {
                 if app.chatPath.isEmpty {
@@ -83,6 +89,7 @@ struct NewChatButton: View {
 struct ChatConversationView: View {
     @EnvironmentObject private var app: VetAppModel
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accentTheme) private var theme
     let caseID: UUID?
     let encounterID: UUID
     @State private var draft = SparringDraft()
@@ -122,14 +129,18 @@ struct ChatConversationView: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 22) {
                     if runs.isEmpty {
-                        VStack(alignment: .leading, spacing: 14) {
+                        VStack(alignment: .leading, spacing: 16) {
+                            GradientIcon(systemName: "sparkles", size: 64)
+                                .symbolEffect(.breathe, options: .repeat(.continuous))
                             Text("Was möchtest du besprechen?").font(.title2.bold())
                             Text("Schreib einfach los. Über + kannst du Bilder und Befunde hinzufügen.").foregroundStyle(.secondary)
-                            HStack {
-                                suggestion("Befund erklären")
-                                suggestion("Nächste Schritte")
+                            LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
+                                suggestion("Befund erklären", symbol: "text.magnifyingglass")
+                                suggestion("Nächste Schritte", symbol: "list.bullet.clipboard")
+                                suggestion("Differenzialdiagnosen", symbol: "stethoscope")
+                                suggestion("Dosierung prüfen", symbol: "pills")
                             }
-                        }.padding(.vertical, 24)
+                        }.padding(.vertical, 24).appearEffect()
                     }
                     ForEach(runs) { run in
                         VStack(alignment: .leading, spacing: 12) {
@@ -144,15 +155,30 @@ struct ChatConversationView: View {
                                     }
                                     if !(run.snapshot.documents ?? []).isEmpty { Label("\(run.snapshot.documents?.count ?? 0) Dokumenttexte", systemImage: "doc.text").font(.caption) }
                                     Text(run.snapshot.draft.question).textSelection(.enabled)
-                                }.padding(14).background(.teal.opacity(0.10), in: RoundedRectangle(cornerRadius: 18))
+                                }
+                                .foregroundStyle(.white)
+                                .padding(14)
+                                .background(theme.gradient, in: UnevenRoundedRectangle(topLeadingRadius: 20, bottomLeadingRadius: 20, bottomTrailingRadius: 6, topTrailingRadius: 20, style: .continuous))
+                                .shadow(color: theme.primary.opacity(0.25), radius: 8, y: 4)
                             }
-                            if run.status.isActive && run.text.isEmpty { HStack { ProgressView(); Text("Denke nach …").foregroundStyle(.secondary) } }
+                            if run.status.isActive || !run.text.isEmpty {
+                                HStack(spacing: 8) {
+                                    GradientIcon(systemName: "sparkles", size: 26)
+                                        .symbolEffect(.pulse, isActive: run.status.isActive)
+                                    Text("VetMed").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                                    if run.status.isActive && run.text.isEmpty {
+                                        TypingIndicator()
+                                        Text("Denke nach …").font(.caption).foregroundStyle(.secondary)
+                                    }
+                                }
+                            }
                             if !run.text.isEmpty {
-                                ChatMarkdownView(text: run.text).frame(maxWidth: .infinity, alignment: .leading)
-                                HStack(spacing: 20) {
-                                    Button(copiedID == run.id ? "Kopiert" : "Kopieren", systemImage: copiedID == run.id ? "checkmark" : "doc.on.doc") { ExportService.copyText(ChatMarkdown.export(run)); copiedID = run.id }.accessibilityIdentifier("copy-answer-" + run.id.uuidString)
+                                ChatMarkdownView(text: run.text).frame(maxWidth: .infinity, alignment: .leading).card(cornerRadius: 20)
+                                HStack(spacing: 10) {
+                                    Button(copiedID == run.id ? "Kopiert" : "Kopieren", systemImage: copiedID == run.id ? "checkmark" : "doc.on.doc") { withAnimation(.snappy) { copiedID = run.id }; ExportService.copyText(ChatMarkdown.export(run)) }.accessibilityIdentifier("copy-answer-" + run.id.uuidString)
+                                        .contentTransition(.symbolEffect(.replace)).sensoryFeedback(.success, trigger: copiedID == run.id)
                                     Button("Teilen", systemImage: "square.and.arrow.up") { share = SharePayload(content: .text(ChatMarkdown.export(run)), reportID: nil, format: "Chat") }.accessibilityIdentifier("share-answer-" + run.id.uuidString)
-                                }.font(.caption).disabled(run.status.isActive)
+                                }.font(.caption.weight(.medium)).buttonStyle(.bordered).buttonBorderShape(.capsule).controlSize(.small).disabled(run.status.isActive)
                             }
                             if !run.status.isActive {
                                 HStack {
@@ -165,10 +191,13 @@ struct ChatConversationView: View {
                             }
                             if let notice = run.notice { Text(notice).font(.footnote).foregroundStyle(.secondary) }
                         }.id(run.id)
+                        .transition(.asymmetric(insertion: .move(edge: .bottom).combined(with: .opacity), removal: .opacity))
                     }
                     Color.clear.frame(height: 1).id("chat-bottom")
                 }.padding(20)
+                .animation(.spring(response: 0.45, dampingFraction: 0.85), value: runs.map(\.id))
             }.scrollDismissesKeyboard(.interactively)
+                .background { AmbientBackground() }
                 .onChange(of: runs.last?.text.count) { _, _ in if sending { proxy.scrollTo("chat-bottom", anchor: .bottom) } }
                 .onChange(of: runs.last?.id) { _, id in
                     guard let run = runs.last, run.id == id, loaded else { return }
@@ -181,10 +210,12 @@ struct ChatConversationView: View {
         .navigationTitle("Chat").navigationBarTitleDisplayMode(.inline)
         .safeAreaInset(edge: .top) {
             HStack(spacing: 8) {
-                Label(caseLabel, systemImage: caseID == nil ? "bubble.left" : "folder").font(.subheadline.weight(.medium)).accessibilityIdentifier("chat-scope")
+                Label(caseLabel, systemImage: caseID == nil ? "bubble.left" : "folder").font(.subheadline.weight(.semibold)).accessibilityIdentifier("chat-scope")
                 Spacer()
                 if caseID != nil, let date = encounter?.date { Text(date.formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(.secondary) }
-            }.padding(.horizontal, 20).padding(.vertical, 10).background(.regularMaterial)
+            }.padding(.horizontal, 16).padding(.vertical, 10)
+                .glassEffect(.regular.tint(theme.primary.opacity(0.10)), in: .capsule)
+                .padding(.horizontal, 12).padding(.vertical, 4)
         }
         .safeAreaInset(edge: .bottom) { composer }
         .toolbar {
@@ -260,7 +291,7 @@ struct ChatConversationView: View {
                             ChatPayloadPreview(snapshot: run.snapshot)
                         }
                     }
-                }.navigationTitle("Chat-Details").toolbar { Button("Schließen") { details = false } }
+                }.themedBackground().navigationTitle("Chat-Details").toolbar { Button("Schließen") { details = false } }
             }
         }
     }
@@ -276,7 +307,8 @@ struct ChatConversationView: View {
                                     else { Label(item.originalName, systemImage: item.reviewedAt == nil ? "doc.badge.clock" : "doc.text").lineLimit(1).font(.caption) }
                                 }
                                 Button { draft.attachmentIDs?.removeAll { $0 == item.id } } label: { Image(systemName: "xmark.circle.fill") }.accessibilityLabel("Anhang entfernen")
-                            }.padding(5).background(.quaternary, in: RoundedRectangle(cornerRadius: 10))
+                            }.padding(5).background(.quaternary, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .transition(.scale.combined(with: .opacity))
                         }
                     }
                 }
@@ -295,10 +327,14 @@ struct ChatConversationView: View {
                     if let transcript = encounter?.transcripts.last {
                         Button("Falltranskript hinzufügen", systemImage: "doc.text") { draft.context = transcript.editedText; draft.transcriptVersionID = transcript.id }
                     }
-                } label: { Image(systemName: "plus.circle.fill").font(.title2) }
+                } label: {
+                    Image(systemName: "plus").font(.headline.weight(.semibold)).foregroundStyle(.tint)
+                        .frame(width: 36, height: 36).background(theme.primary.opacity(0.14), in: Circle())
+                }
                 .accessibilityIdentifier("chat-add-attachment").disabled(app.busy || app.captureInProgress || photoLoading)
                 TextField("Frag mich etwas …", text: $draft.question, axis: .vertical)
                     .lineLimit(1...6).focused($focused).accessibilityIdentifier("sparring-question")
+                    .padding(.vertical, 8)
                 Button {
                     if sending { app.cancel(); return }
                     if let document = selectedAttachments.first(where: { $0.kind == .document && $0.reviewedAt == nil }) { review = document; return }
@@ -306,17 +342,42 @@ struct ChatConversationView: View {
                     case .success(let value): save(); focused = false; app.startAnalysis(value)
                     case .failure(let error): app.error = error.localizedDescription
                     }
-                } label: { Image(systemName: sending ? "stop.circle.fill" : "arrow.up.circle.fill").font(.title) }
+                } label: {
+                    Image(systemName: sending ? "stop.fill" : "arrow.up")
+                        .font(.headline.weight(.bold)).foregroundStyle(.white)
+                        .contentTransition(.symbolEffect(.replace))
+                        .frame(width: 36, height: 36)
+                        .background(Circle().fill(sendDisabled ? AnyShapeStyle(Color.secondary.opacity(0.35)) : (sending ? AnyShapeStyle(Color.red.gradient) : AnyShapeStyle(theme.gradient))))
+                        .scaleEffect(sendDisabled ? 0.9 : 1)
+                        .animation(.spring(response: 0.3, dampingFraction: 0.6), value: sendDisabled)
+                }
+                .buttonStyle(PressableButtonStyle())
                 .accessibilityLabel(sending ? "Antwort abbrechen" : "Senden").accessibilityIdentifier("send-analysis")
-                .disabled((app.busy && !sending) || app.captureInProgress || photoLoading || (!sending && draft.question.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && selectedAttachments.isEmpty))
-            }.padding(12).background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 22))
+                .disabled(sendDisabled)
+                .sensoryFeedback(.impact(weight: .light), trigger: sending)
+            }
+            .padding(6)
+            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).strokeBorder(focused ? theme.primary.opacity(0.6) : Color.primary.opacity(0.08), lineWidth: focused ? 1.5 : 1))
+            .shadow(color: focused ? theme.primary.opacity(0.18) : .clear, radius: 10, y: 2)
+            .animation(.easeInOut(duration: 0.2), value: focused)
             if !app.onlineConfiguration.isEnabled || !app.hasOnlineKey {
                 Button("Zum Senden einmalig API-Zugang einrichten") { details = true }.font(.caption)
             }
             Text(savedDraft == draft ? "Lokal gespeichert · KI-Antworten fachlich prüfen" : "Entwurf wird gespeichert …").font(.caption2).foregroundStyle(.secondary).accessibilityIdentifier("chat-save-status")
         }.padding(.horizontal, 14).padding(.vertical, 8).background(.regularMaterial)
+        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: selectedAttachments.map(\.id))
     }
-    private func suggestion(_ title: String) -> some View { Button(title) { draft.question = title + ": "; focused = true }.font(.caption).buttonStyle(.bordered) }
+    private var sendDisabled: Bool {
+        (app.busy && !sending) || app.captureInProgress || photoLoading || (!sending && draft.question.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && selectedAttachments.isEmpty)
+    }
+    private func suggestion(_ title: String, symbol: String) -> some View {
+        Button { draft.question = title + ": "; focused = true } label: {
+            Label(title, systemImage: symbol).font(.subheadline.weight(.medium)).lineLimit(1).minimumScaleFactor(0.8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .buttonStyle(.glass)
+    }
     private func save() {
         guard loaded else { return }
         let value = draft
