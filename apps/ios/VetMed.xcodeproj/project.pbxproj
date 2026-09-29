@@ -37,6 +37,7 @@
 		C6373D69583D21A3A563AD4E /* DocumentTextExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = C211482ED4A9C76C6B4E757F /* DocumentTextExtractor.swift */; };
 		D07D0FE1C8156627AE1CA55A /* SQLCipher in Frameworks */ = {isa = PBXBuildFile; productRef = 631EA279097E3F2528DEA170 /* SQLCipher */; };
 		D231BDD55FE05C93E1D72B6C /* OnlineReportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA35497C4C52A3B6C746CED5 /* OnlineReportTests.swift */; };
+		D92E9305FE80A0FAC14A118B /* AudioRecorderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D757E1FF5D6915CFF9C8117 /* AudioRecorderTests.swift */; };
 		ED65A3ACBEE0AFD573E17306 /* MLXLocalReportEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7271FCA8FDEB2448E508BEB /* MLXLocalReportEngine.swift */; };
 		FC77AADCB63C82BFF6D2B24E /* ModelRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = BAE519C9878644D401718E2D /* ModelRepository.swift */; };
 /* End PBXBuildFile section */
@@ -73,6 +74,7 @@
 		64EEDE022E94FD5DC39235A5 /* DeviceReadiness.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceReadiness.swift; sourceTree = "<group>"; };
 		65578533E222A6F68F3F9108 /* VetAppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VetAppModel.swift; sourceTree = "<group>"; };
 		7028D3308308ECC47BE45DE9 /* CoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreTests.swift; sourceTree = "<group>"; };
+		7D757E1FF5D6915CFF9C8117 /* AudioRecorderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioRecorderTests.swift; sourceTree = "<group>"; };
 		8363B77F06C522CF7DFAA839 /* AudioRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioRecorder.swift; sourceTree = "<group>"; };
 		A21522ACD35514616D19255F /* OnlineReportEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnlineReportEngine.swift; sourceTree = "<group>"; };
 		A7271FCA8FDEB2448E508BEB /* MLXLocalReportEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MLXLocalReportEngine.swift; sourceTree = "<group>"; };
@@ -167,6 +169,7 @@
 		38910DC160BCC51328BBC5E6 /* VetMedTests */ = {
 			isa = PBXGroup;
 			children = (
+				7D757E1FF5D6915CFF9C8117 /* AudioRecorderTests.swift */,
 				7028D3308308ECC47BE45DE9 /* CoreTests.swift */,
 				CA35497C4C52A3B6C746CED5 /* OnlineReportTests.swift */,
 			);
@@ -384,6 +387,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				D92E9305FE80A0FAC14A118B /* AudioRecorderTests.swift in Sources */,
 				097619E88E05762C811249B9 /* CoreTests.swift in Sources */,
 				D231BDD55FE05C93E1D72B6C /* OnlineReportTests.swift in Sources */,
 			);

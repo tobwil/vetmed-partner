@@ -1,0 +1,17 @@
+{
+  "verifiedAt": "2026-09-29T20:29:43.717065+00:00",
+  "bundleID": "de.tobwil.vetmed",
+  "binarySHA256": "e805f9e7e044d2956829b31ee2a2a7f5537a62fa0dc3beb250d283467fe7789c",
+  "device": "iPhone 17 Pro / iOS 26.6.1",
+  "installSucceeded": true,
+  "launchSucceeded": true,
+  "microphoneRetest": "Pending user result; no remote microphone recording performed",
+  "sourcePaths": [
+    "apps/ios/VetMed/Services/AudioRecorder.swift",
+    "apps/ios/VetMed/Core/VetAppModel.swift"
+  ],
+  "sourceSHA256": {
+    "apps/ios/VetMed/Services/AudioRecorder.swift": "b3d23e540add1496ee6dafab1549e6ccb43145481a99c3482303ba95946a7297",
+    "apps/ios/VetMed/Core/VetAppModel.swift": "5e99ed98894587b91bc6df7d6fb7622219489af145a58d58bd59c50093281a5c"
+  }
+}

@@ -27,3 +27,7 @@ Aktuelle bestandene und fehlgeschlagene Läufe: [test-status.md](test-status.md)
 ## Online-Bericht einrichten
 
 Unter Einstellungen → API-Key & Modell den eigenen OpenAI-Key eingeben. Modellliste laden, ein geeignetes Textmodell wählen und mit dem synthetischen Test prüfen. Mit „Online aktivieren“ wird Online zum Standard für neue Berichte; der Key bleibt im Schlüsselbund. Im Vorgang kann Offline ausdrücklich ausgewählt werden. „Übertragenen Text vorab ansehen“ zeigt das Transkript. Ein fehlgeschlagener Auftrag wird bei Netzrückkehr nicht automatisch wiederholt.
+
+## Nachtest des sofortigen Aufnahmeabbruchs
+
+Nach Installation der Korrektur vom 29.09.: Neues Diktat starten, mindestens 30 Sekunden einen synthetischen Text sprechen (damit ein Segmentwechsel enthalten ist), Pause drücken und anschließend weitere fünf Sekunden aufnehmen. Die Zeit muss laufen; nach Pause müssen gesicherte Segmente erscheinen. Danach lokal transkribieren und Anfang, Übergang sowie Schluss prüfen. Falls weiterhin ein Abbruch auftritt, den genauen eingeblendeten Aufnahmehinweis und angeschlossene Kopfhörer/Audiogeräte nennen. Für diesen Test ist kein Wechsel des WLAN- oder Flugmodus nötig.

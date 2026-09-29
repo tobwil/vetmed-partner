@@ -84,7 +84,7 @@ struct ReportsHome: View {
                     Text("Diktieren. Prüfen. Fertig dokumentiert.").foregroundStyle(.secondary)
                     Button { Task { await app.newEncounter(); editor = app.currentEncounter != nil } } label: {
                         Label("Neues Diktat", systemImage: "mic.fill").font(.headline).frame(maxWidth: .infinity).padding(.vertical, 12)
-                    }.buttonStyle(.borderedProminent).accessibilityIdentifier("new-dictation").disabled(app.busy || app.recorder.isRecording)
+                    }.buttonStyle(.borderedProminent).accessibilityIdentifier("new-dictation").disabled(app.busy || app.captureInProgress)
                     Text("Berichte online mit deinem API-Key oder optional mit lokalem Modell. Jeder KI-Bericht bleibt bis zu deiner Prüfung ein Entwurf.").font(.footnote).foregroundStyle(.secondary)
                 }.padding(22).background(Color.teal.opacity(0.07), in: RoundedRectangle(cornerRadius: 26))
                 HStack { Text("Zuletzt bearbeitet").font(.title3.bold()); Spacer(); Text("\(app.document.cases.reduce(0) { $0 + $1.encounters.count }) Vorgänge").font(.caption).foregroundStyle(.secondary) }
@@ -99,7 +99,7 @@ struct ReportsHome: View {
                                 VStack(alignment: .leading, spacing: 5) { Text(c.label).font(.headline); Text("\(c.species) · \(e.date.formatted(date: .abbreviated, time: .shortened))").font(.caption).foregroundStyle(.secondary); Text(e.state.title).font(.caption).foregroundStyle(e.state == .approved ? .teal : .secondary) }
                                 Spacer(); Image(systemName: "chevron.right").font(.caption)
                             }.padding(16).background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18))
-                        }.buttonStyle(.plain).disabled(app.busy || app.recorder.isRecording)
+                        }.buttonStyle(.plain).disabled(app.busy || app.captureInProgress)
                     }
                 }
             }.padding(20)
@@ -131,28 +131,28 @@ struct EncounterEditor: View {
                     Spacer()
                     Button(recorder.isRecording ? "Pause / Stopp" : ((app.currentEncounter?.audio.isEmpty ?? true) ? "Aufnehmen" : "Fortsetzen")) {
                         Task { if recorder.isRecording { await app.pauseRecording() } else { if !transcript.isEmpty { await app.saveTranscript(transcript) }; await app.record() } }
-                    }.buttonStyle(.borderedProminent).disabled(app.busy || recorder.isStarting)
+                    }.buttonStyle(.borderedProminent).disabled(app.busy || app.recordingActionPending || recorder.isTransitioning).accessibilityIdentifier("record-audio")
                 }
                 if let error = recorder.error { Text(error).foregroundStyle(.red) }
                 let count = app.currentEncounter?.audio.count ?? 0
                 if count > 0 {
                     Text("\(count) gesicherte Audiosegmente").font(.caption).foregroundStyle(.secondary)
-                    Button("Lokal transkribieren", systemImage: "text.bubble") { Task { if !transcript.isEmpty { await app.saveTranscript(transcript) }; app.transcribe() } }.disabled(app.busy || recorder.isRecording)
+                    Button("Lokal transkribieren", systemImage: "text.bubble") { Task { if !transcript.isEmpty { await app.saveTranscript(transcript) }; app.transcribe() } }.disabled(app.busy || app.captureInProgress)
                 }
                 Text("Aufnahme im Vordergrund. Bei Unterbrechung pausiert das Diktat; gesicherte Segmente bleiben erhalten.").font(.caption).foregroundStyle(.secondary)
             }
             Section("2 · Transkript prüfen") {
-                TextEditor(text: $transcript).frame(minHeight: 190).accessibilityIdentifier("transcript-editor").disabled(app.busy || recorder.isRecording)
+                TextEditor(text: $transcript).frame(minHeight: 190).accessibilityIdentifier("transcript-editor").disabled(app.busy || app.captureInProgress)
                 if !transcript.isEmpty {
                     Text("Erkennungssicherheit: unbekannt. Zahlen, Negationen und Fachwörter am Original prüfen.").font(.caption).foregroundStyle(.secondary)
                     let numbers = ReportValidator.numbers(transcript).sorted()
                     if !numbers.isEmpty { Text("Zahlen abgleichen: " + numbers.joined(separator: " · ")).font(.caption).foregroundStyle(.orange) }
                     ForEach(app.vocabulary.filter { $0.appears(in: transcript) }) { entry in
                         Button("Vorschlag übernehmen: \(entry.recognized) → \(entry.preferred)") { transcript = entry.applying(to: transcript) }
-                            .font(.footnote).disabled(app.busy || recorder.isRecording)
+                            .font(.footnote).disabled(app.busy || app.captureInProgress)
                     }
                 }
-                Button("Transkript speichern") { Task { await app.saveTranscript(transcript) } }.accessibilityIdentifier("save-transcript").disabled(app.busy || recorder.isRecording || transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                Button("Transkript speichern") { Task { await app.saveTranscript(transcript) } }.accessibilityIdentifier("save-transcript").disabled(app.busy || app.captureInProgress || transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 if let version = app.currentEncounter?.transcripts.last {
                     DisclosureGroup("Original & Audio · \(app.currentEncounter?.transcripts.count ?? 0) Versionen") {
                         Text(version.rawText).font(.footnote).textSelection(.enabled)
@@ -171,7 +171,7 @@ struct EncounterEditor: View {
                 Picker("Zielgruppe", selection: $audience) { ForEach(Audience.allCases) { Text($0.title).tag($0) } }
                 Button { Task { await app.saveTranscript(transcript); app.generate(template: template, length: length, audience: audience, mode: mode) } } label: {
                     Label(mode == .online ? "Bericht online erstellen" : "Bericht lokal erstellen", systemImage: "sparkles")
-                }.disabled(app.busy || recorder.isRecording || transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }.disabled(app.busy || app.captureInProgress || transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 if mode == .online {
                     Text("OpenAI · \(app.onlineConfiguration.modelID.isEmpty ? "Modell noch nicht eingerichtet" : app.onlineConfiguration.modelID)").font(.caption)
                     DisclosureGroup("Übertragenen Text vorab ansehen") {
@@ -263,7 +263,7 @@ struct CasesView: View {
                     Button("Fall löschen", role: .destructive) { toDelete = c.id }
                 }
             }
-        }.navigationTitle("Fälle").disabled(app.busy || app.recorder.isRecording)
+        }.navigationTitle("Fälle").disabled(app.busy || app.captureInProgress)
         .navigationDestination(isPresented: $editor) { EncounterEditor(recorder: app.recorder) }
         .confirmationDialog("Fall mit allen Berichten und Aufnahmen löschen?", isPresented: Binding(get: { toDelete != nil }, set: { if !$0 { toDelete = nil } })) {
             Button("Endgültig lokal löschen", role: .destructive) { if let id = toDelete { Task { await app.deleteCase(id); toDelete = nil } } }
@@ -359,7 +359,7 @@ struct SettingsView: View {
             #if DEBUG
             Section("Synthetischer Gerätetest") {
                 Text("Flugmodus aktivieren und WLAN ausschalten. Der Test verarbeitet ausschließlich die vorbereitete synthetische Audiodatei; er verwendet weder Mikrofon noch deine Fälle.").font(.caption)
-                Button("Offline-Gerätetest starten") { app.runOfflineDiagnostics() }.disabled(app.busy || app.recorder.isRecording)
+                Button("Offline-Gerätetest starten") { app.runOfflineDiagnostics() }.disabled(app.busy || app.captureInProgress)
                 if let result = app.diagnosticResult { Text(result).font(.footnote).textSelection(.enabled) }
             }
             #endif

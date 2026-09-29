@@ -15,6 +15,8 @@ final class VetAppModel: ObservableObject {
     @Published private(set) var document = VaultDocument()
     @Published var error: String?
     @Published var busy = false
+    @Published private(set) var recordingActionPending = false
+    var captureInProgress: Bool { recordingActionPending || recorder.isRecording || recorder.isTransitioning }
     @Published var workStatus = ""
     @Published var locked = true
     @Published var loaded = false
@@ -117,7 +119,7 @@ final class VetAppModel: ObservableObject {
         if !model.isBusy { try? model.unload() }
     }
     func newEncounter(caseID: UUID? = nil) async {
-        guard !busy, !recorder.isRecording else { return }
+        guard !busy, !captureInProgress else { return }
         var id = caseID
         if id == nil {
             let item = VetCase(label: "Fall \(document.cases.count + 1)", species: "Nicht angegeben")
@@ -135,7 +137,7 @@ final class VetAppModel: ObservableObject {
         await saveOrReport()
     }
     func deleteCase(_ id: UUID) async {
-        guard !busy, !recorder.isRecording, let repository else { return }
+        guard !busy, !captureInProgress, let repository else { return }
         do {
             var next = document; next.cases.removeAll { $0.id == id }
             try await repository.save(next); document = next
@@ -143,9 +145,9 @@ final class VetAppModel: ObservableObject {
             if selectedCaseID == id { selectedCaseID = nil; selectedEncounterID = nil }
         } catch { self.error = error.localizedDescription }
     }
-    func select(_ c: VetCase, _ e: Encounter) { guard !busy, !recorder.isRecording else { return }; selectedCaseID = c.id; selectedEncounterID = e.id }
+    func select(_ c: VetCase, _ e: Encounter) { guard !busy, !captureInProgress else { return }; selectedCaseID = c.id; selectedEncounterID = e.id }
     func saveTranscript(_ text: String, caseID: UUID? = nil, encounterID: UUID? = nil) async {
-        guard !busy, !recorder.isRecording, let c = caseID ?? selectedCaseID, let e = encounterID ?? selectedEncounterID,
+        guard !busy, !captureInProgress, let c = caseID ?? selectedCaseID, let e = encounterID ?? selectedEncounterID,
               let encounter = document.cases.first(where: { $0.id == c })?.encounters.first(where: { $0.id == e }) else { return }
         let previous = encounter.transcripts.last
         guard previous?.editedText != text else { return }
@@ -154,29 +156,42 @@ final class VetAppModel: ObservableObject {
         await saveOrReport()
     }
     func record() async {
-        guard !busy, !recorder.isStarting, !recorder.isRecording, let c = selectedCaseID, let e = selectedEncounterID else { return }
+        guard !busy, !captureInProgress, let c = selectedCaseID, let e = selectedEncounterID else { return }
+        recordingActionPending = true
+        defer { recordingActionPending = false }
         do {
             // Never begin capturing for a case that has not reached durable storage.
             try await persist()
             try model.unload()
+            player?.stop(); player = nil
             recorder.onSegment = { [weak self] data, segment in
                 guard let self, let repository = self.repository else { throw AppFailure("Fallspeicher ist nicht geöffnet.") }
                 try await repository.storeAudio(data, caseID: c, encounterID: e, segmentID: segment.id)
                 self.mutate(caseID: c, encounterID: e) { if !$0.audio.contains(where: { $0.id == segment.id }) { $0.audio.append(segment) } }
                 try await self.persist()
             }
-            recorder.onInterruption = { [weak self] in await self?.markInterrupted() }
+            recorder.onInterruption = { [weak self] in await self?.markInterrupted(caseID: c, encounterID: e) }
             try await recorder.start(caseID: c, encounterID: e)
-            mutate { $0.state = .recording }; try await persist()
+            if recorder.isRecording { mutate(caseID: c, encounterID: e) { $0.state = .recording } }; try await persist()
         } catch {
-            if recorder.isRecording { await recorder.pause(); await markInterrupted() }
+            if recorder.isRecording { await recorder.pause(); await markInterrupted(caseID: c, encounterID: e) }
             self.error = error.localizedDescription
         }
     }
-    func pauseRecording() async { await recorder.pause(); mutate { $0.state = .paused }; await saveOrReport() }
-    func markInterrupted() async { mutate { $0.state = .interrupted }; await saveOrReport() }
+    func pauseRecording() async {
+        guard !recordingActionPending, let c = selectedCaseID, let e = selectedEncounterID else { return }
+        recordingActionPending = true
+        defer { recordingActionPending = false }
+        await recorder.pause()
+        mutate(caseID: c, encounterID: e) { $0.state = recorder.error == nil ? .paused : .interrupted; $0.lastError = recorder.error }
+        await saveOrReport()
+    }
+    func markInterrupted(caseID: UUID? = nil, encounterID: UUID? = nil) async {
+        mutate(caseID: caseID, encounterID: encounterID) { $0.state = .interrupted; $0.lastError = recorder.error }
+        await saveOrReport()
+    }
     func transcribe() {
-        guard !busy, !recorder.isRecording, let c = selectedCaseID, let e = currentEncounter, let repository else { return }
+        guard !busy, !captureInProgress, let c = selectedCaseID, let e = currentEncounter, let repository else { return }
         let existingAudio = Set(e.transcripts.flatMap(\.segments).compactMap(\.audioID))
         let pending = e.audio.filter { !existingAudio.contains($0.id) }
         guard !pending.isEmpty else { error = "Keine neuen Audiosegmente vorhanden."; return }
@@ -299,7 +314,7 @@ final class VetAppModel: ObservableObject {
     }
     func recordShare(_ id: UUID, format: String) async { mutate { $0.shares.append(ShareEvent(reportID: id, format: format)) }; await saveOrReport() }
     func play(_ segment: TranscriptSegment) async {
-        guard !busy, !recorder.isRecording, let c = selectedCaseID, let e = selectedEncounterID, let id = segment.audioID, let repository else { return }
+        guard !busy, !captureInProgress, let c = selectedCaseID, let e = selectedEncounterID, let id = segment.audioID, let repository else { return }
         do {
             let data = try await repository.audio(caseID: c, encounterID: e, segmentID: id)
             try AVAudioSession.sharedInstance().setCategory(.playback)
@@ -316,7 +331,7 @@ final class VetAppModel: ObservableObject {
     func installSpeech() { run { [self] in try await AppleOfflineTranscriber.install(); speechStatus = await AppleOfflineTranscriber.status() } }
     func cancel() { work?.cancel() }
     private func run(state: EncounterState? = nil, operation: @escaping @MainActor () async throws -> Void) {
-        guard !busy, !recorder.isRecording else { return }
+        guard !busy, !captureInProgress else { return }
         busy = true; error = nil; workStatus = "Wird vorbereitet"
         if let state { mutate { $0.state = state } }
         work = Task {
