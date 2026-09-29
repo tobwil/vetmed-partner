@@ -22,35 +22,65 @@ private struct ImportedChatPhoto: Transferable {
 
 struct SparringHome: View {
     @EnvironmentObject private var app: VetAppModel
+    @State private var search = ""
+    private var checks: [QuickCheck] {
+        (app.document.quickChecks ?? []).filter { search.isEmpty || $0.title.localizedCaseInsensitiveContains(search) }
+            .sorted { ($0.runs.last?.createdAt ?? $0.createdAt) > ($1.runs.last?.createdAt ?? $1.createdAt) }
+    }
+    private var caseChats: [(VetCase, Encounter)] {
+        app.document.cases.flatMap { item in item.encounters.compactMap { encounter in
+            let hasChat = !(encounter.analysisRuns ?? []).isEmpty || !(encounter.sparringDraft?.question ?? "").isEmpty || !(encounter.chatAttachments ?? []).isEmpty
+            guard hasChat, search.isEmpty || item.label.localizedCaseInsensitiveContains(search) || (encounter.sparringDraft?.question ?? "").localizedCaseInsensitiveContains(search) else { return nil }
+            return (item, encounter)
+        } }.sorted { $0.1.lastActivity > $1.1.lastActivity }
+    }
     var body: some View {
-        Group {
-            if let id = app.selectedQuickCheckID, app.document.quickChecks?.contains(where: { $0.id == id }) == true {
-                ChatConversationView(caseID: nil, encounterID: id).id(id)
-            } else if let c = app.currentCase, let e = app.currentEncounter {
-                ChatConversationView(caseID: c.id, encounterID: e.id).id(e.id)
-            } else {
-                VStack(spacing: 22) {
-                    Image(systemName: "bubble.left.and.bubble.right").font(.system(size: 44)).foregroundStyle(.teal)
-                    Text("Gemeinsam weiterdenken").font(.title2.bold())
-                    Text("Stell eine Frage oder bring einen Befund mit.\nEin Fall ist dafür nicht nötig.").multilineTextAlignment(.center).foregroundStyle(.secondary)
-                    Button("Schnellcheck starten") { Task { await app.newQuickCheck() } }.buttonStyle(.borderedProminent).accessibilityIdentifier("new-quick-check")
-                    if let checks = app.document.quickChecks, !checks.isEmpty {
-                        ScrollView {
-                            VStack(alignment: .leading, spacing: 14) {
-                                Text("Letzte Chats").font(.headline)
-                                ForEach(checks) { check in
-                                    Button { app.selectQuickCheck(check.id) } label: { Label(check.title, systemImage: "bubble.left").lineLimit(2) }
-                                }
-                            }.frame(maxWidth: .infinity, alignment: .leading).padding()
-                        }.frame(maxHeight: 260)
-                    }
-                }.padding(24).disabled(app.busy || app.captureInProgress)
+        List {
+            if checks.isEmpty && caseChats.isEmpty {
+                ContentUnavailableView(search.isEmpty ? "Was möchtest du besprechen?" : "Kein passender Chat", systemImage: "bubble.left.and.bubble.right", description: Text(search.isEmpty ? "Starte einen Chat und füge bei Bedarf Bilder oder Befunde hinzu. Ein Fall ist dafür nicht nötig." : "Suche nach einer Frage oder Fallkennung."))
             }
-        }.navigationTitle("Sparring").navigationBarTitleDisplayMode(.inline)
+            if !checks.isEmpty {
+                Section("Ohne Fall") {
+                    ForEach(checks) { check in
+                        NavigationLink(value: ChatLocation(caseID: nil, encounterID: check.id)) {
+                            VStack(alignment: .leading, spacing: 5) {
+                                Text(check.title).font(.headline).lineLimit(2)
+                                Text(check.runs.last?.text.isEmpty == false ? String(check.runs.last!.text.prefix(100)) : "Entwurf").font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
+                            }.padding(.vertical, 4)
+                        }.accessibilityIdentifier("chat-row-" + check.id.uuidString)
+                    }
+                }
+            }
+            if !caseChats.isEmpty {
+                Section("Zu einem Fall") {
+                    ForEach(caseChats, id: \.1.id) { item, encounter in
+                        NavigationLink(value: ChatLocation(caseID: item.id, encounterID: encounter.id)) {
+                            VStack(alignment: .leading, spacing: 5) {
+                                Text(item.label).font(.headline)
+                                Text(encounter.analysisRuns?.first?.snapshot.draft.question ?? encounter.sparringDraft?.question ?? "Fall-Chat").font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
+                            }.padding(.vertical, 4)
+                        }
+                    }
+                }
+            }
+        }.navigationTitle("Chats").searchable(text: $search, prompt: "Frage oder Fall suchen")
+            .disabled(app.captureInProgress)
+            .toolbar {
+                if app.chatPath.isEmpty {
+                    ToolbarItem(placement: .topBarTrailing) { NewChatButton() }
+                }
+            }
+    }
+}
+struct NewChatButton: View {
+    @EnvironmentObject private var app: VetAppModel
+    var body: some View {
+        Button("Neuer Chat", systemImage: "square.and.pencil") { Task { await app.newQuickCheck() } }
+            .accessibilityIdentifier("new-quick-check").disabled(app.busy || app.captureInProgress)
     }
 }
 
-private struct ChatConversationView: View {
+struct ChatConversationView: View {
     @EnvironmentObject private var app: VetAppModel
     @Environment(\.scenePhase) private var scenePhase
     let caseID: UUID?
@@ -64,8 +94,11 @@ private struct ChatConversationView: View {
     @State private var filePicker = false
     @State private var review: ChatAttachment?
     @State private var details = false
+    @State private var share: SharePayload?
+    @State private var copiedID: UUID?
     @State private var deleting = false
     @FocusState private var focused: Bool
+    private var caseLabel: String { caseID.flatMap { id in app.document.cases.first { $0.id == id }?.label } ?? "Ohne Fall" }
     private var encounter: Encounter? { app.analysisContext(caseID: caseID, encounterID: encounterID) }
     private var runs: [AnalysisRun] { encounter?.analysisRuns ?? [] }
     private var attachments: [ChatAttachment] { encounter?.chatAttachments ?? [] }
@@ -90,7 +123,6 @@ private struct ChatConversationView: View {
                 LazyVStack(alignment: .leading, spacing: 22) {
                     if runs.isEmpty {
                         VStack(alignment: .leading, spacing: 14) {
-                            Text(caseID == nil ? "Schnellcheck · ohne Fall" : (app.currentCase?.label ?? "Dein Fall")).font(.caption).foregroundStyle(.secondary)
                             Text("Was möchtest du besprechen?").font(.title2.bold())
                             Text("Schreib einfach los. Über + kannst du Bilder und Befunde hinzufügen.").foregroundStyle(.secondary)
                             HStack {
@@ -115,7 +147,13 @@ private struct ChatConversationView: View {
                                 }.padding(14).background(.teal.opacity(0.10), in: RoundedRectangle(cornerRadius: 18))
                             }
                             if run.status.isActive && run.text.isEmpty { HStack { ProgressView(); Text("Denke nach …").foregroundStyle(.secondary) } }
-                            if !run.text.isEmpty { Text(run.text).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }
+                            if !run.text.isEmpty {
+                                ChatMarkdownView(text: run.text).frame(maxWidth: .infinity, alignment: .leading)
+                                HStack(spacing: 20) {
+                                    Button(copiedID == run.id ? "Kopiert" : "Kopieren", systemImage: copiedID == run.id ? "checkmark" : "doc.on.doc") { ExportService.copyText(ChatMarkdown.export(run)); copiedID = run.id }.accessibilityIdentifier("copy-answer-" + run.id.uuidString)
+                                    Button("Teilen", systemImage: "square.and.arrow.up") { share = SharePayload(content: .text(ChatMarkdown.export(run)), reportID: nil, format: "Chat") }.accessibilityIdentifier("share-answer-" + run.id.uuidString)
+                                }.font(.caption).disabled(run.status.isActive)
+                            }
                             if !run.status.isActive {
                                 HStack {
                                     Text(run.status == .completed ? "KI-Antwort · fachlich prüfen" : run.status.title).font(.caption).foregroundStyle(.secondary)
@@ -140,17 +178,19 @@ private struct ChatConversationView: View {
                     withAnimation { proxy.scrollTo("chat-bottom", anchor: .bottom) }
                 }
         }
+        .navigationTitle("Chat").navigationBarTitleDisplayMode(.inline)
+        .safeAreaInset(edge: .top) {
+            HStack(spacing: 8) {
+                Label(caseLabel, systemImage: caseID == nil ? "bubble.left" : "folder").font(.subheadline.weight(.medium)).accessibilityIdentifier("chat-scope")
+                Spacer()
+                if caseID != nil, let date = encounter?.date { Text(date.formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(.secondary) }
+            }.padding(.horizontal, 20).padding(.vertical, 10).background(.regularMaterial)
+        }
         .safeAreaInset(edge: .bottom) { composer }
         .toolbar {
+            ToolbarItem(placement: .topBarTrailing) { NewChatButton().disabled(photoLoading) }
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
-                    Button("Neuer Chat", systemImage: "square.and.pencil") { Task { await app.newQuickCheck() } }.accessibilityIdentifier("new-quick-check")
-                    Menu("Chat wechseln") {
-                        ForEach(app.document.quickChecks ?? []) { check in Button(check.title) { app.selectQuickCheck(check.id) } }
-                        ForEach(app.document.cases) { item in
-                            ForEach(item.encounters) { value in Button("\(item.label) · \(value.date.formatted(date: .abbreviated, time: .shortened))") { app.select(item, value) } }
-                        }
-                    }
                     Button("Chat-Details", systemImage: "info.circle") { details = true }
                     if caseID == nil { Button("Chat löschen", systemImage: "trash", role: .destructive) { deleting = true } }
                 } label: { Image(systemName: "ellipsis.circle") }
@@ -189,6 +229,11 @@ private struct ChatConversationView: View {
         .sheet(item: $review) { attachment in
             ChatAttachmentReview(caseID: caseID, encounterID: encounterID, attachment: attachment) { id in
                 if !(draft.attachmentIDs ?? []).contains(id) { draft.attachmentIDs = (draft.attachmentIDs ?? []) + [id] }
+            }
+        }
+        .sheet(item: $share) { payload in
+            ActivitySheet(content: payload.content) { _, error in
+                if error != nil { app.error = "Die Antwort konnte nicht übergeben werden. Du kannst sie auch über Kopieren einfügen." }
             }
         }
         .sheet(isPresented: $details) {

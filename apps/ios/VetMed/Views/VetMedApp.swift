@@ -45,257 +45,34 @@ struct PrivacyCover: View {
 }
 struct RootView: View {
     @EnvironmentObject private var app: VetAppModel
-    @State private var tab = 0
     var body: some View {
         Group {
             if VetAppModel.isDiagnosticLaunch {
                 DeviceDiagnosticsView(model: app.model)
-            } else if app.locked {
+            } else if !app.workspaceReady {
                 ZStack {
                     PrivacyCover()
                     VStack { Spacer(); Button("Lokale Daten öffnen") { Task { await app.unlock() } }.buttonStyle(.borderedProminent).padding(.bottom, 90) }
                 }
             } else {
-                TabView(selection: $tab) {
-                    NavigationStack { ReportsHome() }.tabItem { Label("Berichte", systemImage: "doc.text") }.tag(0)
-                    NavigationStack { SparringHome() }.tabItem { Label("Sparring", systemImage: "bubble.left.and.bubble.right") }.tag(1)
-                    NavigationStack { CasesView() }.tabItem { Label("Fälle", systemImage: "folder") }.tag(2)
-                    NavigationStack { SettingsView(model: app.model) }.tabItem { Label("Einstellungen", systemImage: "slider.horizontal.3") }.tag(3)
+                TabView(selection: $app.activeTab) {
+                    NavigationStack { StartHome() }.tabItem { Label("Start", systemImage: "house") }.tag(AppTab.start)
+                    NavigationStack { CasesView() }.tabItem { Label("Fälle", systemImage: "folder") }.tag(AppTab.cases)
+                    NavigationStack(path: $app.chatPath) {
+                        SparringHome()
+                            .navigationDestination(for: ChatLocation.self) { location in
+                                ChatConversationView(caseID: location.caseID, encounterID: location.encounterID).id(location)
+                            }
+                    }.tabItem { Label("Chat", systemImage: "bubble.left.and.bubble.right") }.tag(AppTab.chat)
                 }
                 .safeAreaInset(edge: .bottom) {
-                    if app.busy && !(tab == 1 && app.activeAnalysisID != nil) {
+                    if app.busy && !app.activeAnalysisIsVisible {
                         HStack { ProgressView(); Text(app.workStatus).font(.caption); Spacer(); Button("Abbrechen") { app.cancel() } }.padding().background(.regularMaterial)
                     }
                 }
             }
         }
         .alert("Hinweis", isPresented: Binding(get: { app.error != nil }, set: { if !$0 { app.error = nil } })) { Button("OK") { app.error = nil } } message: { Text(app.error ?? "") }
-    }
-}
-struct ReportsHome: View {
-    @EnvironmentObject private var app: VetAppModel
-    @State private var editor = false
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                VStack(alignment: .leading, spacing: 12) {
-                    Label("AUFNAHME & TRANSKRIPTION LOKAL", systemImage: "iphone.gen3").font(.caption.weight(.semibold)).tracking(1).foregroundStyle(.teal)
-                    Text("Mehr Zeit\nfür deine Patienten.").font(.system(size: 34, weight: .semibold, design: .rounded))
-                    Text("Diktieren. Prüfen. Fertig dokumentiert.").foregroundStyle(.secondary)
-                    Button { Task { await app.newEncounter(); editor = app.currentEncounter != nil } } label: {
-                        Label("Neues Diktat", systemImage: "mic.fill").font(.headline).frame(maxWidth: .infinity).padding(.vertical, 12)
-                    }.buttonStyle(.borderedProminent).accessibilityIdentifier("new-dictation").disabled(app.busy || app.captureInProgress)
-                    Text("Berichte online mit deinem API-Key oder optional mit lokalem Modell. Jeder KI-Bericht bleibt bis zu deiner Prüfung ein Entwurf.").font(.footnote).foregroundStyle(.secondary)
-                }.padding(22).background(Color.teal.opacity(0.07), in: RoundedRectangle(cornerRadius: 26))
-                HStack { Text("Zuletzt bearbeitet").font(.title3.bold()); Spacer(); Text("\(app.document.cases.reduce(0) { $0 + $1.encounters.count }) Vorgänge").font(.caption).foregroundStyle(.secondary) }
-                if app.document.cases.allSatisfy({ $0.encounters.isEmpty }) {
-                    ContentUnavailableView("Raum für deinen ersten Bericht", systemImage: "waveform", description: Text("Starte ein Diktat oder gib ein Transkript ein. Der Fall wird automatisch angelegt."))
-                }
-                ForEach(app.document.cases.filter { $0.archivedAt == nil }) { c in
-                    ForEach(c.encounters.prefix(3)) { e in
-                        Button { app.select(c, e); editor = true } label: {
-                            HStack(spacing: 14) {
-                                Image(systemName: e.state == .approved ? "checkmark.seal" : "doc.text").font(.title2).frame(width: 42, height: 48).background(.teal.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
-                                VStack(alignment: .leading, spacing: 5) { Text(c.label).font(.headline); Text("\(c.species) · \(e.date.formatted(date: .abbreviated, time: .shortened))").font(.caption).foregroundStyle(.secondary); Text(e.state.title).font(.caption).foregroundStyle(e.state == .approved ? .teal : .secondary) }
-                                Spacer(); Image(systemName: "chevron.right").font(.caption)
-                            }.padding(16).background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18))
-                        }.buttonStyle(.plain).disabled(app.busy || app.captureInProgress)
-                    }
-                }
-            }.padding(20)
-        }.background(Color(.systemGroupedBackground)).navigationTitle("Berichte")
-        .navigationDestination(isPresented: $editor) { EncounterEditor(recorder: app.recorder) }
-    }
-}
-struct EncounterEditor: View {
-    @EnvironmentObject private var app: VetAppModel
-    @Environment(\.dismiss) private var dismiss
-    @Environment(\.scenePhase) private var scenePhase
-    @ObservedObject var recorder: AudioRecorder
-    @State private var transcript = ""
-    @State private var lastSavedTranscript = ""
-    @State private var template: ReportTemplate = .treatment_report
-    @State private var length: ReportLength = .medium
-    @State private var audience: Audience = .veterinarian
-    @State private var mode: ReportExecutionMode = .offline
-    @State private var editingCase = false
-    var body: some View {
-        Form {
-            Section {
-                Button { editingCase = true } label: { HStack { Label(app.currentCase?.label ?? "Fall", systemImage: "folder"); Spacer(); Text(app.currentCase?.species ?? "").foregroundStyle(.secondary); Image(systemName: "pencil") } }
-                Label(app.currentEncounter?.state.title ?? "Entwurf", systemImage: "circle.inset.filled").font(.caption).foregroundStyle(.secondary)
-            }
-            Section("1 · Diktat") {
-                HStack {
-                    Image(systemName: recorder.isRecording ? "waveform" : "mic").foregroundStyle(recorder.isRecording ? .red : .teal).font(.title)
-                    VStack(alignment: .leading) { Text(recorder.isRecording ? "Aufnahme läuft" : "Auf diesem Gerät").font(.headline); Text(Duration.seconds(recorder.elapsed).formatted(.time(pattern: .minuteSecond))).monospacedDigit().foregroundStyle(.secondary) }
-                    Spacer()
-                    Button(recorder.isRecording ? "Pause / Stopp" : ((app.currentEncounter?.audio.isEmpty ?? true) ? "Aufnehmen" : "Fortsetzen")) {
-                        Task { if recorder.isRecording { await app.pauseRecording() } else { if !transcript.isEmpty { await app.saveTranscript(transcript) }; await app.record() } }
-                    }.buttonStyle(.borderedProminent).disabled(app.busy || app.recordingActionPending || recorder.isTransitioning).accessibilityIdentifier("record-audio")
-                }
-                if let error = recorder.error { Text(error).foregroundStyle(.red) }
-                let count = app.currentEncounter?.audio.count ?? 0
-                if count > 0 {
-                    Text("\(count) gesicherte Audiosegmente").font(.caption).foregroundStyle(.secondary)
-                    Button("Lokal transkribieren", systemImage: "text.bubble") { Task { if !transcript.isEmpty { await app.saveTranscript(transcript) }; app.transcribe() } }.disabled(app.busy || app.captureInProgress)
-                }
-                Text("Aufnahme im Vordergrund. Bei Unterbrechung pausiert das Diktat; gesicherte Segmente bleiben erhalten.").font(.caption).foregroundStyle(.secondary)
-            }
-            Section("2 · Transkript prüfen") {
-                TextEditor(text: $transcript).frame(minHeight: 190).accessibilityIdentifier("transcript-editor").disabled(app.busy || app.captureInProgress)
-                if !transcript.isEmpty {
-                    Text("Erkennungssicherheit: unbekannt. Zahlen, Negationen und Fachwörter am Original prüfen.").font(.caption).foregroundStyle(.secondary)
-                    let numbers = ReportValidator.numbers(transcript).sorted()
-                    if !numbers.isEmpty { Text("Zahlen abgleichen: " + numbers.joined(separator: " · ")).font(.caption).foregroundStyle(.orange) }
-                    ForEach(app.vocabulary.filter { $0.appears(in: transcript) }) { entry in
-                        Button("Vorschlag übernehmen: \(entry.recognized) → \(entry.preferred)") { transcript = entry.applying(to: transcript) }
-                            .font(.footnote).disabled(app.busy || app.captureInProgress)
-                    }
-                }
-                Button("Transkript speichern") { Task { await app.saveTranscript(transcript) } }.accessibilityIdentifier("save-transcript").disabled(app.busy || app.captureInProgress || transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                if let version = app.currentEncounter?.transcripts.last {
-                    DisclosureGroup("Original & Audio · \(app.currentEncounter?.transcripts.count ?? 0) Versionen") {
-                        Text(version.rawText).font(.footnote).textSelection(.enabled)
-                        ForEach(app.currentEncounter?.playbackSegments ?? []) { segment in
-                            Button { Task { await app.play(segment) } } label: { Label(segment.text, systemImage: "play.circle") }.font(.footnote)
-                        }
-                    }
-                }
-            }
-            Section("3 · Bericht erstellen") {
-                Picker("Verarbeitung", selection: $mode) {
-                    ForEach(ReportExecutionMode.allCases) { Text($0.title).tag($0) }
-                }.disabled(app.busy)
-                Picker("Vorlage", selection: $template) { ForEach(ReportTemplate.allCases) { Text($0.title).tag($0) } }
-                Picker("Länge", selection: $length) { ForEach(ReportLength.allCases) { Text($0.title).tag($0) } }.pickerStyle(.segmented)
-                Picker("Zielgruppe", selection: $audience) { ForEach(Audience.allCases) { Text($0.title).tag($0) } }
-                Button { Task { await app.saveTranscript(transcript); app.generate(template: template, length: length, audience: audience, mode: mode) } } label: {
-                    Label(mode == .online ? "Bericht online erstellen" : "Bericht lokal erstellen", systemImage: "sparkles")
-                }.disabled(app.busy || app.captureInProgress || transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                if mode == .online {
-                    Text("OpenAI · \(app.onlineConfiguration.modelID.isEmpty ? "Modell noch nicht eingerichtet" : app.onlineConfiguration.modelID)").font(.caption)
-                    DisclosureGroup("Übertragenen Text vorab ansehen") {
-                        Text(transcript).font(.footnote).textSelection(.enabled)
-                        Text("Nur dieses Transkript mit Vorlage, Länge, Zielgruppe und Berichtsanweisungen. Keine automatische Übernahme von Fallkennung, Tiername, Audio oder Anhängen. Personenangaben im Transkript bitte vorher entfernen.").font(.caption).foregroundStyle(.secondary)
-                    }
-                }
-                Text("Zahlen, Einheiten, Negationen und Maßnahmen mit dem Original abgleichen. Die automatische Prüfung ersetzt deine fachliche Kontrolle nicht.").font(.caption).foregroundStyle(.secondary)
-            }
-            if let checkpoint = app.currentEncounter?.reportCheckpoint {
-                Section("Gesicherter Zwischenstand") {
-                    Label("\(checkpoint.completedChunks) von \(checkpoint.totalChunks) Abschnitten", systemImage: "doc.badge.clock")
-                    Text("Der Bericht ist unvollständig. Beim erneuten Erstellen werden alle Quellen nochmals verarbeitet.").font(.caption).foregroundStyle(.secondary)
-                    DisclosureGroup("Bisherigen Text ansehen") { Text(checkpoint.report.text).font(.footnote).textSelection(.enabled) }
-                }
-            }
-            if let reports = app.currentEncounter?.reports, !reports.isEmpty {
-                Section("4 · Prüfen & teilen") {
-                    ForEach(reports.reversed()) { report in
-                        NavigationLink { ReportReview(reportID: report.id) } label: {
-                            VStack(alignment: .leading) { Text(report.content.template.title); Text("\(report.approvedAt == nil ? "Entwurf" : "Geprüft") · \(report.createdAt.formatted(date: .omitted, time: .shortened))").font(.caption).foregroundStyle(.secondary) }
-                        }
-                    }
-                }
-            }
-            if let requests = app.currentEncounter?.cloudReportRequests, !requests.isEmpty {
-                Section {
-                    DisclosureGroup("Online-Aufträge · \(requests.count)") {
-                        ForEach(requests.reversed()) { request in
-                            VStack(alignment: .leading, spacing: 5) {
-                                Text("\(request.provider) · \(request.date.formatted(date: .abbreviated, time: .shortened))").font(.subheadline)
-                                Text(request.status).font(.caption).foregroundStyle(.secondary)
-                                Text(request.responseModelID ?? request.modelID).font(.caption).foregroundStyle(.secondary)
-                            }
-                        }
-                    }
-                }
-            }
-            if let caseID = app.selectedCaseID { Section { DeleteCaseButton(caseID: caseID) { dismiss() } } }
-        }.navigationTitle(app.currentCase?.label ?? "Diktat").navigationBarTitleDisplayMode(.inline)
-        .onAppear { transcript = app.currentEncounter?.transcripts.last?.editedText ?? ""; lastSavedTranscript = transcript; mode = app.onlineConfiguration.preferredMode }
-        .onChange(of: app.currentEncounter?.transcripts.last?.id) { _, _ in
-            let saved = app.currentEncounter?.transcripts.last?.editedText ?? ""
-            // An async save notification must not overwrite a more recent keystroke.
-            if transcript == lastSavedTranscript { transcript = saved }
-            lastSavedTranscript = saved
-        }
-        .task(id: transcript) {
-            let text = transcript, c = app.selectedCaseID, e = app.selectedEncounterID
-            guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-            do { try await Task.sleep(for: .seconds(1)); try Task.checkCancellation(); await app.saveTranscript(text, caseID: c, encounterID: e) }
-            catch { /* Debounced edits are superseded by the next input. */ }
-        }
-        .onChange(of: scenePhase) { _, phase in if phase != .active { savePendingText() } }
-        .onDisappear { savePendingText(); if recorder.isRecording { Task { await app.pauseRecording() } } }
-        .sheet(isPresented: $editingCase) { CaseEditor() }
-    }
-    private func savePendingText() {
-        let text = transcript, c = app.selectedCaseID, e = app.selectedEncounterID
-        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-        Task { await app.saveTranscript(text, caseID: c, encounterID: e) }
-    }
-}
-struct CaseEditor: View {
-    @EnvironmentObject private var app: VetAppModel
-    @Environment(\.dismiss) private var dismiss
-    @State private var label = ""
-    @State private var species = ""
-    @State private var name = ""
-    var body: some View {
-        NavigationStack {
-            Form { TextField("Lokale Kennung", text: $label); TextField("Tierart", text: $species); TextField("Tiername (optional)", text: $name); Text("Die lokale Kennung und der Tiername werden nicht automatisch in externe Anfragen übernommen.").font(.caption).foregroundStyle(.secondary) }
-                .navigationTitle("Fall bearbeiten").toolbar { ToolbarItem(placement: .confirmationAction) { Button("Speichern") { Task { await app.updateCase(label: label, species: species, animalName: name); dismiss() } }.disabled(label.isEmpty) } }
-        }.onAppear { label = app.currentCase?.label ?? ""; species = app.currentCase?.species ?? ""; name = app.currentCase?.animalName ?? "" }
-    }
-}
-struct CasesView: View {
-    @EnvironmentObject private var app: VetAppModel
-    @State private var toDelete: UUID?
-    var body: some View {
-        List {
-            if app.document.cases.isEmpty { ContentUnavailableView("Noch keine Fälle", systemImage: "folder", description: Text("Mit dem ersten Diktat entsteht ein Fall. Schnellchecks bleiben separat im Sparring.")) }
-            ForEach(app.document.cases) { c in
-                NavigationLink { CaseDetailView(caseID: c.id) } label: {
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text(c.label).font(.headline)
-                        Text("\(c.species) · \(c.encounters.count) Vorgänge").font(.caption).foregroundStyle(.secondary)
-                    }.padding(.vertical, 4)
-                }
-                .accessibilityIdentifier("case-row-" + c.id.uuidString)
-                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                    Button("Löschen", role: .destructive) { toDelete = c.id }.tint(.red)
-                }
-            }
-        }.navigationTitle("Fälle").disabled(app.busy || app.captureInProgress)
-        .alert("Fall mit allen Vorgängen, Berichten und Aufnahmen löschen?", isPresented: Binding(get: { toDelete != nil }, set: { if !$0 { toDelete = nil } })) {
-            Button("Behalten", role: .cancel) { toDelete = nil }
-            Button("Fall endgültig löschen", role: .destructive) { if let id = toDelete { Task { await app.deleteCase(id); toDelete = nil } } }
-        }
-    }
-}
-struct CaseDetailView: View {
-    @EnvironmentObject private var app: VetAppModel
-    @Environment(\.dismiss) private var dismiss
-    let caseID: UUID
-    @State private var editor = false
-    private var item: VetCase? { app.document.cases.first { $0.id == caseID } }
-    var body: some View {
-        List {
-            if let c = item {
-                Section("Vorgänge") {
-                    ForEach(c.encounters) { e in
-                        Button { app.select(c, e); editor = true } label: {
-                            VStack(alignment: .leading) { Text(e.date.formatted(date: .abbreviated, time: .shortened)); Text(e.state.title).font(.caption).foregroundStyle(.secondary) }
-                        }
-                    }
-                    Button("Neuen Vorgang anlegen", systemImage: "plus") { Task { await app.newEncounter(caseID: c.id); editor = true } }
-                }
-                Section { DeleteCaseButton(caseID: c.id) { dismiss() } }
-            }
-        }.navigationTitle(item?.label ?? "Fall").disabled(app.busy || app.captureInProgress)
-        .onChange(of: item == nil) { _, deleted in if deleted { dismiss() } }
-        .navigationDestination(isPresented: $editor) { EncounterEditor(recorder: app.recorder) }
     }
 }
 struct DeleteCaseButton: View {
@@ -319,10 +96,12 @@ struct ReportReview: View {
     @EnvironmentObject private var app: VetAppModel
     @Environment(\.dismiss) private var dismiss
     let reportID: UUID
+    let location: EncounterLocation
     @State private var edited = ""
     @State private var reviewed = false
     @State private var share: SharePayload?
-    private var report: ReportVersion? { app.currentEncounter?.reports.first { $0.id == reportID } }
+    @State private var copied = false
+    private var report: ReportVersion? { app.encounter(at: location)?.reports.first { $0.id == reportID } }
     var body: some View {
         Form {
             if let report {
@@ -331,7 +110,7 @@ struct ReportReview: View {
                     Text(report.modelID.hasPrefix("openai/") ? "Online erstellt · OpenAI" : "Lokal auf dem Gerät erstellt").font(.caption).foregroundStyle(.secondary)
                     DisclosureGroup("Modell & Version") { Text(report.modelID + "\n" + report.modelRevision).font(.caption).textSelection(.enabled) }
                     TextEditor(text: $edited).frame(minHeight: 300).accessibilityIdentifier("report-editor")
-                    if edited != report.text { Button("Als neue Version speichern") { Task { await app.saveReportEdit(edited, report: report); dismiss() } } }
+                    if edited != report.text { Button("Als neue Version speichern") { Task { if await app.saveReportEdit(edited, report: report, at: location) { dismiss() } } } }
                 }
                 Section("Prüfung am Original") {
                     ForEach(report.warnings, id: \.self) { Text($0).foregroundStyle(.orange) }
@@ -341,30 +120,37 @@ struct ReportReview: View {
                         }
                     }
                     Toggle("Zahlen, Einheiten, Negationen und Vollständigkeit am Original geprüft", isOn: $reviewed)
-                    Button("Diese Version als geprüft markieren") { Task { await app.approve(report.id) } }.disabled(!reviewed || edited != report.text || report.approvedAt != nil)
+                    Button("Diese Version als geprüft markieren") { Task { await app.approve(report.id, at: location) } }.disabled(!reviewed || edited != report.text || report.approvedAt != nil)
                 }
                 Section("Exportvorschau") {
                     Text(report.exportText).font(.footnote).textSelection(.enabled)
-                    Button("Kopieren", systemImage: "doc.on.doc") { ExportService.copy(report); Task { await app.recordShare(report.id, format: "Zwischenablage") } }
-                    Button("Text teilen", systemImage: "square.and.arrow.up") { share = SharePayload(items: [report.exportText], reportID: report.id, format: "Text") }
-                    Button("PDF teilen", systemImage: "doc.richtext") { do { share = SharePayload(items: [try ExportService.pdf(report)], reportID: report.id, format: "PDF") } catch { app.error = error.localizedDescription } }
                 }.disabled(edited != report.text)
             }
         }.navigationTitle("Bericht prüfen").navigationBarTitleDisplayMode(.inline)
+        .safeAreaInset(edge: .bottom) {
+            if let report {
+                HStack(spacing: 16) {
+                    Button(copied ? "Text kopiert" : "Kopieren", systemImage: copied ? "checkmark" : "doc.on.doc") {
+                        ExportService.copy(report); copied = true
+                        Task { await app.recordShare(report.id, format: "Zwischenablage", at: location) }
+                    }.accessibilityIdentifier("copy-report")
+                    Spacer()
+                    Menu {
+                        Button("Als Text teilen") { share = SharePayload(content: .text(report.exportText), reportID: report.id, format: "Text") }.accessibilityIdentifier("share-report-text")
+                        Button("Als PDF teilen") { do { share = SharePayload(content: .file(try ExportService.pdf(report)), reportID: report.id, format: "PDF") } catch { app.error = error.localizedDescription } }
+                    } label: { Label("Teilen", systemImage: "square.and.arrow.up") }.buttonStyle(.borderedProminent).accessibilityIdentifier("share-report-menu")
+                }.padding().background(.regularMaterial).disabled(edited != report.text)
+            }
+        }
         .onAppear { edited = report?.text ?? "" }
-        .sheet(item: $share) { payload in ActivitySheet(items: payload.items) { completed in if completed { Task { await app.recordShare(payload.reportID, format: payload.format) } } } }
+        .onChange(of: report == nil) { _, missing in if missing { dismiss() } }
+        .sheet(item: $share) { payload in
+            ActivitySheet(content: payload.content) { completed, error in
+                if error != nil { app.error = "Der Text konnte nicht an die ausgewählte App übergeben werden. Du kannst ihn auch über Kopieren einfügen." }
+                if completed, let id = payload.reportID { Task { await app.recordShare(id, format: payload.format, at: location) } }
+            }
+        }
     }
-}
-struct SharePayload: Identifiable { let id = UUID(); let items: [Any]; let reportID: UUID; let format: String }
-struct ActivitySheet: UIViewControllerRepresentable {
-    let items: [Any]
-    let completion: (Bool) -> Void
-    func makeUIViewController(context: Context) -> UIActivityViewController {
-        let controller = UIActivityViewController(activityItems: items, applicationActivities: nil)
-        controller.completionWithItemsHandler = { _, completed, _, _ in completion(completed) }
-        return controller
-    }
-    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 struct SettingsView: View {
     @EnvironmentObject private var app: VetAppModel
@@ -399,7 +185,7 @@ struct SettingsView: View {
                 NavigationLink("Drittanbieter-Lizenzen") {
                     ScrollView { Text(Bundle.main.url(forResource: "ThirdPartyNotices", withExtension: "txt").flatMap { try? String(contentsOf: $0, encoding: .utf8) } ?? "Lizenztexte fehlen.").font(.footnote).textSelection(.enabled).padding() }.navigationTitle("Lizenzen")
                 }
-                Text("Online-Berichte mit OpenAI und ein optionaler lokaler Berichtspfad. Fachliche Freigabe, vollständige Offline-Prüfung, multimodales Sparring, weitere Anbieter und Android stehen noch aus.").font(.caption).foregroundStyle(.secondary)
+                Text("Online-Berichte mit OpenAI und ein optionaler lokaler Berichtspfad. Chat mit Bildern und Befunden ist verbunden. Fachliche Freigabe, vollständige Offline-Prüfung, weitere Anbieter und Android stehen noch aus.").font(.caption).foregroundStyle(.secondary)
             }
             #if DEBUG
             Section("Synthetischer Gerätetest") {
@@ -432,7 +218,7 @@ struct OnlineReportSettingsView: View {
                 if let status = app.onlineSettingsStatus { Text(status).font(.footnote) }
             }.disabled(app.busy)
             Section("Online als Standard aktivieren") {
-                Text("Mit Online aktivieren richtest du deinen OpenAI-Zugang ein. Bericht online erstellen sendet das geprüfte Transkript; Analyse senden im Sparring sendet die dort gewählte Frage und den ausgewählten Kontext. Vor dem Versand kannst du die Auswahl ansehen. Aufnahme und Transkription bleiben lokal.").font(.footnote)
+                Text("Mit Online aktivieren richtest du deinen OpenAI-Zugang ein. Bericht online erstellen sendet das geprüfte Transkript; Senden im Chat überträgt deine Frage, die hinzugefügten Anhänge und den Verlauf desselben Chats. Die Versanddetails findest du im Chat-Menü. Aufnahme und Transkription bleiben lokal.").font(.footnote)
                 Text("Der API-Key bleibt im Geräte-Schlüsselbund. Wir deaktivieren die abrufbare Antwortspeicherung; weitere Aufbewahrung beim Anbieter richtet sich nach deinem API-Vertrag.").font(.caption).foregroundStyle(.secondary)
                 Link("OpenAI-Datenkontrollen", destination: URL(string: "https://developers.openai.com/api/docs/guides/your-data")!)
                 Button("Online aktivieren") {

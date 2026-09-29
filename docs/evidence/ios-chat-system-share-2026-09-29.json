@@ -1,0 +1,10 @@
+{
+  "testExitCode": 0,
+  "fullTextEndPresent": true,
+  "statusPresent": true,
+  "numbersAndNegationPresent": true,
+  "noBoldDelimiters": true,
+  "characters": 143,
+  "actualWhatsAppTest": false,
+  "formattedPhraseAsPlainText": true
+}

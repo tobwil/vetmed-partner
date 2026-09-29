@@ -1,10 +1,30 @@
 import Foundation
 import UIKit
+import UniformTypeIdentifiers
 
 @MainActor
 enum ExportService {
     static func copy(_ report: ReportVersion) {
-        UIPasteboard.general.setItems([[UIPasteboard.typeAutomatic: report.exportText]], options: [.localOnly: true, .expirationDate: Date().addingTimeInterval(120)])
+        copyText(report.exportText)
+    }
+    static func copyText(_ text: String) {
+        UIPasteboard.general.setItems([[UTType.utf8PlainText.identifier: text]], options: [.localOnly: true, .expirationDate: Date().addingTimeInterval(600)])
+    }
+    /// A receiving share extension can still be reading after the app returns to foreground.
+    static func cleanExpiredFiles(in directory: URL = AppPaths.exports, now: Date = Date()) throws {
+        guard FileManager.default.fileExists(atPath: directory.path) else { return }
+        for url in try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.contentModificationDateKey, .isRegularFileKey, .isSymbolicLinkKey]) {
+            let values = try url.resourceValues(forKeys: [.contentModificationDateKey, .isRegularFileKey, .isSymbolicLinkKey])
+            guard values.isRegularFile == true, values.isSymbolicLink != true,
+                  let modified = values.contentModificationDate, now.timeIntervalSince(modified) > 86_400 else { continue }
+            try FileManager.default.removeItem(at: url)
+        }
+    }
+    static func removeExports(reportIDs: [UUID]) throws {
+        for id in reportIDs {
+            let url = AppPaths.exports.appendingPathComponent("Bericht-\(id).pdf")
+            if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) }
+        }
     }
     static func pdf(_ report: ReportVersion) throws -> URL {
         try AppPaths.prepare(AppPaths.exports)

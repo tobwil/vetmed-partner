@@ -21,9 +21,11 @@ Schema `VetMed`, eigenes Bundle `de.tobwil.vetmed`. Signing-Team in `project.yml
 ./scripts/test-ios.sh
 ```
 
-App öffnen; es gibt auf Nutzerwunsch keine Face-ID-Abfrage. Für Online-Berichte unter Einstellungen → API-Key & Modell den eigenen Key eintragen, Modelle laden/auswählen, den synthetischen Modelltest ausführen und Online aktivieren. Danach ist Online der Standard. Für Offline-Berichte Gemma ausdrücklich installieren und Offline auswählen. Deutsche Sprachressourcen werden unabhängig davon für lokale Diktate installiert. Neues Diktat anlegen oder Text eingeben, Transkript prüfen, Bericht erstellen, Quellen prüfen und die konkrete Version freigeben. Ungeprüfte Exporte bleiben als Entwurf gekennzeichnet.
+App öffnen; es gibt auf Nutzerwunsch keine Face-ID-Abfrage. Für Online-Berichte unter Start → Zahnrad → API-Key & Modell den eigenen Key eintragen, Modelle laden/auswählen, den synthetischen Modelltest ausführen und Online aktivieren. Danach ist Online der Standard. Für Offline-Berichte Gemma ausdrücklich installieren und Offline auswählen. Deutsche Sprachressourcen werden unabhängig davon für lokale Diktate installiert. Neues Diktat anlegen oder Text eingeben, Transkript prüfen, Bericht erstellen, Quellen prüfen und die konkrete Version freigeben. Ungeprüfte Exporte bleiben als Entwurf gekennzeichnet.
 
-Im Bereich Sparring startet „Schnellcheck starten“ ein Gespräch ohne Fall. Eine Frage eingeben, über + bei Bedarf ein Bild oder einen Befund hinzufügen und senden. PDF-/Textbefunde werden vor dem Versand lokal geprüft. Frühere vollständige Nachrichten desselben Chats werden automatisch berücksichtigt; ein neuer Chat und technische Details liegen im Menü. Fallbezogene Gespräche bleiben beim gewählten Vorgang. Fälle lassen sich in der Fallliste von rechts nach links aufwischen oder unten in der Fallansicht löschen.
+Die drei Bereiche heißen Start, Fälle und Chat. Auf Start führen „Diktat aufnehmen“ und „Frage stellen“ direkt zur jeweiligen Aufgabe; letzte Vorgänge lassen sich darunter fortsetzen. Ein Diktat führt durch Aufnahme, Textprüfung und Bericht. Einstellungen liegen am Zahnrad.
+
+Im Chat startet der sichtbare Neuer-Chat-Knopf ein Gespräch ohne Fall. Eine Frage eingeben, über + bei Bedarf ein Bild oder einen Befund hinzufügen und senden. PDF-/Textbefunde werden vor dem Versand lokal geprüft. Frühere vollständige Nachrichten desselben Chats werden automatisch berücksichtigt. Der Fallbezug bleibt über den Nachrichten sichtbar. Formatierte Antworten lassen sich als lesbarer Text kopieren oder teilen. Fälle lassen sich in der Fallliste von rechts nach links aufwischen oder unten in der Fallansicht löschen.
 
 ## Struktur
 

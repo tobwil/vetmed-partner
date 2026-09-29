@@ -19,12 +19,17 @@ final class VetAppModel: ObservableObject {
     var captureInProgress: Bool { recordingActionPending || recorder.isRecording || recorder.isTransitioning }
     @Published var workStatus = ""
     @Published private(set) var activeAnalysisID: UUID?
+    var activeAnalysisIsVisible: Bool {
+        guard activeTab == .chat, let id = activeAnalysisID, let location = chatPath.last else { return false }
+        return analysisContext(caseID: location.caseID, encounterID: location.encounterID)?.analysisRuns?.contains { $0.id == id } == true
+    }
     private let attachmentImporter = ChatAttachmentImporter()
     @Published var locked = true
     @Published var loaded = false
-    @Published var selectedQuickCheckID: UUID?
-    @Published var selectedCaseID: UUID?
-    @Published var selectedEncounterID: UUID?
+    @Published private(set) var workspaceReady = false
+    @Published var activeTab: AppTab = .start
+    @Published var chatPath: [ChatLocation] = []
+    @Published private(set) var recordingLocation: EncounterLocation?
     @Published var speechStatus = "Wird geprüft"
     @Published private(set) var vocabulary: [VocabularyEntry] = []
     @Published private(set) var onlineConfiguration = OnlineReportConfiguration()
@@ -56,8 +61,9 @@ final class VetAppModel: ObservableObject {
     private var work: Task<Void, Never>?
     private var player: AVAudioPlayer?
     private var pressure: MemoryPressureMonitor?
-    var currentCase: VetCase? { document.cases.first { $0.id == selectedCaseID } }
-    var currentEncounter: Encounter? { currentCase?.encounters.first { $0.id == selectedEncounterID } }
+    func encounter(at location: EncounterLocation) -> Encounter? {
+        document.cases.first { $0.id == location.caseID }?.encounters.first { $0.id == location.encounterID }
+    }
     init() {
         pressure = MemoryPressureMonitor { [weak self] in
             Task { @MainActor in
@@ -76,6 +82,11 @@ final class VetAppModel: ObservableObject {
             }
         }
     }
+    #if DEBUG
+    convenience init(testRepository: CaseRepository, document: VaultDocument) {
+        self.init(); self.repository = testRepository; self.document = document; loaded = true; locked = false; workspaceReady = true
+    }
+    #endif
     func unlock() async {
         guard !opening else { return }
         opening = true
@@ -94,6 +105,13 @@ final class VetAppModel: ObservableObject {
                 let repository = try CaseRepository(root: root, key: key)
                 self.repository = repository
                 document = try await repository.load()
+                #if DEBUG
+                if isUITest, ProcessInfo.processInfo.arguments.contains("--ui-testing-share-fixture") {
+                    let fixture = try UITestFixtures.sharing()
+                    document.cases.removeAll { $0.id == fixture.id }; document.cases.insert(fixture, at: 0)
+                    try await repository.save(document)
+                }
+                #endif
                 vocabulary = try await repository.vocabulary()
                 do {
                     onlineConfiguration = try onlineStore.configuration()
@@ -120,8 +138,8 @@ final class VetAppModel: ObservableObject {
                 do { try await recoverAudio(); try await persist(); try await repository.cleanUnreferencedAttachments(document) }
                 catch { self.error = "Vorhandene Fälle wurden geöffnet. Wiederherstellung oder Speichern ist noch nicht vollständig: " + error.localizedDescription }
             }
-            try AppPaths.clean(AppPaths.exports)
-            locked = false
+            try ExportService.cleanExpiredFiles()
+            locked = false; workspaceReady = true
             speechStatus = await AppleOfflineTranscriber.status()
         } catch { self.error = error.localizedDescription }
     }
@@ -131,47 +149,55 @@ final class VetAppModel: ObservableObject {
         if recorder.isRecording { await recorder.pause(); await markInterrupted() }
         if !model.isBusy { try? model.unload() }
     }
-    func newEncounter(caseID: UUID? = nil) async {
-        guard !busy, !captureInProgress else { return }
-        var id = caseID
-        if id == nil {
-            let item = VetCase(label: "Fall \(document.cases.count + 1)", species: "Nicht angegeben")
-            document.cases.insert(item, at: 0); id = item.id
-        }
-        guard let c = document.cases.firstIndex(where: { $0.id == id }) else { return }
+    func newEncounter(caseID: UUID? = nil) async -> EncounterLocation? {
+        guard !busy, !captureInProgress else { return nil }
+        busy = true; defer { busy = false }
+        let newCase = caseID == nil ? VetCase(label: "Fall \(document.cases.count + 1)", species: "Nicht angegeben") : nil
+        if let newCase { document.cases.insert(newCase, at: 0) }
+        guard let id = caseID ?? newCase?.id, let c = document.cases.firstIndex(where: { $0.id == id }) else { return nil }
         let encounter = Encounter()
         document.cases[c].encounters.insert(encounter, at: 0)
-        selectedQuickCheckID = nil; selectedCaseID = id; selectedEncounterID = encounter.id
-        await saveOrReport()
+        do { try await persist(); return EncounterLocation(caseID: id, encounterID: encounter.id) }
+        catch {
+            if newCase != nil { document.cases.removeAll { $0.id == id } }
+            else { document.cases[c].encounters.removeAll { $0.id == encounter.id } }
+            self.error = "Das Diktat konnte nicht angelegt werden: " + error.localizedDescription; return nil
+        }
     }
-    func updateCase(label: String, species: String, animalName: String) async {
-        guard !deletingRecords, let c = document.cases.firstIndex(where: { $0.id == selectedCaseID }) else { return }
+    func updateCase(_ id: UUID, label: String, species: String, animalName: String) async -> Bool {
+        guard !deletingRecords, let c = document.cases.firstIndex(where: { $0.id == id }) else { return false }
         document.cases[c].label = label; document.cases[c].species = species; document.cases[c].animalName = animalName
-        await saveOrReport()
+        do { try await persist(); return true } catch { self.error = error.localizedDescription; return false }
     }
     func deleteCase(_ id: UUID) async {
         guard !busy, !captureInProgress, let repository else { return }
         deletingRecords = true; busy = true; workStatus = "Fall wird gelöscht"
         defer { deletingRecords = false; busy = false; workStatus = "" }
         do {
+            let reportIDs = document.cases.first { $0.id == id }?.encounters.flatMap(\.reports).map(\.id) ?? []
             var next = document; next.cases.removeAll { $0.id == id }
             try await repository.save(next); document = next
+            chatPath.removeAll { $0.caseID == id }
+            if recordingLocation?.caseID == id { recordingLocation = nil }
             try await repository.removeCaseFiles(id)
-            if selectedCaseID == id { selectedCaseID = nil; selectedEncounterID = nil }
+            try ExportService.removeExports(reportIDs: reportIDs)
         } catch { self.error = error.localizedDescription }
     }
-    func select(_ c: VetCase, _ e: Encounter) { guard !busy, !captureInProgress else { return }; selectedQuickCheckID = nil; selectedCaseID = c.id; selectedEncounterID = e.id }
-    func saveTranscript(_ text: String, caseID: UUID? = nil, encounterID: UUID? = nil) async {
-        guard !busy, !captureInProgress, let c = caseID ?? selectedCaseID, let e = encounterID ?? selectedEncounterID,
-              let encounter = document.cases.first(where: { $0.id == c })?.encounters.first(where: { $0.id == e }) else { return }
+    @discardableResult
+    func saveTranscript(_ text: String, at location: EncounterLocation) async -> Bool {
+        guard !busy, !captureInProgress, !deletingRecords, let encounter = encounter(at: location) else { return false }
         let previous = encounter.transcripts.last
-        guard previous?.editedText != text else { return }
-        let version = TranscriptBuilder.edited(text, previous: previous)
-        mutate(caseID: c, encounterID: e) { $0.transcripts.append(version); $0.state = .transcriptReady }
-        await saveOrReport()
+        if previous?.editedText != text {
+            let version = TranscriptBuilder.edited(text, previous: previous)
+            mutate(caseID: location.caseID, encounterID: location.encounterID) { $0.transcripts.append(version); $0.state = .transcriptReady }
+        }
+        do { try await persist(); return true }
+        catch { self.error = "Text konnte nicht gespeichert werden: " + error.localizedDescription; return false }
     }
-    func record() async {
-        guard !busy, !captureInProgress, let c = selectedCaseID, let e = selectedEncounterID else { return }
+    func record(at location: EncounterLocation) async {
+        guard !busy, !captureInProgress, encounter(at: location) != nil else { return }
+        let c = location.caseID, e = location.encounterID
+        recordingLocation = location
         recordingActionPending = true
         defer { recordingActionPending = false }
         do {
@@ -194,7 +220,8 @@ final class VetAppModel: ObservableObject {
         }
     }
     func pauseRecording() async {
-        guard !recordingActionPending, let c = selectedCaseID, let e = selectedEncounterID else { return }
+        guard !recordingActionPending, let location = recordingLocation else { return }
+        let c = location.caseID, e = location.encounterID
         recordingActionPending = true
         defer { recordingActionPending = false }
         await recorder.pause()
@@ -202,15 +229,17 @@ final class VetAppModel: ObservableObject {
         await saveOrReport()
     }
     func markInterrupted(caseID: UUID? = nil, encounterID: UUID? = nil) async {
-        mutate(caseID: caseID, encounterID: encounterID) { $0.state = .interrupted; $0.lastError = recorder.error }
+        guard let c = caseID ?? recordingLocation?.caseID, let e = encounterID ?? recordingLocation?.encounterID else { return }
+        mutate(caseID: c, encounterID: e) { $0.state = .interrupted; $0.lastError = recorder.error }
         await saveOrReport()
     }
-    func transcribe() {
-        guard !busy, !captureInProgress, let c = selectedCaseID, let e = currentEncounter, let repository else { return }
+    func transcribe(at location: EncounterLocation) {
+        guard !busy, !captureInProgress, let e = encounter(at: location), let repository else { return }
+        let c = location.caseID
         let existingAudio = Set(e.transcripts.flatMap(\.segments).compactMap(\.audioID))
         let pending = e.audio.filter { !existingAudio.contains($0.id) }
         guard !pending.isEmpty else { error = "Keine neuen Audiosegmente vorhanden."; return }
-        run(state: .transcribing) { [self] in
+        run(state: .transcribing, location: location) { [self] in
             try model.unload()
             var newSegments: [TranscriptSegment] = []
             for (index, segment) in pending.enumerated() {
@@ -231,10 +260,11 @@ final class VetAppModel: ObservableObject {
             try await persist()
         }
     }
-    func generate(template: ReportTemplate, length: ReportLength, audience: Audience, mode: ReportExecutionMode) {
-        guard let c = selectedCaseID, let e = selectedEncounterID, let transcript = currentEncounter?.transcripts.last else { error = "Bitte zuerst das Transkript speichern."; return }
+    func generate(at location: EncounterLocation, template: ReportTemplate, length: ReportLength, audience: Audience, mode: ReportExecutionMode) {
+        let c = location.caseID, e = location.encounterID
+        guard let transcript = encounter(at: location)?.transcripts.last else { error = "Bitte zuerst das Transkript speichern."; return }
         let configuration = onlineConfiguration
-        run(state: .generating) { [self] in
+        run(state: .generating, location: location) { [self] in
             let engine: any ReportTextEngine
             switch mode {
             case .offline:
@@ -280,14 +310,20 @@ final class VetAppModel: ObservableObject {
     }
     func newQuickCheck() async {
         guard !busy, !captureInProgress else { return }
+        busy = true; defer { busy = false }
         let check = QuickCheck()
         document.quickChecks = [check] + (document.quickChecks ?? [])
-        selectedQuickCheckID = check.id; selectedCaseID = nil; selectedEncounterID = nil
-        await saveOrReport()
+        do {
+            try await persist()
+            chatPath = [ChatLocation(caseID: nil, encounterID: check.id)]; activeTab = .chat
+        } catch {
+            document.quickChecks?.removeAll { $0.id == check.id }
+            self.error = "Der Chat konnte nicht angelegt werden: " + error.localizedDescription
+        }
     }
-    func selectQuickCheck(_ id: UUID) {
-        guard !busy, !captureInProgress, document.quickChecks?.contains(where: { $0.id == id }) == true else { return }
-        selectedQuickCheckID = id; selectedCaseID = nil; selectedEncounterID = nil
+    func openChat(_ location: ChatLocation) {
+        guard !busy, !captureInProgress, analysisContext(caseID: location.caseID, encounterID: location.encounterID) != nil else { return }
+        chatPath = [location]; activeTab = .chat
     }
     func deleteQuickCheck(_ id: UUID) async {
         guard !busy, !captureInProgress, let repository else { return }
@@ -297,7 +333,7 @@ final class VetAppModel: ObservableObject {
             var next = document; next.quickChecks?.removeAll { $0.id == id }
             if next.quickChecks?.isEmpty == true { next.quickChecks = nil }
             try await repository.save(next); document = next
-            if selectedQuickCheckID == id { selectedQuickCheckID = nil }
+            chatPath.removeAll { $0.caseID == nil && $0.encounterID == id }
             try await repository.removeQuickCheckFiles(id)
         } catch { self.error = error.localizedDescription }
     }
@@ -362,7 +398,7 @@ final class VetAppModel: ObservableObject {
         guard onlineConfiguration.isEnabled, hasOnlineKey, onlineConfiguration.modelID == snapshot.modelID else {
             error = "Bitte zuerst den API-Zugang in den Chat-Details einrichten."; return
         }
-        guard (snapshot.caseID == nil ? selectedQuickCheckID == snapshot.encounterID : (currentCase?.id == snapshot.caseID && currentEncounter?.id == snapshot.encounterID)), analysisContext(caseID: snapshot.caseID, encounterID: snapshot.encounterID) != nil else { error = "Der ausgewählte Chat wurde geändert. Bitte die Nachricht dort erneut senden."; return }
+        guard chatPath.last == ChatLocation(caseID: snapshot.caseID, encounterID: snapshot.encounterID), analysisContext(caseID: snapshot.caseID, encounterID: snapshot.encounterID) != nil else { error = "Der ausgewählte Chat wurde geändert. Bitte die Nachricht dort erneut senden."; return }
         let existing = document.cases.flatMap(\.encounters).flatMap { $0.analysisRuns ?? [] } + (document.quickChecks ?? []).flatMap(\.runs)
         guard existing.count < 250, (analysisContext(caseID: snapshot.caseID, encounterID: snapshot.encounterID)?.analysisRuns?.count ?? 0) < 100 else {
             error = "Das lokale Analysebudget ist erreicht. Bitte nicht mehr benötigte Fälle exportieren und löschen oder einen neuen Vorgang verwenden."; return
@@ -476,22 +512,28 @@ final class VetAppModel: ObservableObject {
             testedOnlineModel = id; onlineSettingsStatus = "Synthetischer Verbindungstest bestanden: " + engine.engineRevision + ". Keine fachliche Freigabe."
         }
     }
-    func saveReportEdit(_ text: String, report: ReportVersion) async {
-        guard text != report.text else { return }
+    func saveReportEdit(_ text: String, report: ReportVersion, at location: EncounterLocation) async -> Bool {
+        guard !deletingRecords, text != report.text, encounter(at: location)?.reports.contains(where: { $0.id == report.id }) == true else { return false }
         var revision = report; revision.id = UUID(); revision.parentID = report.id; revision.createdAt = Date()
         revision.editedText = text; revision.approvedAt = nil
         revision.warnings = ["Manuell bearbeitet: Zahlen, Einheiten, Negationen und Quellen erneut prüfen."]
-        mutate { $0.reports.append(revision); $0.state = .reviewRequired }; await saveOrReport()
+        mutate(caseID: location.caseID, encounterID: location.encounterID) { $0.reports.append(revision); $0.state = .reviewRequired }
+        do { try await persist(); return true } catch { self.error = error.localizedDescription; return false }
     }
-    func approve(_ id: UUID) async {
-        mutate { encounter in
+    func approve(_ id: UUID, at location: EncounterLocation) async {
+        guard !deletingRecords else { return }
+        mutate(caseID: location.caseID, encounterID: location.encounterID) { encounter in
             if let i = encounter.reports.firstIndex(where: { $0.id == id }) { encounter.reports[i].approvedAt = Date(); encounter.state = .approved }
         }
         await saveOrReport()
     }
-    func recordShare(_ id: UUID, format: String) async { mutate { $0.shares.append(ShareEvent(reportID: id, format: format)) }; await saveOrReport() }
-    func play(_ segment: TranscriptSegment) async {
-        guard !busy, !captureInProgress, let c = selectedCaseID, let e = selectedEncounterID, let id = segment.audioID, let repository else { return }
+    func recordShare(_ id: UUID, format: String, at location: EncounterLocation) async {
+        guard !deletingRecords, encounter(at: location)?.reports.contains(where: { $0.id == id }) == true else { return }
+        mutate(caseID: location.caseID, encounterID: location.encounterID) { $0.shares.append(ShareEvent(reportID: id, format: format)) }; await saveOrReport()
+    }
+    func play(_ segment: TranscriptSegment, at location: EncounterLocation) async {
+        guard !busy, !captureInProgress, let id = segment.audioID, let repository, encounter(at: location)?.audio.contains(where: { $0.id == id }) == true else { return }
+        let c = location.caseID, e = location.encounterID
         do {
             let data = try await repository.audio(caseID: c, encounterID: e, segmentID: id)
             try AVAudioSession.sharedInstance().setCategory(.playback)
@@ -507,22 +549,22 @@ final class VetAppModel: ObservableObject {
     }
     func installSpeech() { run { [self] in try await AppleOfflineTranscriber.install(); speechStatus = await AppleOfflineTranscriber.status() } }
     func cancel() { work?.cancel() }
-    private func run(state: EncounterState? = nil, onFinish: (() -> Void)? = nil, operation: @escaping @MainActor () async throws -> Void) {
+    private func run(state: EncounterState? = nil, location: EncounterLocation? = nil, onFinish: (() -> Void)? = nil, operation: @escaping @MainActor () async throws -> Void) {
         guard !busy, !captureInProgress else { return }
         busy = true; error = nil; workStatus = "Wird vorbereitet"
-        if let state { mutate { $0.state = state } }
+        if let state, let location { mutate(caseID: location.caseID, encounterID: location.encounterID) { $0.state = state } }
         work = Task {
             defer { busy = false; work = nil; workStatus = ""; onFinish?() }
             do { try await persist(); try await operation() }
             catch {
-                if state != nil { mutate { $0.state = Task.isCancelled ? .interrupted : .failed; $0.lastError = Task.isCancelled ? "Abgebrochen" : error.localizedDescription }; await saveOrReport() }
+                if state != nil, let location { mutate(caseID: location.caseID, encounterID: location.encounterID) { $0.state = Task.isCancelled ? .interrupted : .failed; $0.lastError = Task.isCancelled ? "Abgebrochen" : error.localizedDescription }; await saveOrReport() }
                 self.error = Task.isCancelled ? "Abgebrochen. Gesicherte Inhalte bleiben erhalten." : error.localizedDescription
             }
         }
     }
-    private func mutate(caseID: UUID? = nil, encounterID: UUID? = nil, _ change: (inout Encounter) -> Void) {
-        guard let c = document.cases.firstIndex(where: { $0.id == (caseID ?? selectedCaseID) }),
-              let e = document.cases[c].encounters.firstIndex(where: { $0.id == (encounterID ?? selectedEncounterID) }) else { return }
+    private func mutate(caseID: UUID, encounterID: UUID, _ change: (inout Encounter) -> Void) {
+        guard let c = document.cases.firstIndex(where: { $0.id == caseID }),
+              let e = document.cases[c].encounters.firstIndex(where: { $0.id == encounterID }) else { return }
         change(&document.cases[c].encounters[e])
     }
     private func persist() async throws { guard let repository else { throw AppFailure("Fallspeicher ist noch gesperrt.") }; try await repository.save(document) }

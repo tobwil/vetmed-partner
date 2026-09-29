@@ -1,0 +1,21 @@
+{
+  "verifiedAt": "2026-09-29T21:51:28.365036+00:00",
+  "bundleID": "de.tobwil.vetmed",
+  "binarySHA256": "470ffce9a8dc8821a39ac6da39b9b93512fd5bc2991478b67173df26185f605b",
+  "device": "iPhone 17 Pro / iOS 26.6.1",
+  "installSucceeded": true,
+  "normalLaunchSucceeded": true,
+  "liveWhatsAppHandoffConfirmed": false,
+  "sourceSHA256": {
+    "apps/ios/VetMed/Core/VetAppModel.swift": "dca62d3fdb54169929693c2e6bf71dff0d91d6a84f344571ba33115f54a03682",
+    "apps/ios/VetMed/Core/ChatMarkdown.swift": "ce04e9cff9e05c185053821549b4f3e1ecb4523ef38749dd8fbe056657d28840",
+    "apps/ios/VetMed/Core/NavigationContext.swift": "d5d5d79ee9f21d12232852fd294ea1d8c98ad246a261e1b0d34adf154a4990bc",
+    "apps/ios/VetMed/Services/ExportService.swift": "fbff28925d802c477cc60ba823fa4609111d3aba05deb0ed43c121637f9f6422",
+    "apps/ios/VetMed/Views/ActivitySheet.swift": "40b1b86954dc2eb387cec172ed94a424ab0228613f196722d8cffddb6e50ef2e",
+    "apps/ios/VetMed/Views/ChatMarkdownView.swift": "571d4f4785acf61d2b04e41fe5337c49a204c0cb444f7635ccea76d52fe8635f",
+    "apps/ios/VetMed/Views/EncounterWorkflowView.swift": "6178af85c29b57dfbdd8a821c9c7ee7fc8dc528e3a25ec17184b87dcb33eb32d",
+    "apps/ios/VetMed/Views/NavigationViews.swift": "033af670178a16bef9c5c6cca1fa51805e488dde45281c9d1af03fe199e61b23",
+    "apps/ios/VetMed/Views/SparringView.swift": "be2783aaa5a6608df2457bdb8ae5d949e445e3b7245edd28f379000759c3da85",
+    "apps/ios/VetMed/Views/VetMedApp.swift": "9e6ad951eb5b3944918ac71b0dd5a12bd3c37b9b8a069997a99bedd0028c0082"
+  }
+}

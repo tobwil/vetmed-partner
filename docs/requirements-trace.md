@@ -83,3 +83,7 @@ Online-Berichte werden als Standard bei eingerichtetem API-Key vorgezogen, Gemma
 ## Weitere Nutzersteuerung: Schnellcheck und Löschbedienung
 
 Sparring ist zusätzlich ohne Fall möglich. Unabhängige Schnellchecks werden separat verschlüsselt gespeichert und dürfen weder leere Fälle erzeugen noch unbemerkt Fallkontext übernehmen. In der Fallliste erfolgt die Löschgeste von **rechts nach links**; zusätzlich steht „Fall löschen“ unten im geöffneten Fall. Der technische Stand ist in `architecture/0004-sparring-and-quick-checks.md` beschrieben. P2.2 bleibt wegen fehlender Bildverarbeitung und noch ausstehender Liveprüfung offen.
+
+## Nutzersteuerung: Navigation, Formatierung und Teilen
+
+Start/Fälle/Chat, schrittweises Diktat und dauerhaft sichtbarer Fallbezug vereinfachen die Bedienung. Editoren behalten eigene Fall-/Vorgangs-IDs beim Wechsel zwischen Bereichen. Chat-Markdown wird nativ dargestellt; Textübergaben enthalten lesbaren Klartext. Teileansicht und junge Exportdateien überstehen Hintergrund-/Vordergrundwechsel. Details und Abnahmegrenzen: `architecture/0006-navigation-markdown-and-sharing.md`. Der konkrete Nutzerfehler betrifft Teilen → WhatsApp; ItemSource- und System-Copy-Tests allein gelten nicht als echte WhatsApp-Abnahme.

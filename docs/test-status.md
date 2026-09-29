@@ -37,6 +37,19 @@ Prüfung: Der vollständige Lauf bestand mit 82 von 83 Tests; der zusätzliche F
 
 Visuell geprüft: `evidence/normal-chat-composer.png` und `evidence/chat-with-image-attachment.png`. Signierter Gerätebuild auf dem iPhone 17 Pro installiert und normal gestartet (`evidence/device-chat-install-2026-09-29.json`). Keine echte OpenAI-Anfrage mit einem Nutzer-Key in diesen Nachweisen; Anbieterantworten auf echte Bild-/Chatfragen und klinische Qualität bleiben offen.
 
+
+## Vereinfachte Navigation, Markdown und Teilen
+
+Start, Fälle und Chat ersetzen die bisherige Navigation. Diktate führen durch Aufnahme, Textprüfung und Bericht. Einstellungen liegen am Zahnrad, neue unabhängige Chats sind direkt erreichbar und der Fallbezug bleibt im Chat sichtbar. Editoren und verspätete Speicher-/Exportaktionen tragen feste Fall-/Vorgangs-IDs. Architektur: `architecture/0006-navigation-markdown-and-sharing.md`.
+
+Der Gesamtlauf enthält 86 erfolgreiche Unit-/Integrationstests und acht zunächst erfolgreiche UI-Tests; ein Navigationstest musste zuerst die Tastatur schließen (`evidence/ios-navigation-full-tests-2026-09-29.json`, 94/95). Der gezielte Folgelauf bestätigt diesen Navigationstest (`evidence/ios-navigation-targeted-tests-2026-09-29.json`); dessen weiterer Teilen-Test scheiterte am Selektor für die neue Systemansicht. Die ursprünglichen Teilen-Tests hatten fälschlich den Kopieren-Knopf unter der Systemansicht gefunden. Das wurde ausdrücklich korrigiert: Die echte iOS-Copy-Zelle wird angesprochen, nach Hintergrundwechsel betätigt und ihre Entfernung geprüft.
+
+Beide endgültigen Teilen-Tests bestehen separat (`evidence/ios-chat-share-ui-tests-2026-09-29.json`, `evidence/ios-report-share-ui-tests-2026-09-29.json`). Direkt nach jedem einzelnen Lauf prüft `simctl pbpaste` den vollständigen synthetischen Text, Status, Zahlen/Negationen und das Fehlen von Markdown-Fettmarkierungen; es werden nur Prüfergebnisse gespeichert (`evidence/ios-chat-system-share-2026-09-29.json`, `evidence/ios-report-system-share-2026-09-29.json`). Lesen aus dem separaten XCTest-Runner wurde vom iOS-Zwischenablageschutz abgewiesen und deshalb nicht als Nachweis verwendet. Über die Läufe sind 95 unterschiedliche Tests erfolgreich belegt; kein einzelner komplett grüner Gesamtlauf wird behauptet.
+
+Visuell geprüft: `evidence/start-two-primary-actions.png`, `evidence/focused-dictation-step.png`, `evidence/formatted-chat-answer.png`. Fett/Kursiv, Überschrift und Listen erscheinen formatiert. Die Teilenansicht übersteht den Appwechsel; aktuelle Exportdateien werden beim Zurückkehren nicht mehr sofort gelöscht. **Die tatsächliche WhatsApp-Übergabe auf dem Nutzergerät ist noch nicht bestätigt.** Ein ItemSource-Vertragstest mit dem WhatsApp-Aktivitätstyp ersetzt keine reale Share Extension.
+
+Signierter Gerätebuild installiert und regulär ohne Testflags gestartet: `evidence/device-navigation-sharing-install-2026-09-29.json`. Die Nutzerprüfung von Teilen → WhatsApp ist angefragt.
+
 ## Noch offen
 
 | Phase | Stand | Fehlende Abnahme |
