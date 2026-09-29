@@ -1,6 +1,10 @@
-# VetMed
+# VetMed Partner
 
 Native tierärztliche Arbeitsassistenz. Die Umsetzung folgt [dem vollständigen Plan](docs/implementation-plan.md): iOS-Diktatablauf, Online-Berichte mit eigenem API-Key und optionales Offline-Modell; Chat mit Bildern/Befunden und fallfreie Schnellchecks; anschließend Recherche mit Brave und native Android-Parität.
+
+## Projektverlauf und erster GitHub-Stand
+
+Die App heißt **VetMed**. Der erste GitHub-Stand umfasst den Quellcode samt Entwicklungs-Commits, den vollständigen Umsetzungsplan und ein [Projektarchiv](docs/history/README.md) mit [Gesprächsverlauf](docs/history/conversation-2026-09-29.md), [Chronik](docs/history/project-history.md) und [technischer Übergabe](docs/history/handoff.md). Entscheidungen, fehlgeschlagene Versuche und offene Abnahmen bleiben nachvollziehbar.
 
 ## Aktueller Stand
 

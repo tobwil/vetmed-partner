@@ -1,0 +1,60 @@
+{
+  "snapshotDate": "2026-09-29",
+  "repository": "https://github.com/tobwil/vetmed-partner",
+  "visibilityAtPublicationPreparation": "public",
+  "appCodeCommit": "076b034",
+  "existingGitHubInitialCommit": "c78abc2a9fd02cd291b1db80f225ae2879621180",
+  "conversationEntries": 109,
+  "conversationCutoffUTC": "2026-09-29T21:51:57.512Z",
+  "developmentCommits": [
+    {
+      "sha": "2b8ac2b83d405222436932e65fe12fe78fdbad95",
+      "date": "2026-09-29T22:17:30+02:00",
+      "subject": "Build iOS reporting with OpenAI mode and optional local inference"
+    },
+    {
+      "sha": "4f55c9329c417ca95cf278825051786b81f59e93",
+      "date": "2026-09-29T22:29:43+02:00",
+      "subject": "Fix recording aborts caused by audio session startup notifications"
+    },
+    {
+      "sha": "6c713b931a65a5929663b032b73b34596629162a",
+      "date": "2026-09-29T22:30:06+02:00",
+      "subject": "Record user confirmation of microphone startup fix on iPhone"
+    },
+    {
+      "sha": "54033b809be21b238b460e05d34111cc52e6ab6e",
+      "date": "2026-09-29T22:50:47+02:00",
+      "subject": "Add streaming sparring and standalone quick checks with native case deletion"
+    },
+    {
+      "sha": "4a1cf4a49834b2f50d197caab796675d4a0b4b96",
+      "date": "2026-09-29T23:21:08+02:00",
+      "subject": "Replace sparring form with conversational chat and encrypted attachments"
+    },
+    {
+      "sha": "076b0347fde09dd16e8e6d65fceea9f8fe6930d8",
+      "date": "2026-09-29T23:51:41+02:00",
+      "subject": "Simplify navigation and fix formatted chat and text sharing"
+    }
+  ],
+  "sha256": {
+    "docs/implementation-plan.md": "63c9fa62afd9a5e64eb3ad7a99d1c12d62c75fdab532611607dcad990a65d10f",
+    "docs/history/conversation-2026-09-29.md": "8e596690d13f21b2a58cc854a4b85919a848d4ab896d6358a7dbcdbe31307c4e",
+    "docs/history/conversation-2026-09-29.json": "37941bbd38b3cdc3addaa5ad8d9f5067bd380f58dd57fca1d84b9f90c05bf454",
+    "docs/history/project-history.md": "7dbd9729de34006a0036038474b581c1fe40023f335c67daa69166ed161883ab",
+    "docs/history/handoff.md": "d22eaaffe6f00ebd55bb13920c1eb447636a743edefab87ae0ca372633de79b1"
+  },
+  "verification": {
+    "relativeDocumentationLinks": "passed",
+    "conversationInternalEnvelopeCheck": "passed",
+    "commonCredentialPatternsIn149GitBlobsAndNewArchive": "no matches",
+    "newAppCodeChangesInPublicationStep": false
+  },
+  "limitations": [
+    "The conversation archive covers this project task; earlier planning is preserved as its original plan document.",
+    "Credential pattern checks are a bounded scan, not a general security audit.",
+    "The real WhatsApp handoff is awaiting user confirmation.",
+    "The full product plan is not complete."
+  ]
+}
