@@ -1,0 +1,13 @@
+.reference/
+.build/
+.DS_Store
+DerivedData/
+*.xcuserstate
+xcuserdata/
+*.xcresult
+*.ipa
+*.safetensors
+*.gguf
+*.litertlm
+.env
+local.properties

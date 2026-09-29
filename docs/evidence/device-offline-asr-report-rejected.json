@@ -1,0 +1,17 @@
+{
+  "completed" : false,
+  "date" : "2026-09-29T19:40:13Z",
+  "durationSeconds" : 21.559188961982727,
+  "error" : "Der lokale Bericht konnte auch nach einem Reparaturversuch nicht geprüft werden: The data couldn’t be read because it isn’t in the correct format. Das Transkript bleibt erhalten.",
+  "inputFile" : "synthetic-300s.wav",
+  "networkAfter" : "unknown",
+  "networkBefore" : "unsatisfied",
+  "peakResidentMiB" : 2088,
+  "sourceCount" : 112,
+  "stages" : [
+    "offline-asr",
+    "encrypted-transcript-save"
+  ],
+  "synthetic" : true,
+  "thermalState" : "fair"
+}

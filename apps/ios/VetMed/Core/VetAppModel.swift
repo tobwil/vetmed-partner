@@ -1,0 +1,374 @@
+import Foundation
+import Darwin
+import Combine
+import AVFoundation
+
+@MainActor
+final class VetAppModel: ObservableObject {
+    nonisolated static var isDiagnosticLaunch: Bool {
+        #if DEBUG
+        ProcessInfo.processInfo.arguments.contains("--qa-local-report") || ProcessInfo.processInfo.arguments.contains("--qa-offline-speech") || ProcessInfo.processInfo.arguments.contains("--qa-offline-pipeline") || ProcessInfo.processInfo.arguments.contains("--qa-full-pipeline")
+        #else
+        false
+        #endif
+    }
+    @Published private(set) var document = VaultDocument()
+    @Published var error: String?
+    @Published var busy = false
+    @Published var workStatus = ""
+    @Published var locked = true
+    @Published var loaded = false
+    @Published var selectedCaseID: UUID?
+    @Published var selectedEncounterID: UUID?
+    @Published var speechStatus = "Wird geprüft"
+    @Published private(set) var vocabulary: [VocabularyEntry] = []
+    @Published private(set) var onlineConfiguration = OnlineReportConfiguration()
+    @Published private(set) var hasOnlineKey = false
+    @Published var onlineModels: [String] = []
+    @Published var onlineSettingsStatus: String?
+    @Published private(set) var testedOnlineModel: String?
+    private var onlineStore: OnlineReportStore {
+        #if DEBUG
+        OnlineReportStore(service: ProcessInfo.processInfo.arguments.contains("--ui-testing") ? "de.tobwil.vetmed.uitest" : "de.tobwil.vetmed.secrets")
+        #else
+        OnlineReportStore()
+        #endif
+    }
+    #if DEBUG
+    @Published var diagnosticResult: String?
+    func runOfflineDiagnostics() {
+        run { [self] in
+            workStatus = "Synthetischer Offline-Gerätetest"
+            diagnosticResult = await DeviceQARunner.runOfflinePipeline(engine: model)
+        }
+    }
+    #endif
+    let model = MLXLocalReportEngine()
+    let recorder = AudioRecorder()
+    private var opening = false
+    private var repository: CaseRepository?
+    private var work: Task<Void, Never>?
+    private var player: AVAudioPlayer?
+    private var pressure: MemoryPressureMonitor?
+    var currentCase: VetCase? { document.cases.first { $0.id == selectedCaseID } }
+    var currentEncounter: Encounter? { currentCase?.encounters.first { $0.id == selectedEncounterID } }
+    init() {
+        pressure = MemoryPressureMonitor { [weak self] in
+            Task { @MainActor in
+                guard let self else { return }
+                self.model.trimIdleMemory()
+                let action = MemoryPressurePolicy.action(availableBytes: os_proc_available_memory(), hasModel: self.model.ready,
+                    activeWork: self.busy || self.model.isBusy || self.recorder.isRecording)
+                switch action {
+                case .reclaimedCaches: break
+                case .releaseIdleModel: try? self.model.unload()
+                case .stopActiveWork:
+                    self.model.requestMemoryStop(); self.work?.cancel()
+                    if self.recorder.isRecording { await self.recorder.pause(); await self.markInterrupted() }
+                    self.error = "Speicherdruck: laufende Arbeit wurde kontrolliert beendet. Gesicherte Inhalte bleiben erhalten."
+                }
+            }
+        }
+    }
+    func unlock() async {
+        guard !opening else { return }
+        opening = true
+        defer { opening = false }
+        do {
+            #if DEBUG
+            let isUITest = ProcessInfo.processInfo.arguments.contains("--ui-testing")
+            #else
+            let isUITest = false
+            #endif
+            if !loaded {
+                let root = isUITest ? AppPaths.root.appendingPathComponent("UITests") : AppPaths.root
+                try AppPaths.prepare(root)
+                let secure = SecureStore(service: isUITest ? "de.tobwil.vetmed.uitest" : "de.tobwil.vetmed.secrets")
+                let key = try secure.vaultKey(existingData: CaseRepository.hasExistingData(at: root))
+                let repository = try CaseRepository(root: root, key: key)
+                self.repository = repository
+                document = try await repository.load()
+                vocabulary = try await repository.vocabulary()
+                do {
+                    onlineConfiguration = try onlineStore.configuration()
+                    hasOnlineKey = try onlineStore.key() != nil
+                } catch {
+                    onlineConfiguration = .init(); hasOnlineKey = false
+                    self.error = "Lokale Fälle wurden geöffnet. Online-Einstellungen konnten nicht gelesen werden; bitte den API-Zugang neu einrichten."
+                }
+                for c in document.cases.indices {
+                    for e in document.cases[c].encounters.indices where [.recording, .transcribing, .generating].contains(document.cases[c].encounters[e].state) {
+                        document.cases[c].encounters[e].state = .interrupted
+                    }
+                }
+                loaded = true
+                do { try await recoverAudio(); try await persist() }
+                catch { self.error = "Vorhandene Fälle wurden geöffnet. Wiederherstellung oder Speichern ist noch nicht vollständig: " + error.localizedDescription }
+            }
+            try AppPaths.clean(AppPaths.exports)
+            locked = false
+            speechStatus = await AppleOfflineTranscriber.status()
+        } catch { self.error = error.localizedDescription }
+    }
+    func background() async {
+        locked = true; player?.stop(); player = nil
+        work?.cancel()
+        if recorder.isRecording { await recorder.pause(); await markInterrupted() }
+        if !model.isBusy { try? model.unload() }
+    }
+    func newEncounter(caseID: UUID? = nil) async {
+        guard !busy, !recorder.isRecording else { return }
+        var id = caseID
+        if id == nil {
+            let item = VetCase(label: "Fall \(document.cases.count + 1)", species: "Nicht angegeben")
+            document.cases.insert(item, at: 0); id = item.id
+        }
+        guard let c = document.cases.firstIndex(where: { $0.id == id }) else { return }
+        let encounter = Encounter()
+        document.cases[c].encounters.insert(encounter, at: 0)
+        selectedCaseID = id; selectedEncounterID = encounter.id
+        await saveOrReport()
+    }
+    func updateCase(label: String, species: String, animalName: String) async {
+        guard let c = document.cases.firstIndex(where: { $0.id == selectedCaseID }) else { return }
+        document.cases[c].label = label; document.cases[c].species = species; document.cases[c].animalName = animalName
+        await saveOrReport()
+    }
+    func deleteCase(_ id: UUID) async {
+        guard !busy, !recorder.isRecording, let repository else { return }
+        do {
+            var next = document; next.cases.removeAll { $0.id == id }
+            try await repository.save(next); document = next
+            try await repository.removeCaseFiles(id)
+            if selectedCaseID == id { selectedCaseID = nil; selectedEncounterID = nil }
+        } catch { self.error = error.localizedDescription }
+    }
+    func select(_ c: VetCase, _ e: Encounter) { guard !busy, !recorder.isRecording else { return }; selectedCaseID = c.id; selectedEncounterID = e.id }
+    func saveTranscript(_ text: String, caseID: UUID? = nil, encounterID: UUID? = nil) async {
+        guard !busy, !recorder.isRecording, let c = caseID ?? selectedCaseID, let e = encounterID ?? selectedEncounterID,
+              let encounter = document.cases.first(where: { $0.id == c })?.encounters.first(where: { $0.id == e }) else { return }
+        let previous = encounter.transcripts.last
+        guard previous?.editedText != text else { return }
+        let version = TranscriptBuilder.edited(text, previous: previous)
+        mutate(caseID: c, encounterID: e) { $0.transcripts.append(version); $0.state = .transcriptReady }
+        await saveOrReport()
+    }
+    func record() async {
+        guard !busy, !recorder.isStarting, !recorder.isRecording, let c = selectedCaseID, let e = selectedEncounterID else { return }
+        do {
+            // Never begin capturing for a case that has not reached durable storage.
+            try await persist()
+            try model.unload()
+            recorder.onSegment = { [weak self] data, segment in
+                guard let self, let repository = self.repository else { throw AppFailure("Fallspeicher ist nicht geöffnet.") }
+                try await repository.storeAudio(data, caseID: c, encounterID: e, segmentID: segment.id)
+                self.mutate(caseID: c, encounterID: e) { if !$0.audio.contains(where: { $0.id == segment.id }) { $0.audio.append(segment) } }
+                try await self.persist()
+            }
+            recorder.onInterruption = { [weak self] in await self?.markInterrupted() }
+            try await recorder.start(caseID: c, encounterID: e)
+            mutate { $0.state = .recording }; try await persist()
+        } catch {
+            if recorder.isRecording { await recorder.pause(); await markInterrupted() }
+            self.error = error.localizedDescription
+        }
+    }
+    func pauseRecording() async { await recorder.pause(); mutate { $0.state = .paused }; await saveOrReport() }
+    func markInterrupted() async { mutate { $0.state = .interrupted }; await saveOrReport() }
+    func transcribe() {
+        guard !busy, !recorder.isRecording, let c = selectedCaseID, let e = currentEncounter, let repository else { return }
+        let existingAudio = Set(e.transcripts.flatMap(\.segments).compactMap(\.audioID))
+        let pending = e.audio.filter { !existingAudio.contains($0.id) }
+        guard !pending.isEmpty else { error = "Keine neuen Audiosegmente vorhanden."; return }
+        run(state: .transcribing) { [self] in
+            try model.unload()
+            var newSegments: [TranscriptSegment] = []
+            for (index, segment) in pending.enumerated() {
+                try Task.checkCancellation(); workStatus = "Transkription \(index + 1) von \(pending.count) · auf diesem Gerät"
+                let data = try await repository.audio(caseID: c, encounterID: e.id, segmentID: segment.id)
+                let file = AppPaths.scratch.appendingPathComponent("transcribe-\(segment.id).caf")
+                try data.write(to: file, options: [.atomic, .completeFileProtection])
+                defer { try? FileManager.default.removeItem(at: file) }
+                newSegments += TranscriptBuilder.audioSentences(try await AppleOfflineTranscriber().transcribe(file: file, audioID: segment.id))
+            }
+            guard !newSegments.isEmpty else { throw AppFailure("Kein verständlicher Text erkannt. Die Aufnahme bleibt erhalten.") }
+            let previous = e.transcripts.last
+            let segments = (previous?.segments ?? []) + newSegments
+            let text = segments.map(\.text).joined(separator: "\n")
+            let raw = [previous?.rawText ?? "", newSegments.map(\.text).joined(separator: "\n")].filter { !$0.isEmpty }.joined(separator: "\n")
+            let version = TranscriptVersion(parentID: previous?.id, rawText: raw, editedText: text, segments: segments, engine: "Apple SpeechAnalyzer · de-DE · offline")
+            mutate(caseID: c, encounterID: e.id) { $0.transcripts.append(version); $0.state = .transcriptReady }
+            try await persist()
+        }
+    }
+    func generate(template: ReportTemplate, length: ReportLength, audience: Audience, mode: ReportExecutionMode) {
+        guard let c = selectedCaseID, let e = selectedEncounterID, let transcript = currentEncounter?.transcripts.last else { error = "Bitte zuerst das Transkript speichern."; return }
+        let configuration = onlineConfiguration
+        run(state: .generating) { [self] in
+            let engine: any ReportTextEngine
+            switch mode {
+            case .offline:
+                try await model.load(); engine = model
+            case .online:
+                guard configuration.isEnabled, let key = try onlineStore.key() else { throw AppFailure("Bitte Online-Berichte in Einstellungen mit deinem API-Key aktivieren oder ausdrücklich Offline wählen.") }
+                try model.unload()
+                engine = OpenAIReportEngine(configuration: configuration, key: key, sections: template.sections, record: { [self] payload, modelID in
+                    let value = CloudReportRequest(modelID: modelID, transcriptVersionID: transcript.id, payload: payload)
+                    mutate(caseID: c, encounterID: e) { $0.cloudReportRequests = ($0.cloudReportRequests ?? []) + [value] }
+                    try await persist()
+                    return value.id
+                }, finish: { [self] id, status, responseModel in
+                    mutate(caseID: c, encounterID: e) { encounter in
+                        if let index = encounter.cloudReportRequests?.firstIndex(where: { $0.id == id }) {
+                            encounter.cloudReportRequests?[index].status = status
+                            encounter.cloudReportRequests?[index].responseModelID = responseModel
+                        }
+                    }
+                    try await persist()
+                })
+            }
+            let report = try await ReportPipeline(engine: engine).run(transcript: transcript, template: template, length: length, audience: audience, checkpoint: { [self] value in
+                mutate(caseID: c, encounterID: e) { $0.reportCheckpoint = value }
+                try await persist()
+            }) { workStatus = $0 }
+            mutate(caseID: c, encounterID: e) { $0.reports.append(report); $0.reportCheckpoint = nil; $0.state = .reviewRequired }
+            try await persist()
+        }
+    }
+    func saveOnlineConfiguration(modelID: String, keyDraft: String) {
+        guard !busy else { return }
+        error = nil
+        do {
+            let id = modelID.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !id.isEmpty else { throw AppFailure("Bitte eine Modell-ID auswählen.") }
+            let key = keyDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+            let storedKey = try onlineStore.key()
+            guard !key.isEmpty || storedKey != nil else { throw AppFailure("Bitte deinen API-Key eintragen.") }
+            var configuration = onlineConfiguration
+            configuration.modelID = id; configuration.consentDate = Date(); configuration.preferredMode = .online
+            configuration.verifiedModelID = testedOnlineModel == id ? id : nil
+            configuration.verifiedAt = testedOnlineModel == id ? Date() : nil
+            try onlineStore.save(configuration, key: key.isEmpty ? nil : key)
+            onlineConfiguration = configuration; hasOnlineKey = true
+            onlineSettingsStatus = "Online ist der Standard für neue Berichte. Versand erfolgt erst über Bericht online erstellen."
+        } catch { self.error = error.localizedDescription }
+    }
+    func resetOnlineModelVerification() { testedOnlineModel = nil }
+    func removeOnlineKey() {
+        guard !busy else { return }
+        do {
+            try onlineStore.removeKey(); onlineConfiguration = try onlineStore.configuration(); hasOnlineKey = false
+            testedOnlineModel = nil; onlineModels = []; onlineSettingsStatus = "API-Key entfernt."
+        } catch { self.error = error.localizedDescription }
+    }
+    func loadOnlineModels(keyDraft: String) {
+        run { [self] in
+            workStatus = "Anbietermodelle laden · keine Falldaten"
+            let key = keyDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard let value = key.isEmpty ? try onlineStore.key() : key else { throw AppFailure("Bitte API-Key eintragen.") }
+            onlineModels = try await OpenAIReportAPI.models(key: value)
+            onlineSettingsStatus = "Modellliste geladen. Die Liste bestätigt noch nicht die Eignung für strukturierte Berichte. Bitte das ausgewählte Modell testen."
+        }
+    }
+    func testOnlineModel(modelID: String, keyDraft: String) {
+        run { [self] in
+            workStatus = "Synthetischer Anbietertest · keine Falldaten"
+            testedOnlineModel = nil
+            let key = keyDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard let value = key.isEmpty ? try onlineStore.key() : key else { throw AppFailure("Bitte API-Key eintragen.") }
+            let id = modelID.trimmingCharacters(in: .whitespacesAndNewlines)
+            let config = OnlineReportConfiguration(modelID: id, consentDate: Date(), preferredMode: .online)
+            let engine = OpenAIReportEngine(configuration: config, key: value, sections: ReportTemplate.treatment_report.sections)
+            let transcript = TranscriptBuilder.edited("Hund 12,5 kg. Kein Fieber. Temperatur nicht gemessen.", previous: nil)
+            _ = try await ReportPipeline(engine: engine).run(transcript: transcript, template: .treatment_report, length: .medium, audience: .veterinarian) { workStatus = $0 }
+            testedOnlineModel = id; onlineSettingsStatus = "Synthetischer Verbindungstest bestanden: " + engine.engineRevision + ". Keine fachliche Freigabe."
+        }
+    }
+    func saveReportEdit(_ text: String, report: ReportVersion) async {
+        guard text != report.text else { return }
+        var revision = report; revision.id = UUID(); revision.parentID = report.id; revision.createdAt = Date()
+        revision.editedText = text; revision.approvedAt = nil
+        revision.warnings = ["Manuell bearbeitet: Zahlen, Einheiten, Negationen und Quellen erneut prüfen."]
+        mutate { $0.reports.append(revision); $0.state = .reviewRequired }; await saveOrReport()
+    }
+    func approve(_ id: UUID) async {
+        mutate { encounter in
+            if let i = encounter.reports.firstIndex(where: { $0.id == id }) { encounter.reports[i].approvedAt = Date(); encounter.state = .approved }
+        }
+        await saveOrReport()
+    }
+    func recordShare(_ id: UUID, format: String) async { mutate { $0.shares.append(ShareEvent(reportID: id, format: format)) }; await saveOrReport() }
+    func play(_ segment: TranscriptSegment) async {
+        guard !busy, !recorder.isRecording, let c = selectedCaseID, let e = selectedEncounterID, let id = segment.audioID, let repository else { return }
+        do {
+            let data = try await repository.audio(caseID: c, encounterID: e, segmentID: id)
+            try AVAudioSession.sharedInstance().setCategory(.playback)
+            try AVAudioSession.sharedInstance().setActive(true)
+            player = try AVAudioPlayer(data: data); player?.currentTime = segment.startSeconds ?? 0; player?.play()
+        } catch { self.error = error.localizedDescription }
+    }
+    func installModel() { run { [self] in try await model.install() } }
+    func saveVocabulary(_ entries: [VocabularyEntry]) async {
+        guard let repository else { return }
+        do { try await repository.saveVocabulary(entries); vocabulary = entries }
+        catch { self.error = error.localizedDescription }
+    }
+    func installSpeech() { run { [self] in try await AppleOfflineTranscriber.install(); speechStatus = await AppleOfflineTranscriber.status() } }
+    func cancel() { work?.cancel() }
+    private func run(state: EncounterState? = nil, operation: @escaping @MainActor () async throws -> Void) {
+        guard !busy, !recorder.isRecording else { return }
+        busy = true; error = nil; workStatus = "Wird vorbereitet"
+        if let state { mutate { $0.state = state } }
+        work = Task {
+            defer { busy = false; work = nil; workStatus = "" }
+            do { try await persist(); try await operation() }
+            catch {
+                if state != nil { mutate { $0.state = Task.isCancelled ? .interrupted : .failed; $0.lastError = Task.isCancelled ? "Abgebrochen" : error.localizedDescription }; await saveOrReport() }
+                self.error = Task.isCancelled ? "Abgebrochen. Gesicherte Inhalte bleiben erhalten." : error.localizedDescription
+            }
+        }
+    }
+    private func mutate(caseID: UUID? = nil, encounterID: UUID? = nil, _ change: (inout Encounter) -> Void) {
+        guard let c = document.cases.firstIndex(where: { $0.id == (caseID ?? selectedCaseID) }),
+              let e = document.cases[c].encounters.firstIndex(where: { $0.id == (encounterID ?? selectedEncounterID) }) else { return }
+        change(&document.cases[c].encounters[e])
+    }
+    private func persist() async throws { guard let repository else { throw AppFailure("Fallspeicher ist noch gesperrt.") }; try await repository.save(document) }
+    private func saveOrReport() async { do { try await persist() } catch { self.error = "Speichern fehlgeschlagen: " + error.localizedDescription } }
+    private func recoverAudio() async throws {
+        try AppPaths.prepare(AppPaths.scratch)
+        guard let repository else { return }
+        for url in try FileManager.default.contentsOfDirectory(at: AppPaths.scratch, includingPropertiesForKeys: nil) {
+            let parts = url.deletingPathExtension().lastPathComponent.split(separator: "_").compactMap { UUID(uuidString: String($0)) }
+            if parts.count == 3,
+               let c = document.cases.firstIndex(where: { $0.id == parts[0] }),
+               let e = document.cases[c].encounters.firstIndex(where: { $0.id == parts[1] }) {
+                let data = try Data(contentsOf: url)
+                let duration = (try? AVAudioPlayer(data: data).duration) ?? 0
+                try await repository.storeAudio(data, caseID: parts[0], encounterID: parts[1], segmentID: parts[2])
+                if !document.cases[c].encounters[e].audio.contains(where: { $0.id == parts[2] }) {
+                    document.cases[c].encounters[e].audio.append(AudioSegment(id: parts[2], duration: duration, recovered: true))
+                }
+                document.cases[c].encounters[e].state = .interrupted
+                if duration == 0 { document.cases[c].encounters[e].lastError = "Unvollständiges Audio wurde verschlüsselt gesichert. Andere Fälle bleiben verfügbar." }
+                try await persist()
+                try FileManager.default.removeItem(at: url)
+            } else if url.lastPathComponent.hasPrefix("transcribe-") { try FileManager.default.removeItem(at: url) }
+        }
+        // Audio-file write and metadata transaction are separate durable operations. Recover the
+        // encrypted orphan if the app was interrupted between them, without storing a cleartext index.
+        for c in document.cases.indices {
+            for e in document.cases[c].encounters.indices {
+                let caseID = document.cases[c].id, encounterID = document.cases[c].encounters[e].id
+                let known = Set(document.cases[c].encounters[e].audio.map(\.id))
+                for id in try await repository.storedAudioIDs(caseID: caseID, encounterID: encounterID) where !known.contains(id) {
+                    let data = try await repository.audio(caseID: caseID, encounterID: encounterID, segmentID: id)
+                    let duration = (try? AVAudioPlayer(data: data).duration) ?? 0
+                    document.cases[c].encounters[e].audio.append(AudioSegment(id: id, duration: duration, recovered: true))
+                    document.cases[c].encounters[e].state = .interrupted
+                    try await persist()
+                }
+            }
+        }
+    }
+}

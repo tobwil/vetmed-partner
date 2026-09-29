@@ -1,0 +1,13 @@
+{
+  "completed" : false,
+  "date" : "2026-09-29T19:01:24Z",
+  "error" : "The network connection was lost.",
+  "model" : "mlx-community\/gemma-4-e2b-it-4bit",
+  "operatingSystem" : "Version 26.6.1 (Build 23G83)",
+  "peakResidentMiB" : 89,
+  "revision" : "238767527555cb75a05732a84dff5d6ba0dd6809",
+  "thermalState" : "nominal",
+  "warnings" : [
+
+  ]
+}

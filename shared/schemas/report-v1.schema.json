@@ -1,0 +1,123 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:vetmed:report:v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "template",
+    "length",
+    "audience",
+    "sourceTranscriptVersionId",
+    "requiresReview",
+    "missingInformation",
+    "conflicts",
+    "sections"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "template": {
+      "enum": [
+        "treatment_report",
+        "soap",
+        "follow_up",
+        "referral",
+        "owner_information"
+      ]
+    },
+    "length": {
+      "enum": [
+        "short",
+        "medium",
+        "detailed"
+      ]
+    },
+    "audience": {
+      "enum": [
+        "veterinarian",
+        "owner"
+      ]
+    },
+    "sourceTranscriptVersionId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "requiresReview": {
+      "const": true
+    },
+    "missingInformation": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "conflicts": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "sections": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "key",
+          "items"
+        ],
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "text",
+                "sourceRefs",
+                "origin"
+              ],
+              "properties": {
+                "text": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "sourceRefs": {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "segmentId",
+                      "quote"
+                    ],
+                    "properties": {
+                      "segmentId": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "quote": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    }
+                  }
+                },
+                "origin": {
+                  "const": "dictated"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

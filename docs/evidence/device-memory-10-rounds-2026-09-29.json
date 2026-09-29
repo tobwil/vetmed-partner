@@ -1,0 +1,174 @@
+{
+  "cancellationRecovered": true,
+  "completed": true,
+  "date": "2026-09-29T19:32:30Z",
+  "loadSeconds": 4.980414032936096,
+  "model": "mlx-community/gemma-4-e2b-it-4bit",
+  "operatingSystem": "Version 26.6.1 (Build 23G83)",
+  "peakResidentMiB": 3142,
+  "report": {
+    "audience": "veterinarian",
+    "conflicts": [],
+    "length": "medium",
+    "missingInformation": [],
+    "requiresReview": true,
+    "schemaVersion": 1,
+    "sections": [
+      {
+        "items": [
+          {
+            "origin": "dictated",
+            "sourceRefs": [
+              {
+                "quote": "Hund, 12,5 kg.",
+                "segmentId": "text-1"
+              }
+            ],
+            "text": "Hund, 12,5 kg."
+          },
+          {
+            "origin": "dictated",
+            "sourceRefs": [
+              {
+                "quote": "Temperatur nicht gemessen.",
+                "segmentId": "text-4"
+              }
+            ],
+            "text": "Temperatur nicht gemessen."
+          }
+        ],
+        "key": "Anamnese"
+      },
+      {
+        "items": [
+          {
+            "origin": "dictated",
+            "sourceRefs": [
+              {
+                "quote": "Seit gestern verminderter Appetit.",
+                "segmentId": "text-2"
+              }
+            ],
+            "text": "Seit gestern verminderter Appetit."
+          },
+          {
+            "origin": "dictated",
+            "sourceRefs": [
+              {
+                "quote": "Kein Erbrechen.",
+                "segmentId": "text-3"
+              }
+            ],
+            "text": "Kein Erbrechen."
+          }
+        ],
+        "key": "Befunde"
+      },
+      {
+        "items": [],
+        "key": "Beurteilung"
+      },
+      {
+        "items": [
+          {
+            "origin": "dictated",
+            "sourceRefs": [
+              {
+                "quote": "Kontrolle in 3 Tagen vereinbart.",
+                "segmentId": "text-5"
+              }
+            ],
+            "text": "Kontrolle in 3 Tagen vereinbart."
+          }
+        ],
+        "key": "Therapie"
+      },
+      {
+        "items": [],
+        "key": "Weiteres Vorgehen"
+      }
+    ],
+    "sourceTranscriptVersionId": "01CA18E3-9D07-4F04-927E-2B09423F7D2E",
+    "template": "treatment_report"
+  },
+  "reportSeconds": 13.537447929382324,
+  "revision": "238767527555cb75a05732a84dff5d6ba0dd6809",
+  "rounds": [
+    {
+      "residentMiB": 3130,
+      "seconds": 7.367908000946045,
+      "warnings": []
+    },
+    {
+      "residentMiB": 3130,
+      "seconds": 7.9712289571762085,
+      "warnings": []
+    },
+    {
+      "residentMiB": 3131,
+      "seconds": 7.708411931991577,
+      "warnings": []
+    },
+    {
+      "residentMiB": 3131,
+      "seconds": 8.228700995445251,
+      "warnings": []
+    },
+    {
+      "residentMiB": 3131,
+      "seconds": 9.433061003684998,
+      "warnings": []
+    },
+    {
+      "residentMiB": 3131,
+      "seconds": 10.56984007358551,
+      "warnings": []
+    },
+    {
+      "residentMiB": 3131,
+      "seconds": 11.590112924575806,
+      "warnings": []
+    },
+    {
+      "residentMiB": 3131,
+      "seconds": 13.184505939483643,
+      "warnings": []
+    },
+    {
+      "residentMiB": 3131,
+      "seconds": 14.263788938522339,
+      "warnings": []
+    },
+    {
+      "residentMiB": 3131,
+      "seconds": 13.537447929382324,
+      "warnings": []
+    }
+  ],
+  "syntheticCandidates": [
+    "{\n\"items\": [\n{\n\"section\": \"Anamnese\",\n\"text\": \"Hund, 12,5 kg.\",\n\"segmentId\": \"text-1\",\n\"quote\": \"Hund, 12,5 kg.\"\n},\n{\n\"section\": \"Befunde\",\n\"text\": \"Seit gestern verminderter Appetit.\",\n\"segmentId\": \"text-2\",\n\"quote\": \"Seit gestern verminderter Appetit.\"\n},\n{\n\"section\": \"Befunde\",\n\"text\": \"Kein Erbrechen.\",\n\"segmentId\": \"text-3\",\n\"quote\": \"Kein Erbrechen.\"\n}\n],\n\"missingInformation\": [],\n\"conflicts\": []\n}",
+    "{\n  \"items\": [\n    {\n      \"section\": \"Anamnese\",\n      \"text\": \"Temperatur nicht gemessen.\",\n      \"segmentId\": \"text-4\",\n      \"quote\": \"Temperatur nicht gemessen.\"\n    },\n    {\n      \"section\": \"Therapie\",\n      \"text\": \"Kontrolle in 3 Tagen vereinbart.\",\n      \"segmentId\": \"text-5\",\n      \"quote\": \"Kontrolle in 3 Tagen vereinbart.\"\n    }\n  ],\n  \"missingInformation\": [],\n  \"conflicts\": []\n}",
+    "{\n  \"items\": [\n    {\n      \"section\": \"Anamnese\",\n      \"text\": \"Hund, 12,5 kg.\",\n      \"segmentId\": \"text-1\",\n      \"quote\": \"Hund, 12,5 kg.\"\n    },\n    {\n      \"section\": \"Anamnese\",\n      \"text\": \"Seit gestern verminderter Appetit.\",\n      \"segmentId\": \"text-2\",\n      \"quote\": \"Seit gestern verminderter Appetit.\"\n    },\n    {\n      \"section\": \"Befunde\",\n      \"text\": \"Kein Erbrechen.\",\n      \"segmentId\": \"text-3\",\n      \"quote\": \"Kein Erbrechen.\"\n    }\n  ],\n  \"missingInformation\": [],\n  \"conflicts\": []\n}",
+    "{\n  \"items\": [\n    {\n      \"section\": \"Anamnese\",\n      \"text\": \"Temperatur nicht gemessen.\",\n      \"segmentId\": \"text-4\",\n      \"quote\": \"Temperatur nicht gemessen.\"\n    },\n    {\n      \"section\": \"Therapie\",\n      \"text\": \"Kontrolle in 3 Tagen vereinbart.\",\n      \"segmentId\": \"text-5\",\n      \"quote\": \"Kontrolle in 3 Tagen vereinbart.\"\n    }\n  ],\n  \"missingInformation\": [],\n  \"conflicts\": []\n}",
+    "{\n\"items\": [\n{\n\"section\": \"Anamnese\",\n\"text\": \"Hund, 12,5 kg.\",\n\"segmentId\": \"text-1\",\n\"quote\": \"Hund, 12,5 kg.\"\n},\n{\n\"section\": \"Anamnese\",\n\"text\": \"Seit gestern verminderter Appetit.\",\n\"segmentId\": \"text-2\",\n\"quote\": \"Seit gestern verminderter Appetit.\"\n},\n{\n\"section\": \"Befunde\",\n\"text\": \"Kein Erbrechen.\",\n\"segmentId\": \"text-3\",\n\"quote\": \"Kein Erbrechen.\"\n}\n],\n\"missingInformation\": [],\n\"conflicts\": []\n}",
+    "{\n  \"items\": [\n    {\n      \"section\": \"Anamnese\",\n      \"text\": \"Temperatur nicht gemessen.\",\n      \"segmentId\": \"text-4\",\n      \"quote\": \"Temperatur nicht gemessen.\"\n    },\n    {\n      \"section\": \"Therapie\",\n      \"text\": \"Kontrolle in 3 Tagen vereinbart.\",\n      \"segmentId\": \"text-5\",\n      \"quote\": \"Kontrolle in 3 Tagen vereinbart.\"\n    }\n  ],\n  \"missingInformation\": [],\n  \"conflicts\": []\n}",
+    "{\n  \"items\": [\n    {\n      \"section\": \"Anamnese\",\n      \"text\": \"Hund, 12,5 kg.\",\n      \"segmentId\": \"text-1\",\n      \"quote\": \"Hund, 12,5 kg.\"\n    },\n    {\n      \"section\": \"Anamnese\",\n      \"text\": \"Seit gestern verminderter Appetit.\",\n      \"segmentId\": \"text-2\",\n      \"quote\": \"Seit gestern verminderter Appetit.\"\n    },\n    {\n      \"section\": \"Befunde\",\n      \"text\": \"Kein Erbrechen.\",\n      \"segmentId\": \"text-3\",\n      \"quote\": \"Kein Erbrechen.\"\n    }\n  ],\n  \"missingInformation\": [],\n  \"conflicts\": []\n}",
+    "{\n\"items\": [\n{\n\"section\": \"Anamnese\",\n\"text\": \"Temperatur nicht gemessen.\",\n\"segmentId\": \"text-4\",\n\"quote\": \"Temperatur nicht gemessen.\"\n},\n{\n\"section\": \"Therapie\",\n\"text\": \"Kontrolle in 3 Tagen vereinbart.\",\n\"segmentId\": \"text-5\",\n\"quote\": \"Kontrolle in 3 Tagen vereinbart.\"\n}\n],\n\"missingInformation\": [],\n\"conflicts\": []\n}",
+    "{\n  \"items\": [\n    {\n      \"section\": \"Anamnese\",\n      \"text\": \"Hund, 12,5 kg.\",\n      \"segmentId\": \"text-1\",\n      \"quote\": \"Hund, 12,5 kg.\"\n    },\n    {\n      \"section\": \"Anamnese\",\n      \"text\": \"Seit gestern verminderter Appetit.\",\n      \"segmentId\": \"text-2\",\n      \"quote\": \"Seit gestern verminderter Appetit.\"\n    },\n    {\n      \"section\": \"Befunde\",\n      \"text\": \"Kein Erbrechen.\",\n      \"segmentId\": \"text-3\",\n      \"quote\": \"Kein Erbrechen.\"\n    }\n  ],\n  \"missingInformation\": [],\n  \"conflicts\": []\n}",
+    "{\n  \"items\": [\n    {\n      \"section\": \"Anamnese\",\n      \"text\": \"Temperatur nicht gemessen.\",\n      \"segmentId\": \"text-4\",\n      \"quote\": \"Temperatur nicht gemessen.\"\n    },\n    {\n      \"section\": \"Therapie\",\n      \"text\": \"Kontrolle in 3 Tagen vereinbart.\",\n      \"segmentId\": \"text-5\",\n      \"quote\": \"Kontrolle in 3 Tagen vereinbart.\"\n    }\n  ],\n  \"missingInformation\": [],\n  \"conflicts\": []\n}",
+    "{\n  \"items\": [\n    {\n      \"section\": \"Anamnese\",\n      \"text\": \"Hund, 12,5 kg.\",\n      \"segmentId\": \"text-1\",\n      \"quote\": \"Hund, 12,5 kg.\"\n    },\n    {\n      \"section\": \"Anamnese\",\n      \"text\": \"Seit gestern verminderter Appetit.\",\n      \"segmentId\": \"text-2\",\n      \"quote\": \"Seit gestern verminderter Appetit.\"\n    },\n    {\n      \"section\": \"Befunde\",\n      \"text\": \"Kein Erbrechen.\",\n      \"segmentId\": \"text-3\",\n      \"quote\": \"Kein Erbrechen.\"\n    }\n  ],\n  \"missingInformation\": [],\n  \"conflicts\": []\n}",
+    "{\n  \"items\": [\n    {\n      \"section\": \"Anamnese\",\n      \"text\": \"Temperatur nicht gemessen.\",\n      \"segmentId\": \"text-4\",\n      \"quote\": \"Temperatur nicht gemessen.\"\n    },\n    {\n      \"section\": \"Therapie\",\n      \"text\": \"Kontrolle in 3 Tagen vereinbart.\",\n      \"segmentId\": \"text-5\",\n      \"quote\": \"Kontrolle in 3 Tagen vereinbart.\"\n    }\n  ],\n  \"missingInformation\": [],\n  \"conflicts\": []\n}",
+    "{\n  \"items\": [\n    {\n      \"section\": \"Anamnese\",\n      \"text\": \"Hund, 12,5 kg.\",\n      \"segmentId\": \"text-1\",\n      \"quote\": \"Hund, 12,5 kg.\"\n    },\n    {\n      \"section\": \"Anamnese\",\n      \"text\": \"Seit gestern verminderter Appetit.\",\n      \"segmentId\": \"text-2\",\n      \"quote\": \"Seit gestern verminderter Appetit.\"\n    },\n    {\n      \"section\": \"Befunde\",\n      \"text\": \"Kein Erbrechen.\",\n      \"segmentId\": \"text-3\",\n      \"quote\": \"Kein Erbrechen.\"\n    }\n  ],\n  \"missingInformation\": [],\n  \"conflicts\": []\n}",
+    "{\n  \"items\": [\n    {\n      \"section\": \"Anamnese\",\n      \"text\": \"Temperatur nicht gemessen.\",\n      \"segmentId\": \"text-4\",\n      \"quote\": \"Temperatur nicht gemessen.\"\n    },\n    {\n      \"section\": \"Therapie\",\n      \"text\": \"Kontrolle in 3 Tagen vereinbart.\",\n      \"segmentId\": \"text-5\",\n      \"quote\": \"Kontrolle in 3 Tagen vereinbart.\"\n    }\n  ],\n  \"missingInformation\": [],\n  \"conflicts\": []\n}",
+    "{\n  \"items\": [\n    {\n      \"section\": \"Anamnese\",\n      \"text\": \"Hund, 12,5 kg.\",\n      \"segmentId\": \"text-1\",\n      \"quote\": \"Hund, 12,5 kg.\"\n    },\n    {\n      \"section\": \"Anamnese\",\n      \"text\": \"Seit gestern verminderter Appetit.\",\n      \"segmentId\": \"text-2\",\n      \"quote\": \"Seit gestern verminderter Appetit.\"\n    },\n    {\n      \"section\": \"Befunde\",\n      \"text\": \"Kein Erbrechen.\",\n      \"segmentId\": \"text-3\",\n      \"quote\": \"Kein Erbrechen.\"\n    }\n  ],\n  \"missingInformation\": [],\n  \"conflicts\": []\n}",
+    "{\n  \"items\": [\n    {\n      \"section\": \"Anamnese\",\n      \"text\": \"Temperatur nicht gemessen.\",\n      \"segmentId\": \"text-4\",\n      \"quote\": \"Temperatur nicht gemessen.\"\n    },\n    {\n      \"section\": \"Therapie\",\n      \"text\": \"Kontrolle in 3 Tagen vereinbart.\",\n      \"segmentId\": \"text-5\",\n      \"quote\": \"Kontrolle in 3 Tagen vereinbart.\"\n    }\n  ],\n  \"missingInformation\": [],\n  \"conflicts\": []\n}",
+    "{\n  \"items\": [\n    {\n      \"section\": \"Anamnese\",\n      \"text\": \"Hund, 12,5 kg.\",\n      \"segmentId\": \"text-1\",\n      \"quote\": \"Hund, 12,5 kg.\"\n    },\n    {\n      \"section\": \"Anamnese\",\n      \"text\": \"Seit gestern verminderter Appetit.\",\n      \"segmentId\": \"text-2\",\n      \"quote\": \"Seit gestern verminderter Appetit.\"\n    },\n    {\n      \"section\": \"Befunde\",\n      \"text\": \"Kein Erbrechen.\",\n      \"segmentId\": \"text-3\",\n      \"quote\": \"Kein Erbrechen.\"\n    }\n  ],\n  \"missingInformation\": [],\n  \"conflicts\": []\n}",
+    "{\n  \"items\": [\n    {\n      \"section\": \"Anamnese\",\n      \"text\": \"Temperatur nicht gemessen.\",\n      \"segmentId\": \"text-4\",\n      \"quote\": \"Temperatur nicht gemessen.\"\n    },\n    {\n      \"section\": \"Therapie\",\n      \"text\": \"Kontrolle in 3 Tagen vereinbart.\",\n      \"segmentId\": \"text-5\",\n      \"quote\": \"Kontrolle in 3 Tagen vereinbart.\"\n    }\n  ],\n  \"missingInformation\": [],\n  \"conflicts\": []\n}",
+    "{\n\"items\": [\n{\n\"section\": \"Anamnese\",\n\"text\": \"Hund, 12,5 kg.\",\n\"segmentId\": \"text-1\",\n\"quote\": \"Hund, 12,5 kg.\"\n},\n{\n\"section\": \"Befunde\",\n\"text\": \"Seit gestern verminderter Appetit.\",\n\"segmentId\": \"text-2\",\n\"quote\": \"Seit gestern verminderter Appetit.\"\n},\n{\n\"section\": \"Befunde\",\n\"text\": \"Kein Erbrechen.\",\n\"segmentId\": \"text-3\",\n\"quote\": \"Kein Erbrechen.\"\n}\n],\n\"missingInformation\": [],\n\"conflicts\": []\n}",
+    "{\n  \"items\": [\n    {\n      \"section\": \"Anamnese\",\n      \"text\": \"Temperatur nicht gemessen.\",\n      \"segmentId\": \"text-4\",\n      \"quote\": \"Temperatur nicht gemessen.\"\n    },\n    {\n      \"section\": \"Therapie\",\n      \"text\": \"Kontrolle in 3 Tagen vereinbart.\",\n      \"segmentId\": \"text-5\",\n      \"quote\": \"Kontrolle in 3 Tagen vereinbart.\"\n    }\n  ],\n  \"missingInformation\": [],\n  \"conflicts\": []\n}",
+    "{\n\"items\": [\n{\n\"section\": \"Anamnese\",\n\"text\": \"Hund, 12,5 kg.\",\n\"segmentId\": \"text-1\",\n\"quote\": \"Hund, 12,5 kg.\"\n},\n{\n\"section\": \"Befunde\",\n\"text\": \"Seit gestern verminderter Appetit.\",\n\"segmentId\": \"text-2\",\n\"quote\": \"Seit gestern verminderter Appetit.\"\n},\n{\n\"section\": \"Befunde\",\n\"text\": \"Kein Erbrechen.\",\n\"segmentId\": \"text-3\",\n\"quote\": \"Kein Erbrechen.\"\n}\n],\n\"missingInformation\": [],\n\"conflicts\": []\n}",
+    "{\n\"items\": [\n{\n\"section\": \"Anamnese\",\n\"text\": \"Temperatur nicht gemessen.\",\n\"segmentId\": \"text-4\",\n\"quote\": \"Temperatur nicht gemessen.\"\n},\n{\n\"section\": \"Therapie\",\n\"text\": \"Kontrolle in 3 Tagen vereinbart.\",\n\"segmentId\": \"text-5\",\n\"quote\": \"Kontrolle in 3 Tagen vereinbart.\"\n}\n],\n\"missingInformation\": [],\n\"conflicts\": []\n}"
+  ],
+  "thermalState": "fair",
+  "warnings": []
+}

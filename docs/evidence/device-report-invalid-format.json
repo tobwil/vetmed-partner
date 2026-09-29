@@ -1,0 +1,14 @@
+{
+  "completed": false,
+  "date": "2026-09-29T19:11:51Z",
+  "error": "Der lokale Bericht konnte auch nach einem Reparaturversuch nicht geprüft werden: The data couldn’t be read because it isn’t in the correct format. Das Transkript bleibt erhalten.",
+  "errorCode": 1,
+  "errorDomain": "VetMed.AppFailure",
+  "loadSeconds": 6.6112470626831055,
+  "model": "mlx-community/gemma-4-e2b-it-4bit",
+  "operatingSystem": "Version 26.6.1 (Build 23G83)",
+  "peakResidentMiB": 1919,
+  "revision": "238767527555cb75a05732a84dff5d6ba0dd6809",
+  "thermalState": "nominal",
+  "warnings": []
+}

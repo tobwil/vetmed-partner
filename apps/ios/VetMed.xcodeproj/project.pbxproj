@@ -1,0 +1,771 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		039D36DAD0309B5A4919056C /* PDFLayoutReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC0A3A138292092CD73D540A /* PDFLayoutReader.swift */; };
+		07BF2CF515A90CC74D8CFE16 /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = 97ED09E5780C16D38BCDD771 /* GRDB */; };
+		097619E88E05762C811249B9 /* CoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7028D3308308ECC47BE45DE9 /* CoreTests.swift */; };
+		17E44B0623BC192789DC0963 /* DeviceQARunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CEBCDC299F891DE4B60EBB7 /* DeviceQARunner.swift */; };
+		1D2B64BB0C913BE01DE61B8A /* OnlineReportEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A21522ACD35514616D19255F /* OnlineReportEngine.swift */; };
+		1D84FEB45F067258878872BA /* ReportPipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = 196A91EEECCD2E09F7E22BF6 /* ReportPipeline.swift */; };
+		233C18EA7E7BE3DDF4929DF7 /* HuggingFace in Frameworks */ = {isa = PBXBuildFile; productRef = 30F8C4BC4746B29A9577FE4A /* HuggingFace */; };
+		254BCA277250D60CF2EDC57B /* MLXLMCommon in Frameworks */ = {isa = PBXBuildFile; productRef = 614BEDBF7CA654803EC49A11 /* MLXLMCommon */; };
+		30D6996D94C357481658BA9B /* AudioRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8363B77F06C522CF7DFAA839 /* AudioRecorder.swift */; };
+		321BFC661D16067E35869B31 /* ExportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5BE49736744ED77B5700BB16 /* ExportService.swift */; };
+		335AAF528FF9098D74FAB312 /* OutputRepetition.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51634B44F7310525F1236C72 /* OutputRepetition.swift */; };
+		35A143D9FA72A6F81A1CFB9A /* ThirdPartyNotices.txt in Resources */ = {isa = PBXBuildFile; fileRef = D758CA821C7E494AF45C95B0 /* ThirdPartyNotices.txt */; };
+		3A304F0FB29380E91CCDDDF8 /* VetMedApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4558902B30B3B0A60ECAC3E2 /* VetMedApp.swift */; };
+		45B0CCC44C05A323E6102DDF /* ModelManifest.json in Resources */ = {isa = PBXBuildFile; fileRef = 387A281B1776A3EC56F42673 /* ModelManifest.json */; };
+		63A3E57AC476868CF33164EA /* MLXLLM in Frameworks */ = {isa = PBXBuildFile; productRef = 821E3932C364D9C588B7B18E /* MLXLLM */; };
+		647A22BC6BADD6423C7799FB /* Tokenizers in Frameworks */ = {isa = PBXBuildFile; productRef = 2C5C87378C04F2A0DD809A65 /* Tokenizers */; };
+		678B82A18F6B13A8B07EBBFB /* GemmaVisionCompatibility.swift in Sources */ = {isa = PBXBuildFile; fileRef = F694FD09EF9974C87A92DDC9 /* GemmaVisionCompatibility.swift */; };
+		6D7691FF5DF58FE6A401038E /* MLXHuggingFace in Frameworks */ = {isa = PBXBuildFile; productRef = 09E634B668B907B0B84DC444 /* MLXHuggingFace */; };
+		711925F7C5A0740EFDFD3B36 /* DeviceReadiness.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64EEDE022E94FD5DC39235A5 /* DeviceReadiness.swift */; };
+		7CD8EB82EF771374DE47B534 /* WorkflowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01E31BC552506B09627A86AF /* WorkflowTests.swift */; };
+		8532CF45C34D29A95E4BEFB9 /* MLXVLM in Frameworks */ = {isa = PBXBuildFile; productRef = BDFB9DE0E55EBE7185EF65A8 /* MLXVLM */; };
+		884C4A4B11DDCB4AD40A6FCE /* SecureStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE1E3B1DC83269A276AC02CF /* SecureStore.swift */; };
+		943D6676DAE3801BD98892D5 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 46A8B384B2A496A2FA1F2BE2 /* Assets.xcassets */; };
+		9F9CF4E1C211A2BFD7BA932B /* report-v1.txt in Resources */ = {isa = PBXBuildFile; fileRef = C43C15EFAC6916941801C8A9 /* report-v1.txt */; };
+		A733074AED043B917D5BA8F4 /* VetAppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65578533E222A6F68F3F9108 /* VetAppModel.swift */; };
+		B4EB376534A2A949225BB5D5 /* Domain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 262A585FBB10F9E04B327562 /* Domain.swift */; };
+		BACDA765B19EB2CF14E778C8 /* OfflineTranscriber.swift in Sources */ = {isa = PBXBuildFile; fileRef = 472FE2D64B49E2CCACDDF533 /* OfflineTranscriber.swift */; };
+		C6373D69583D21A3A563AD4E /* DocumentTextExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = C211482ED4A9C76C6B4E757F /* DocumentTextExtractor.swift */; };
+		D07D0FE1C8156627AE1CA55A /* SQLCipher in Frameworks */ = {isa = PBXBuildFile; productRef = 631EA279097E3F2528DEA170 /* SQLCipher */; };
+		D231BDD55FE05C93E1D72B6C /* OnlineReportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA35497C4C52A3B6C746CED5 /* OnlineReportTests.swift */; };
+		ED65A3ACBEE0AFD573E17306 /* MLXLocalReportEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7271FCA8FDEB2448E508BEB /* MLXLocalReportEngine.swift */; };
+		FC77AADCB63C82BFF6D2B24E /* ModelRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = BAE519C9878644D401718E2D /* ModelRepository.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		46F0AB01BBDAA0905DE6574D /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 1DADB70117F08D1D7A9137B1 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = CD09B4357389003B47016EE9;
+			remoteInfo = VetMed;
+		};
+		926A0181E2E8730DFFDD7A89 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 1DADB70117F08D1D7A9137B1 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = CD09B4357389003B47016EE9;
+			remoteInfo = VetMed;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		01E31BC552506B09627A86AF /* WorkflowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkflowTests.swift; sourceTree = "<group>"; };
+		0D9C24D8E86B63BF5343BD9F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		196A91EEECCD2E09F7E22BF6 /* ReportPipeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReportPipeline.swift; sourceTree = "<group>"; };
+		262A585FBB10F9E04B327562 /* Domain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Domain.swift; sourceTree = "<group>"; };
+		387A281B1776A3EC56F42673 /* ModelManifest.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = ModelManifest.json; sourceTree = "<group>"; };
+		4558902B30B3B0A60ECAC3E2 /* VetMedApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VetMedApp.swift; sourceTree = "<group>"; };
+		46A8B384B2A496A2FA1F2BE2 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		472FE2D64B49E2CCACDDF533 /* OfflineTranscriber.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfflineTranscriber.swift; sourceTree = "<group>"; };
+		51634B44F7310525F1236C72 /* OutputRepetition.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OutputRepetition.swift; sourceTree = "<group>"; };
+		5BE49736744ED77B5700BB16 /* ExportService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExportService.swift; sourceTree = "<group>"; };
+		5CEBCDC299F891DE4B60EBB7 /* DeviceQARunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceQARunner.swift; sourceTree = "<group>"; };
+		64EEDE022E94FD5DC39235A5 /* DeviceReadiness.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceReadiness.swift; sourceTree = "<group>"; };
+		65578533E222A6F68F3F9108 /* VetAppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VetAppModel.swift; sourceTree = "<group>"; };
+		7028D3308308ECC47BE45DE9 /* CoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreTests.swift; sourceTree = "<group>"; };
+		8363B77F06C522CF7DFAA839 /* AudioRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioRecorder.swift; sourceTree = "<group>"; };
+		A21522ACD35514616D19255F /* OnlineReportEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnlineReportEngine.swift; sourceTree = "<group>"; };
+		A7271FCA8FDEB2448E508BEB /* MLXLocalReportEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MLXLocalReportEngine.swift; sourceTree = "<group>"; };
+		A731EC9DD318CFF380192B22 /* VetMedTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = VetMedTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		BAE519C9878644D401718E2D /* ModelRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelRepository.swift; sourceTree = "<group>"; };
+		C211482ED4A9C76C6B4E757F /* DocumentTextExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentTextExtractor.swift; sourceTree = "<group>"; };
+		C43C15EFAC6916941801C8A9 /* report-v1.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "report-v1.txt"; sourceTree = "<group>"; };
+		CA35497C4C52A3B6C746CED5 /* OnlineReportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnlineReportTests.swift; sourceTree = "<group>"; };
+		CEDBB8DD2DF3F18C7EE5E495 /* VetMedUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = VetMedUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		D758CA821C7E494AF45C95B0 /* ThirdPartyNotices.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = ThirdPartyNotices.txt; sourceTree = "<group>"; };
+		DC0A3A138292092CD73D540A /* PDFLayoutReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFLayoutReader.swift; sourceTree = "<group>"; };
+		DE1E3B1DC83269A276AC02CF /* SecureStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecureStore.swift; sourceTree = "<group>"; };
+		F10D9950DAF978C456E1EE51 /* VetMed.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = VetMed.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		F694FD09EF9974C87A92DDC9 /* GemmaVisionCompatibility.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GemmaVisionCompatibility.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		E82D4EFA2570B8571B884D91 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				07BF2CF515A90CC74D8CFE16 /* GRDB in Frameworks */,
+				D07D0FE1C8156627AE1CA55A /* SQLCipher in Frameworks */,
+				63A3E57AC476868CF33164EA /* MLXLLM in Frameworks */,
+				8532CF45C34D29A95E4BEFB9 /* MLXVLM in Frameworks */,
+				254BCA277250D60CF2EDC57B /* MLXLMCommon in Frameworks */,
+				6D7691FF5DF58FE6A401038E /* MLXHuggingFace in Frameworks */,
+				233C18EA7E7BE3DDF4929DF7 /* HuggingFace in Frameworks */,
+				647A22BC6BADD6423C7799FB /* Tokenizers in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		0C4BDAE190DBD7D09E68888E /* Reused */ = {
+			isa = PBXGroup;
+			children = (
+				64EEDE022E94FD5DC39235A5 /* DeviceReadiness.swift */,
+				C211482ED4A9C76C6B4E757F /* DocumentTextExtractor.swift */,
+				F694FD09EF9974C87A92DDC9 /* GemmaVisionCompatibility.swift */,
+				BAE519C9878644D401718E2D /* ModelRepository.swift */,
+				51634B44F7310525F1236C72 /* OutputRepetition.swift */,
+				DC0A3A138292092CD73D540A /* PDFLayoutReader.swift */,
+			);
+			path = Reused;
+			sourceTree = "<group>";
+		};
+		1CB5E6C8B7956EE1F98500C9 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				46A8B384B2A496A2FA1F2BE2 /* Assets.xcassets */,
+				387A281B1776A3EC56F42673 /* ModelManifest.json */,
+				D758CA821C7E494AF45C95B0 /* ThirdPartyNotices.txt */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		2D7BD5BBC516B9ADA71485D1 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				4558902B30B3B0A60ECAC3E2 /* VetMedApp.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		2E5761050734E91E91AFB469 /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				8363B77F06C522CF7DFAA839 /* AudioRecorder.swift */,
+				5CEBCDC299F891DE4B60EBB7 /* DeviceQARunner.swift */,
+				5BE49736744ED77B5700BB16 /* ExportService.swift */,
+				A7271FCA8FDEB2448E508BEB /* MLXLocalReportEngine.swift */,
+				472FE2D64B49E2CCACDDF533 /* OfflineTranscriber.swift */,
+				A21522ACD35514616D19255F /* OnlineReportEngine.swift */,
+				196A91EEECCD2E09F7E22BF6 /* ReportPipeline.swift */,
+				DE1E3B1DC83269A276AC02CF /* SecureStore.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		2F059240E817DF1C837D2573 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				F10D9950DAF978C456E1EE51 /* VetMed.app */,
+				A731EC9DD318CFF380192B22 /* VetMedTests.xctest */,
+				CEDBB8DD2DF3F18C7EE5E495 /* VetMedUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		38910DC160BCC51328BBC5E6 /* VetMedTests */ = {
+			isa = PBXGroup;
+			children = (
+				7028D3308308ECC47BE45DE9 /* CoreTests.swift */,
+				CA35497C4C52A3B6C746CED5 /* OnlineReportTests.swift */,
+			);
+			path = VetMedTests;
+			sourceTree = "<group>";
+		};
+		6F762D188258B42B9169DC49 /* prompts */ = {
+			isa = PBXGroup;
+			children = (
+				C43C15EFAC6916941801C8A9 /* report-v1.txt */,
+			);
+			name = prompts;
+			path = ../../shared/prompts;
+			sourceTree = "<group>";
+		};
+		7D000B308F3977CF5DC5A855 /* VetMedUITests */ = {
+			isa = PBXGroup;
+			children = (
+				01E31BC552506B09627A86AF /* WorkflowTests.swift */,
+			);
+			path = VetMedUITests;
+			sourceTree = "<group>";
+		};
+		87C82E9358CA18440152BF2F /* VetMed */ = {
+			isa = PBXGroup;
+			children = (
+				0D9C24D8E86B63BF5343BD9F /* Info.plist */,
+				9B6390EDE5160A635DB7EFF7 /* Core */,
+				1CB5E6C8B7956EE1F98500C9 /* Resources */,
+				0C4BDAE190DBD7D09E68888E /* Reused */,
+				2E5761050734E91E91AFB469 /* Services */,
+				2D7BD5BBC516B9ADA71485D1 /* Views */,
+			);
+			path = VetMed;
+			sourceTree = "<group>";
+		};
+		9B6390EDE5160A635DB7EFF7 /* Core */ = {
+			isa = PBXGroup;
+			children = (
+				262A585FBB10F9E04B327562 /* Domain.swift */,
+				65578533E222A6F68F3F9108 /* VetAppModel.swift */,
+			);
+			path = Core;
+			sourceTree = "<group>";
+		};
+		BAD97609AF3EEA5A519B53A2 = {
+			isa = PBXGroup;
+			children = (
+				6F762D188258B42B9169DC49 /* prompts */,
+				87C82E9358CA18440152BF2F /* VetMed */,
+				38910DC160BCC51328BBC5E6 /* VetMedTests */,
+				7D000B308F3977CF5DC5A855 /* VetMedUITests */,
+				2F059240E817DF1C837D2573 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		CD09B4357389003B47016EE9 /* VetMed */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 13D9326E7CCF70DE9E4EF9B3 /* Build configuration list for PBXNativeTarget "VetMed" */;
+			buildPhases = (
+				0FE36C1180DE48418C1047CB /* Sources */,
+				6756AAF505D332FCAAA31C87 /* Resources */,
+				E82D4EFA2570B8571B884D91 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = VetMed;
+			packageProductDependencies = (
+				97ED09E5780C16D38BCDD771 /* GRDB */,
+				631EA279097E3F2528DEA170 /* SQLCipher */,
+				821E3932C364D9C588B7B18E /* MLXLLM */,
+				BDFB9DE0E55EBE7185EF65A8 /* MLXVLM */,
+				614BEDBF7CA654803EC49A11 /* MLXLMCommon */,
+				09E634B668B907B0B84DC444 /* MLXHuggingFace */,
+				30F8C4BC4746B29A9577FE4A /* HuggingFace */,
+				2C5C87378C04F2A0DD809A65 /* Tokenizers */,
+			);
+			productName = VetMed;
+			productReference = F10D9950DAF978C456E1EE51 /* VetMed.app */;
+			productType = "com.apple.product-type.application";
+		};
+		E78BB1755686C730F4ECE0B0 /* VetMedUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B060F3C13F0F5F65D880F02B /* Build configuration list for PBXNativeTarget "VetMedUITests" */;
+			buildPhases = (
+				9794062284F8F050A6F91C14 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				CC81E6722B6671F8677A6FA6 /* PBXTargetDependency */,
+			);
+			name = VetMedUITests;
+			packageProductDependencies = (
+			);
+			productName = VetMedUITests;
+			productReference = CEDBB8DD2DF3F18C7EE5E495 /* VetMedUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+		FC67390ECA23DD67BB635C7A /* VetMedTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 1A4A2FCCA7BD16F986B29BE1 /* Build configuration list for PBXNativeTarget "VetMedTests" */;
+			buildPhases = (
+				290F9CA4A9861CC9DE895441 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				378084F4D94667A7BDC8D605 /* PBXTargetDependency */,
+			);
+			name = VetMedTests;
+			packageProductDependencies = (
+			);
+			productName = VetMedTests;
+			productReference = A731EC9DD318CFF380192B22 /* VetMedTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		1DADB70117F08D1D7A9137B1 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					CD09B4357389003B47016EE9 = {
+						DevelopmentTeam = 5T32K4L4T4;
+						ProvisioningStyle = Automatic;
+					};
+					E78BB1755686C730F4ECE0B0 = {
+						DevelopmentTeam = 5T32K4L4T4;
+						ProvisioningStyle = Automatic;
+						TestTargetID = CD09B4357389003B47016EE9;
+					};
+					FC67390ECA23DD67BB635C7A = {
+						DevelopmentTeam = 5T32K4L4T4;
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = D6BA733B616B11836DC13710 /* Build configuration list for PBXProject "VetMed" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = BAD97609AF3EEA5A519B53A2;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				01F84BF660A6D9C9D00D8707 /* XCRemoteSwiftPackageReference "GRDB.swift" */,
+				0349373ACFAD8AF4D3E22453 /* XCRemoteSwiftPackageReference "swift-huggingface" */,
+				7E3404AC336EBD992E3D0C9C /* XCRemoteSwiftPackageReference "mlx-swift-lm" */,
+				0E5721F1ED6E78F0473A9BDE /* XCRemoteSwiftPackageReference "SQLCipher.swift" */,
+				56F3B23377A35E308F37EE85 /* XCRemoteSwiftPackageReference "swift-transformers" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 2F059240E817DF1C837D2573 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				CD09B4357389003B47016EE9 /* VetMed */,
+				FC67390ECA23DD67BB635C7A /* VetMedTests */,
+				E78BB1755686C730F4ECE0B0 /* VetMedUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		6756AAF505D332FCAAA31C87 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				943D6676DAE3801BD98892D5 /* Assets.xcassets in Resources */,
+				45B0CCC44C05A323E6102DDF /* ModelManifest.json in Resources */,
+				35A143D9FA72A6F81A1CFB9A /* ThirdPartyNotices.txt in Resources */,
+				9F9CF4E1C211A2BFD7BA932B /* report-v1.txt in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		0FE36C1180DE48418C1047CB /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				30D6996D94C357481658BA9B /* AudioRecorder.swift in Sources */,
+				17E44B0623BC192789DC0963 /* DeviceQARunner.swift in Sources */,
+				711925F7C5A0740EFDFD3B36 /* DeviceReadiness.swift in Sources */,
+				C6373D69583D21A3A563AD4E /* DocumentTextExtractor.swift in Sources */,
+				B4EB376534A2A949225BB5D5 /* Domain.swift in Sources */,
+				321BFC661D16067E35869B31 /* ExportService.swift in Sources */,
+				678B82A18F6B13A8B07EBBFB /* GemmaVisionCompatibility.swift in Sources */,
+				ED65A3ACBEE0AFD573E17306 /* MLXLocalReportEngine.swift in Sources */,
+				FC77AADCB63C82BFF6D2B24E /* ModelRepository.swift in Sources */,
+				BACDA765B19EB2CF14E778C8 /* OfflineTranscriber.swift in Sources */,
+				1D2B64BB0C913BE01DE61B8A /* OnlineReportEngine.swift in Sources */,
+				335AAF528FF9098D74FAB312 /* OutputRepetition.swift in Sources */,
+				039D36DAD0309B5A4919056C /* PDFLayoutReader.swift in Sources */,
+				1D84FEB45F067258878872BA /* ReportPipeline.swift in Sources */,
+				884C4A4B11DDCB4AD40A6FCE /* SecureStore.swift in Sources */,
+				A733074AED043B917D5BA8F4 /* VetAppModel.swift in Sources */,
+				3A304F0FB29380E91CCDDDF8 /* VetMedApp.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		290F9CA4A9861CC9DE895441 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				097619E88E05762C811249B9 /* CoreTests.swift in Sources */,
+				D231BDD55FE05C93E1D72B6C /* OnlineReportTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		9794062284F8F050A6F91C14 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7CD8EB82EF771374DE47B534 /* WorkflowTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		378084F4D94667A7BDC8D605 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = CD09B4357389003B47016EE9 /* VetMed */;
+			targetProxy = 926A0181E2E8730DFFDD7A89 /* PBXContainerItemProxy */;
+		};
+		CC81E6722B6671F8677A6FA6 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = CD09B4357389003B47016EE9 /* VetMed */;
+			targetProxy = 46F0AB01BBDAA0905DE6574D /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		1115C651689E07966A6470CC /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = de.tobwil.VetMedTests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/VetMed.app/VetMed";
+			};
+			name = Release;
+		};
+		1521FF66E6A0A0856ED3BC45 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = de.tobwil.VetMedUITests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = VetMed;
+			};
+			name = Release;
+		};
+		5E4149609CFA7F5E580A7AE9 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = 5T32K4L4T4;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		682578833D14F9EF36C1B52F /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = 5T32K4L4T4;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		696907E5709209F55FB85E6C /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = de.tobwil.VetMedTests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/VetMed.app/VetMed";
+			};
+			name = Debug;
+		};
+		745F8E3CE3FD5B6EF2BD16AB /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = de.tobwil.VetMedUITests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = VetMed;
+			};
+			name = Debug;
+		};
+		859AA1CFD469218CA5C34779 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				INFOPLIST_FILE = VetMed/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = de.tobwil.vetmed;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		ABB933E7E9774193E15ACE6A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				INFOPLIST_FILE = VetMed/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = de.tobwil.vetmed;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		13D9326E7CCF70DE9E4EF9B3 /* Build configuration list for PBXNativeTarget "VetMed" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				859AA1CFD469218CA5C34779 /* Debug */,
+				ABB933E7E9774193E15ACE6A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		1A4A2FCCA7BD16F986B29BE1 /* Build configuration list for PBXNativeTarget "VetMedTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				696907E5709209F55FB85E6C /* Debug */,
+				1115C651689E07966A6470CC /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		B060F3C13F0F5F65D880F02B /* Build configuration list for PBXNativeTarget "VetMedUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				745F8E3CE3FD5B6EF2BD16AB /* Debug */,
+				1521FF66E6A0A0856ED3BC45 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		D6BA733B616B11836DC13710 /* Build configuration list for PBXProject "VetMed" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5E4149609CFA7F5E580A7AE9 /* Debug */,
+				682578833D14F9EF36C1B52F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		01F84BF660A6D9C9D00D8707 /* XCRemoteSwiftPackageReference "GRDB.swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sqlcipher/GRDB.swift.git";
+			requirement = {
+				kind = exactVersion;
+				version = 7.11.1;
+			};
+		};
+		0349373ACFAD8AF4D3E22453 /* XCRemoteSwiftPackageReference "swift-huggingface" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/huggingface/swift-huggingface.git";
+			requirement = {
+				kind = exactVersion;
+				version = 0.10.1;
+			};
+		};
+		0E5721F1ED6E78F0473A9BDE /* XCRemoteSwiftPackageReference "SQLCipher.swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sqlcipher/SQLCipher.swift.git";
+			requirement = {
+				kind = exactVersion;
+				version = 4.19.0;
+			};
+		};
+		56F3B23377A35E308F37EE85 /* XCRemoteSwiftPackageReference "swift-transformers" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/huggingface/swift-transformers.git";
+			requirement = {
+				kind = exactVersion;
+				version = 1.3.4;
+			};
+		};
+		7E3404AC336EBD992E3D0C9C /* XCRemoteSwiftPackageReference "mlx-swift-lm" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/ml-explore/mlx-swift-lm.git";
+			requirement = {
+				kind = exactVersion;
+				version = 3.31.4;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		09E634B668B907B0B84DC444 /* MLXHuggingFace */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 7E3404AC336EBD992E3D0C9C /* XCRemoteSwiftPackageReference "mlx-swift-lm" */;
+			productName = MLXHuggingFace;
+		};
+		2C5C87378C04F2A0DD809A65 /* Tokenizers */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 56F3B23377A35E308F37EE85 /* XCRemoteSwiftPackageReference "swift-transformers" */;
+			productName = Tokenizers;
+		};
+		30F8C4BC4746B29A9577FE4A /* HuggingFace */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 0349373ACFAD8AF4D3E22453 /* XCRemoteSwiftPackageReference "swift-huggingface" */;
+			productName = HuggingFace;
+		};
+		614BEDBF7CA654803EC49A11 /* MLXLMCommon */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 7E3404AC336EBD992E3D0C9C /* XCRemoteSwiftPackageReference "mlx-swift-lm" */;
+			productName = MLXLMCommon;
+		};
+		631EA279097E3F2528DEA170 /* SQLCipher */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 0E5721F1ED6E78F0473A9BDE /* XCRemoteSwiftPackageReference "SQLCipher.swift" */;
+			productName = SQLCipher;
+		};
+		821E3932C364D9C588B7B18E /* MLXLLM */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 7E3404AC336EBD992E3D0C9C /* XCRemoteSwiftPackageReference "mlx-swift-lm" */;
+			productName = MLXLLM;
+		};
+		97ED09E5780C16D38BCDD771 /* GRDB */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 01F84BF660A6D9C9D00D8707 /* XCRemoteSwiftPackageReference "GRDB.swift" */;
+			productName = GRDB;
+		};
+		BDFB9DE0E55EBE7185EF65A8 /* MLXVLM */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 7E3404AC336EBD992E3D0C9C /* XCRemoteSwiftPackageReference "mlx-swift-lm" */;
+			productName = MLXVLM;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 1DADB70117F08D1D7A9137B1 /* Project object */;
+}
