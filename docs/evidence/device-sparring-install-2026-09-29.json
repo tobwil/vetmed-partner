@@ -1,0 +1,17 @@
+{
+  "verifiedAt": "2026-09-29T20:50:47.347798+00:00",
+  "bundleID": "de.tobwil.vetmed",
+  "binarySHA256": "15f0b625889d37bd4d545e3f4199a4e7e3d7c0348429e98eea4165b0f51293cb",
+  "device": "iPhone 17 Pro / iOS 26.6.1",
+  "installSucceeded": true,
+  "normalLaunchSucceeded": true,
+  "liveOpenAIRequestPerformed": false,
+  "sourceSHA256": {
+    "apps/ios/VetMed/Core/Sparring.swift": "4832e2bf81c4c3e47098b54f045684e0f5e65c314a027c32d885998937500fa4",
+    "apps/ios/VetMed/Core/VetAppModel.swift": "e5c506ecd2814c7e92a71ac696b306486952d475b2868debc0d482e731357283",
+    "apps/ios/VetMed/Services/SparringService.swift": "1ba11d552ad6656564d7d8cd45b7168f33a935fb146b87be2c88d95891dba221",
+    "apps/ios/VetMed/Views/SparringView.swift": "b7109fd6a1eb7fc417f6eae58a8c2dd2d1989f8e8530ec803c22d0f75074a7dc",
+    "apps/ios/VetMed/Views/VetMedApp.swift": "197e39187c4d3d6136a314ed56ac8b06fc0b1ce7e9648cb64918db5856cdd077",
+    "apps/ios/VetMed/Services/SecureStore.swift": "697eb6a556567fa82a09db2da97d7b225af78315ec3a0a441a89b7c1303afd30"
+  }
+}

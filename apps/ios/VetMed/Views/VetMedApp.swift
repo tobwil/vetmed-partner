@@ -58,7 +58,7 @@ struct RootView: View {
             } else {
                 TabView(selection: $tab) {
                     NavigationStack { ReportsHome() }.tabItem { Label("Berichte", systemImage: "doc.text") }.tag(0)
-                    NavigationStack { SparringIntro() }.tabItem { Label("Sparring", systemImage: "bubble.left.and.bubble.right") }.tag(1)
+                    NavigationStack { SparringHome() }.tabItem { Label("Sparring", systemImage: "bubble.left.and.bubble.right") }.tag(1)
                     NavigationStack { CasesView() }.tabItem { Label("Fälle", systemImage: "folder") }.tag(2)
                     NavigationStack { SettingsView(model: app.model) }.tabItem { Label("Einstellungen", systemImage: "slider.horizontal.3") }.tag(3)
                 }
@@ -109,6 +109,7 @@ struct ReportsHome: View {
 }
 struct EncounterEditor: View {
     @EnvironmentObject private var app: VetAppModel
+    @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
     @ObservedObject var recorder: AudioRecorder
     @State private var transcript = ""
@@ -210,6 +211,7 @@ struct EncounterEditor: View {
                     }
                 }
             }
+            if let caseID = app.selectedCaseID { Section { DeleteCaseButton(caseID: caseID) { dismiss() } } }
         }.navigationTitle(app.currentCase?.label ?? "Diktat").navigationBarTitleDisplayMode(.inline)
         .onAppear { transcript = app.currentEncounter?.transcripts.last?.editedText ?? ""; lastSavedTranscript = transcript; mode = app.onlineConfiguration.preferredMode }
         .onChange(of: app.currentEncounter?.transcripts.last?.id) { _, _ in
@@ -249,25 +251,68 @@ struct CaseEditor: View {
 }
 struct CasesView: View {
     @EnvironmentObject private var app: VetAppModel
-    @State private var editor = false
     @State private var toDelete: UUID?
     var body: some View {
         List {
-            if app.document.cases.isEmpty { ContentUnavailableView("Noch keine Fälle", systemImage: "folder", description: Text("Mit dem ersten Diktat entsteht ein Fall.")) }
+            if app.document.cases.isEmpty { ContentUnavailableView("Noch keine Fälle", systemImage: "folder", description: Text("Mit dem ersten Diktat entsteht ein Fall. Schnellchecks bleiben separat im Sparring.")) }
             ForEach(app.document.cases) { c in
-                Section(c.label + " · " + c.species) {
-                    ForEach(c.encounters) { e in
-                        Button { app.select(c, e); editor = true } label: { VStack(alignment: .leading) { Text(e.date.formatted(date: .abbreviated, time: .shortened)); Text(e.state.title).font(.caption).foregroundStyle(.secondary) } }
-                    }
-                    Button("Neuen Vorgang anlegen") { Task { await app.newEncounter(caseID: c.id); editor = true } }
-                    Button("Fall löschen", role: .destructive) { toDelete = c.id }
+                NavigationLink { CaseDetailView(caseID: c.id) } label: {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(c.label).font(.headline)
+                        Text("\(c.species) · \(c.encounters.count) Vorgänge").font(.caption).foregroundStyle(.secondary)
+                    }.padding(.vertical, 4)
+                }
+                .accessibilityIdentifier("case-row-" + c.id.uuidString)
+                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                    Button("Löschen", role: .destructive) { toDelete = c.id }.tint(.red)
                 }
             }
         }.navigationTitle("Fälle").disabled(app.busy || app.captureInProgress)
-        .navigationDestination(isPresented: $editor) { EncounterEditor(recorder: app.recorder) }
-        .confirmationDialog("Fall mit allen Berichten und Aufnahmen löschen?", isPresented: Binding(get: { toDelete != nil }, set: { if !$0 { toDelete = nil } })) {
-            Button("Endgültig lokal löschen", role: .destructive) { if let id = toDelete { Task { await app.deleteCase(id); toDelete = nil } } }
+        .alert("Fall mit allen Vorgängen, Berichten und Aufnahmen löschen?", isPresented: Binding(get: { toDelete != nil }, set: { if !$0 { toDelete = nil } })) {
+            Button("Behalten", role: .cancel) { toDelete = nil }
+            Button("Fall endgültig löschen", role: .destructive) { if let id = toDelete { Task { await app.deleteCase(id); toDelete = nil } } }
         }
+    }
+}
+struct CaseDetailView: View {
+    @EnvironmentObject private var app: VetAppModel
+    @Environment(\.dismiss) private var dismiss
+    let caseID: UUID
+    @State private var editor = false
+    private var item: VetCase? { app.document.cases.first { $0.id == caseID } }
+    var body: some View {
+        List {
+            if let c = item {
+                Section("Vorgänge") {
+                    ForEach(c.encounters) { e in
+                        Button { app.select(c, e); editor = true } label: {
+                            VStack(alignment: .leading) { Text(e.date.formatted(date: .abbreviated, time: .shortened)); Text(e.state.title).font(.caption).foregroundStyle(.secondary) }
+                        }
+                    }
+                    Button("Neuen Vorgang anlegen", systemImage: "plus") { Task { await app.newEncounter(caseID: c.id); editor = true } }
+                }
+                Section { DeleteCaseButton(caseID: c.id) { dismiss() } }
+            }
+        }.navigationTitle(item?.label ?? "Fall").disabled(app.busy || app.captureInProgress)
+        .onChange(of: item == nil) { _, deleted in if deleted { dismiss() } }
+        .navigationDestination(isPresented: $editor) { EncounterEditor(recorder: app.recorder) }
+    }
+}
+struct DeleteCaseButton: View {
+    @EnvironmentObject private var app: VetAppModel
+    let caseID: UUID
+    var didDelete: () -> Void
+    @State private var confirming = false
+    var body: some View {
+        Button("Fall löschen", systemImage: "trash", role: .destructive) { confirming = true }
+            .accessibilityIdentifier("delete-case-bottom")
+            .disabled(app.busy || app.captureInProgress)
+            .alert("Diesen Fall mit allen Vorgängen, Berichten und Aufnahmen löschen?", isPresented: $confirming) {
+                Button("Behalten", role: .cancel) {}
+                Button("Fall endgültig löschen", role: .destructive) {
+                    Task { await app.deleteCase(caseID); if !app.document.cases.contains(where: { $0.id == caseID }) { didDelete() } }
+                }
+            }
     }
 }
 struct ReportReview: View {
@@ -354,7 +399,7 @@ struct SettingsView: View {
                 NavigationLink("Drittanbieter-Lizenzen") {
                     ScrollView { Text(Bundle.main.url(forResource: "ThirdPartyNotices", withExtension: "txt").flatMap { try? String(contentsOf: $0, encoding: .utf8) } ?? "Lizenztexte fehlen.").font(.footnote).textSelection(.enabled).padding() }.navigationTitle("Lizenzen")
                 }
-                Text("Online-Berichte mit OpenAI und ein optionaler lokaler Berichtspfad. Fachliche Freigabe, vollständige Offline-Prüfung, Cloud-Sparring und Android stehen noch aus.").font(.caption).foregroundStyle(.secondary)
+                Text("Online-Berichte mit OpenAI und ein optionaler lokaler Berichtspfad. Fachliche Freigabe, vollständige Offline-Prüfung, multimodales Sparring, weitere Anbieter und Android stehen noch aus.").font(.caption).foregroundStyle(.secondary)
             }
             #if DEBUG
             Section("Synthetischer Gerätetest") {
@@ -366,13 +411,6 @@ struct SettingsView: View {
         }.navigationTitle("Einstellungen")
     }
 }
-struct SparringIntro: View {
-    var body: some View {
-        ContentUnavailableView("Fachliches Sparring", systemImage: "bubble.left.and.bubble.right", description: Text("Dieser Entwicklungsstand enthält den lokalen Diktatablauf. Cloudanbieter, Anhänge und Brave-Recherche sind noch nicht angeschlossen."))
-            .navigationTitle("Sparring")
-    }
-}
-
 struct OnlineReportSettingsView: View {
     @EnvironmentObject private var app: VetAppModel
     @State private var keyDraft = ""
@@ -394,7 +432,7 @@ struct OnlineReportSettingsView: View {
                 if let status = app.onlineSettingsStatus { Text(status).font(.footnote) }
             }.disabled(app.busy)
             Section("Online als Standard aktivieren") {
-                Text("Mit Online aktivieren erlaubst du die Übertragung des geprüften Transkripts, sobald du Bericht online erstellen wählst. Den zu übertragenden Text siehst du im Editor. Aufnahme und Transkription bleiben lokal.").font(.footnote)
+                Text("Mit Online aktivieren richtest du deinen OpenAI-Zugang ein. Bericht online erstellen sendet das geprüfte Transkript; Analyse senden im Sparring sendet die dort gewählte Frage und den ausgewählten Kontext. Vor dem Versand kannst du die Auswahl ansehen. Aufnahme und Transkription bleiben lokal.").font(.footnote)
                 Text("Der API-Key bleibt im Geräte-Schlüsselbund. Wir deaktivieren die abrufbare Antwortspeicherung; weitere Aufbewahrung beim Anbieter richtet sich nach deinem API-Vertrag.").font(.caption).foregroundStyle(.secondary)
                 Link("OpenAI-Datenkontrollen", destination: URL(string: "https://developers.openai.com/api/docs/guides/your-data")!)
                 Button("Online aktivieren") {
@@ -404,7 +442,7 @@ struct OnlineReportSettingsView: View {
                 if app.hasOnlineKey { Button("API-Key entfernen", role: .destructive) { app.removeOnlineKey(); keyDraft = "" }.disabled(app.busy) }
                 Text("Bei Verbindungs- oder Anbieterfehlern bleibt der Auftrag lokal. Es gibt keinen automatischen Wechsel zu einem anderen Anbieter und keinen Versand bei späterer Netzrückkehr.").font(.caption).foregroundStyle(.secondary)
             }
-        }.navigationTitle("Online-Berichte")
+        }.navigationTitle("Online-Zugang")
             .onAppear { modelID = app.onlineConfiguration.modelID }
             .onChange(of: modelID) { _, _ in app.resetOnlineModelVerification() }
             .onChange(of: keyDraft) { _, _ in app.resetOnlineModelVerification() }

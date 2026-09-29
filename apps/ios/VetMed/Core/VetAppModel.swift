@@ -20,6 +20,7 @@ final class VetAppModel: ObservableObject {
     @Published var workStatus = ""
     @Published var locked = true
     @Published var loaded = false
+    @Published var selectedQuickCheckID: UUID?
     @Published var selectedCaseID: UUID?
     @Published var selectedEncounterID: UUID?
     @Published var speechStatus = "Wird geprüft"
@@ -48,6 +49,7 @@ final class VetAppModel: ObservableObject {
     let model = MLXLocalReportEngine()
     let recorder = AudioRecorder()
     private var opening = false
+    private var deletingRecords = false
     private var repository: CaseRepository?
     private var work: Task<Void, Never>?
     private var player: AVAudioPlayer?
@@ -103,6 +105,14 @@ final class VetAppModel: ObservableObject {
                         document.cases[c].encounters[e].state = .interrupted
                     }
                 }
+                for c in document.cases.indices {
+                    for e in document.cases[c].encounters.indices { document.cases[c].encounters[e].recoverInterruptedAnalysis() }
+                }
+                for index in (document.quickChecks ?? []).indices {
+                    var context = document.quickChecks![index].analysisContext
+                    context.recoverInterruptedAnalysis()
+                    document.quickChecks?[index].runs = context.analysisRuns ?? []
+                }
                 loaded = true
                 do { try await recoverAudio(); try await persist() }
                 catch { self.error = "Vorhandene Fälle wurden geöffnet. Wiederherstellung oder Speichern ist noch nicht vollständig: " + error.localizedDescription }
@@ -128,16 +138,18 @@ final class VetAppModel: ObservableObject {
         guard let c = document.cases.firstIndex(where: { $0.id == id }) else { return }
         let encounter = Encounter()
         document.cases[c].encounters.insert(encounter, at: 0)
-        selectedCaseID = id; selectedEncounterID = encounter.id
+        selectedQuickCheckID = nil; selectedCaseID = id; selectedEncounterID = encounter.id
         await saveOrReport()
     }
     func updateCase(label: String, species: String, animalName: String) async {
-        guard let c = document.cases.firstIndex(where: { $0.id == selectedCaseID }) else { return }
+        guard !deletingRecords, let c = document.cases.firstIndex(where: { $0.id == selectedCaseID }) else { return }
         document.cases[c].label = label; document.cases[c].species = species; document.cases[c].animalName = animalName
         await saveOrReport()
     }
     func deleteCase(_ id: UUID) async {
         guard !busy, !captureInProgress, let repository else { return }
+        deletingRecords = true; busy = true; workStatus = "Fall wird gelöscht"
+        defer { deletingRecords = false; busy = false; workStatus = "" }
         do {
             var next = document; next.cases.removeAll { $0.id == id }
             try await repository.save(next); document = next
@@ -145,7 +157,7 @@ final class VetAppModel: ObservableObject {
             if selectedCaseID == id { selectedCaseID = nil; selectedEncounterID = nil }
         } catch { self.error = error.localizedDescription }
     }
-    func select(_ c: VetCase, _ e: Encounter) { guard !busy, !captureInProgress else { return }; selectedCaseID = c.id; selectedEncounterID = e.id }
+    func select(_ c: VetCase, _ e: Encounter) { guard !busy, !captureInProgress else { return }; selectedQuickCheckID = nil; selectedCaseID = c.id; selectedEncounterID = e.id }
     func saveTranscript(_ text: String, caseID: UUID? = nil, encounterID: UUID? = nil) async {
         guard !busy, !captureInProgress, let c = caseID ?? selectedCaseID, let e = encounterID ?? selectedEncounterID,
               let encounter = document.cases.first(where: { $0.id == c })?.encounters.first(where: { $0.id == e }) else { return }
@@ -248,6 +260,108 @@ final class VetAppModel: ObservableObject {
             }) { workStatus = $0 }
             mutate(caseID: c, encounterID: e) { $0.reports.append(report); $0.reportCheckpoint = nil; $0.state = .reviewRequired }
             try await persist()
+        }
+    }
+    func analysisContext(caseID: UUID?, encounterID: UUID) -> Encounter? {
+        if let caseID { return document.cases.first { $0.id == caseID }?.encounters.first { $0.id == encounterID } }
+        return document.quickChecks?.first { $0.id == encounterID }?.analysisContext
+    }
+    private func mutateAnalysis(caseID: UUID?, encounterID: UUID, _ change: (inout Encounter) -> Void) {
+        if let caseID { mutate(caseID: caseID, encounterID: encounterID, change); return }
+        guard let index = document.quickChecks?.firstIndex(where: { $0.id == encounterID }) else { return }
+        var context = document.quickChecks![index].analysisContext
+        change(&context)
+        document.quickChecks?[index].draft = context.sparringDraft ?? .init()
+        document.quickChecks?[index].runs = context.analysisRuns ?? []
+    }
+    func newQuickCheck() async {
+        guard !busy, !captureInProgress else { return }
+        let check = QuickCheck()
+        document.quickChecks = [check] + (document.quickChecks ?? [])
+        selectedQuickCheckID = check.id; selectedCaseID = nil; selectedEncounterID = nil
+        await saveOrReport()
+    }
+    func selectQuickCheck(_ id: UUID) {
+        guard !busy, !captureInProgress, document.quickChecks?.contains(where: { $0.id == id }) == true else { return }
+        selectedQuickCheckID = id; selectedCaseID = nil; selectedEncounterID = nil
+    }
+    func deleteQuickCheck(_ id: UUID) async {
+        guard !busy, !captureInProgress, let repository else { return }
+        deletingRecords = true; busy = true; workStatus = "Schnellcheck wird gelöscht"
+        defer { deletingRecords = false; busy = false; workStatus = "" }
+        do {
+            var next = document; next.quickChecks?.removeAll { $0.id == id }
+            if next.quickChecks?.isEmpty == true { next.quickChecks = nil }
+            try await repository.save(next); document = next
+            if selectedQuickCheckID == id { selectedQuickCheckID = nil }
+        } catch { self.error = error.localizedDescription }
+    }
+    @discardableResult
+    func saveSparringDraft(_ draft: SparringDraft, caseID: UUID?, encounterID: UUID) async -> Bool {
+        guard !deletingRecords else { return false }
+        do {
+            try draft.validate()
+            guard analysisContext(caseID: caseID, encounterID: encounterID) != nil else { return false }
+            mutateAnalysis(caseID: caseID, encounterID: encounterID) { $0.sparringDraft = draft }
+            try await persist(); return true
+        } catch { self.error = "Entwurf konnte nicht gespeichert werden: " + error.localizedDescription; return false }
+    }
+    func startAnalysis(_ snapshot: SparringSnapshot) {
+        guard !busy, !captureInProgress else { return }
+        guard onlineConfiguration.isEnabled, hasOnlineKey, onlineConfiguration.modelID == snapshot.modelID else {
+            error = "Bitte zuerst den Online-Zugang aktivieren und die aktuelle Versandvorschau prüfen."; return
+        }
+        guard (snapshot.caseID == nil ? selectedQuickCheckID == snapshot.encounterID : (currentCase?.id == snapshot.caseID && currentEncounter?.id == snapshot.encounterID)), analysisContext(caseID: snapshot.caseID, encounterID: snapshot.encounterID) != nil else { error = "Der ausgewählte Fall wurde geändert. Bitte die Vorschau erneut öffnen."; return }
+        let existing = document.cases.flatMap(\.encounters).flatMap { $0.analysisRuns ?? [] } + (document.quickChecks ?? []).flatMap(\.runs)
+        guard existing.count < 250, (analysisContext(caseID: snapshot.caseID, encounterID: snapshot.encounterID)?.analysisRuns?.count ?? 0) < 100 else {
+            error = "Das lokale Analysebudget ist erreicht. Bitte nicht mehr benötigte Fälle exportieren und löschen oder einen neuen Vorgang verwenden."; return
+        }
+        run { [self] in
+            workStatus = "Sparring · OpenAI · Antwort wird angefordert"
+            try model.unload()
+            guard let key = try onlineStore.key() else { throw AppFailure("Der API-Key fehlt.") }
+            let analysis = AnalysisRun(snapshot: snapshot)
+            var checkpoint = Date.distantPast
+            var checkpointBytes = 0
+            do {
+                try await SparringService().run(snapshot: snapshot, key: key, beforeSending: { [self] in
+                    mutateAnalysis(caseID: snapshot.caseID, encounterID: snapshot.encounterID) {
+                        $0.analysisRuns = ($0.analysisRuns ?? []) + [analysis]
+                    }
+                    try await persist()
+                }, receive: { [self] update in
+                    var terminal = false
+                    mutateAnalysis(caseID: snapshot.caseID, encounterID: snapshot.encounterID) { encounter in
+                        guard let index = encounter.analysisRuns?.firstIndex(where: { $0.id == analysis.id }) else { return }
+                        switch update {
+                        case .text(let text):
+                            encounter.analysisRuns?[index].status = .streaming
+                            encounter.analysisRuns?[index].text = text
+                        case .terminal(let status, let text, let model, let usage, let notice):
+                            terminal = true
+                            encounter.analysisRuns?[index].status = status
+                            encounter.analysisRuns?[index].text = text
+                            encounter.analysisRuns?[index].actualModelID = model
+                            encounter.analysisRuns?[index].usage = usage
+                            encounter.analysisRuns?[index].notice = notice
+                        }
+                    }
+                    workStatus = "Sparring · Antwort läuft"
+                    let bytes = analysisContext(caseID: snapshot.caseID, encounterID: snapshot.encounterID)?.analysisRuns?.first(where: { $0.id == analysis.id })?.text.utf8.count ?? 0
+                    if terminal || Date().timeIntervalSince(checkpoint) >= 1 || bytes - checkpointBytes >= 8192 {
+                        try await persist(); checkpoint = Date(); checkpointBytes = bytes
+                    }
+                })
+            } catch {
+                let cancelled = Task.isCancelled
+                mutateAnalysis(caseID: snapshot.caseID, encounterID: snapshot.encounterID) { encounter in
+                    guard let index = encounter.analysisRuns?.firstIndex(where: { $0.id == analysis.id }) else { return }
+                    encounter.analysisRuns?[index].status = cancelled ? .cancelled : .failed
+                    encounter.analysisRuns?[index].notice = cancelled ? "Bewusst abgebrochen. Der Anbieter kann den Auftrag bereits berechnet haben. Kein automatischer Neuversand." : error.localizedDescription
+                }
+                await saveOrReport()
+                throw error
+            }
         }
     }
     func saveOnlineConfiguration(modelID: String, keyDraft: String) {

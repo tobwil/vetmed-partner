@@ -6,7 +6,7 @@ Stand: 29.09.2026. Entwicklungsstand; kein vollständiges Meilenstein-Gate abgen
 
 - Xcode 27.0 (27A266a), Simulator iPhone 17 / iOS 27 und physisches iPhone 17 Pro / iOS 26.6.1 (23G83).
 - Signierter Gerätebuild, Installation und Gemma-E2B-Inferenz funktionieren. Modellrevision und SHA-256 sind gepinnt. Die ca. 3,55 GB Gewichte wurden nach zwei abgebrochenen Gerätedownloads auf dem Mac geprüft und in das App-Staging kopiert. In-App-Download/Resume ist damit **nicht** vollständig abgenommen.
-- Simulator: 56 Tests ohne Fehler im aktuellen Nachweis `evidence/ios-audio-regression-tests-2026-09-29.json` (37 Kerntests, 8 Online-Contracttests, 9 Recorder-Tests, 2 UI-Tests). Der frühere Nachweis mit 47 Tests bleibt erhalten. Enthalten sind echte SQLCipher-Verschlüsselung, Manipulations-/Fremdschlüsselprüfung, Migration, Transaktionsrollback, Quellen-/Zahlen-/Einheitenprüfung, begrenzte Reparatur, gespeicherte Teilberichte und UI-Speicherung nach Neustart.
+- Simulator: 73 Tests ohne Fehler im aktuellen Nachweis `evidence/ios-sparring-tests-2026-09-29.json` (37 Kerntests, 8 Online-Berichtstests, 9 Recorder-Tests, 14 Sparring-/Schnellchecktests, 5 UI-Tests). Frühere Nachweise mit 47 und 56 Tests bleiben erhalten. Enthalten sind echte SQLCipher-Verschlüsselung, Manipulations-/Fremdschlüsselprüfung, Migration, Transaktionsrollback, Quellen-/Zahlen-/Einheitenprüfung, begrenzte Reparatur, gespeicherte Teilberichte und UI-Speicherung nach Neustart.
 - Ein tatsächlicher SQLite-`SQLITE_FULL` wird durch ein enges Seitenlimit injiziert, ohne das Gerätelaufwerk zu füllen. Der Fehler wird verständlich gemeldet; vorherige Fassung und Datenbankintegrität bleiben erhalten. Das ersetzt keine vollständige Betriebssystemprüfung bei knappem Gerätelaufwerk.
 - Langer PDF-Export enthält die letzte Textpassage, mehrere Seiten und die Entwurfskennzeichnung.
 - Deutsche SpeechAnalyzer-Dateitranskription: synthetische Audios von 30/120/300 Sekunden auf dem iPhone verarbeitet. Gesprochene Anteile ca. 24/97/242 Sekunden, übrige Zeit Stille. Kein Nachweis für echte Mikrofone, Nebengeräusche oder veterinärmedizinische Fachqualität.
@@ -21,13 +21,19 @@ Metadaten und UUIDs werden von der App gesetzt, nicht vom Modell erzeugt. Das Mo
 
 Die Fachwortliste speichert manuelle Vorschläge verschlüsselt. Übernahme ist ausdrücklich, ASR-Rohtext bleibt erhalten. Eine zusätzliche App-Authentifizierung/Face ID ist auf Nutzerwunsch entfernt; SQLCipher, Geräte-Keychain und Dateischutz bleiben aktiv.
 
+## Text-Sparring, Schnellchecks und Löschbedienung
+
+Text-Sparring mit OpenAI-Streaming, bewusst ausgewähltem Verlauf, Versandvorschau, gespeicherten Entwürfen/Teilantworten und Abbruch ist technisch verbunden. Fallfreie Schnellchecks liegen separat verschlüsselt; Neustart und unveränderte Fallliste sind durch UI-Test belegt. Falllöschung funktioniert nach Wischen von rechts nach links sowie unten in der Fallansicht; „Behalten“ bricht die Bestätigung ab. Nach einer zusätzlichen Navigationskorrektur bestätigt ein gezielter UI-Test auch die Löschung aus einem geöffneten Diktat, die Rückkehr zur Fallliste und den Fortbestand der Löschung nach Neustart (`evidence/ios-nested-case-deletion-2026-09-29.json`). Drei Simulatoransichten wurden visuell geprüft: `evidence/case-swipe-right-to-left.png`, `evidence/case-delete-bottom.png`, `evidence/standalone-quick-check.png`.
+
+Der erste UI-Lauf fand eine fehlende sichtbare Abbruchaktion beim Bestätigungs-Popover. Nach Umstellung auf einen nativen Alert mit explizitem „Behalten“ bestand der gesamte Lauf mit 73 Tests. Signierter aktueller Gerätebuild installiert und normal gestartet (`evidence/device-sparring-install-2026-09-29.json`). Keine echte Provideranfrage für diesen Nachweis; Streaming-Liveprüfung mit eigenem API-Key bleibt offen. Architektur und Grenzen: `architecture/0004-sparring-and-quick-checks.md`.
+
 ## Noch offen
 
 | Phase | Stand | Fehlende Abnahme |
 |---|---|---|
 | P0 | Kurzer Modellpfad, Dateitranskription, Wiederholungen und Abbruch belegt | Vollständiger langer Offlinebericht, reale Aufnahme, weiterer Mischbetrieb |
 | P1 | Lokaler Ablauf, Review/Export, Versionierung, Zwischenstände und Fachwortvorschläge verbunden | Durchgehende Audioverschlüsselung, Aufnahme-/Unterbrechungs-/Wiederherstellungstests, vollständiger Fachkorpus |
-| P2 | OpenAI-Berichtspfad, Keychain-Konfiguration, dynamische Modellliste, explizite Online-Aktivierung und verschlüsselte Requestsnapshots implementiert; acht Contracttests bestanden | OpenAI-Liveprüfung mit eigenem Key; Sparring/Streaming, weitere Provider, Anhänge/Labor/Redaktion, Brave/Quellen |
+| P2 | OpenAI-Berichtspfad und Text-Sparring mit Schnellchecks, Keychain-Konfiguration, dynamische Modellliste, explizite Auswahl und verschlüsselte Requestsnapshots implementiert; synthetische Tests bestanden | OpenAI-/Streaming-Liveprüfung mit eigenem Key; weitere Provider, Anhänge/Labor/Redaktion, Brave/Quellen |
 | P3 | Noch nicht implementiert | Native Android-App, LiteRT-LM/ASR, Sicherheit/Parität, Emulator und Pixel-9-Abnahme |
 | P4 | Offen | Rückmeldungen, TestFlight, Lizenzen/Datenschutz/Releaseprüfung |
 

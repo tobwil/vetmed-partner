@@ -79,3 +79,7 @@ Die zusätzliche App-Authentifizierung einschließlich Face ID entfällt auf Nut
 ## Neue Reihenfolge nach Nutzersteuerung
 
 Online-Berichte werden als Standard bei eingerichtetem API-Key vorgezogen, Gemma bleibt optional. Einmalige bewusste Aktivierung, Moduswahl im Editor, kein stiller Fallback. P2.1 ist für OpenAI technisch implementiert und mit synthetischem Transport geprüft; Anbieter-Liveprüfung und klinische Freigabe bleiben offen. Die bisherigen Offline-Gates bleiben als Qualitätsziele des optionalen lokalen Pfads erhalten und blockieren die Entwicklung des Online-Berichts nicht.
+
+## Weitere Nutzersteuerung: Schnellcheck und Löschbedienung
+
+Sparring ist zusätzlich ohne Fall möglich. Unabhängige Schnellchecks werden separat verschlüsselt gespeichert und dürfen weder leere Fälle erzeugen noch unbemerkt Fallkontext übernehmen. In der Fallliste erfolgt die Löschgeste von **rechts nach links**; zusätzlich steht „Fall löschen“ unten im geöffneten Fall. Der technische Stand ist in `architecture/0004-sparring-and-quick-checks.md` beschrieben. P2.2 bleibt wegen fehlender Bildverarbeitung und noch ausstehender Liveprüfung offen.

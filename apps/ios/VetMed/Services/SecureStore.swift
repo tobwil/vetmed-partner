@@ -98,6 +98,9 @@ actor CaseRepository {
         migrator.registerMigration("vocabulary-v1") { db in
             try db.execute(sql: "CREATE TABLE vocabulary (id TEXT PRIMARY KEY NOT NULL, position INTEGER NOT NULL, payload BLOB NOT NULL)")
         }
+        migrator.registerMigration("quick-check-v1") { db in
+            try db.execute(sql: "CREATE TABLE quick_check (id TEXT PRIMARY KEY NOT NULL, position INTEGER NOT NULL, payload BLOB NOT NULL)")
+        }
         try migrator.migrate(database)
         let legacy = root.appendingPathComponent("cases.v1.aesgcm")
         if FileManager.default.fileExists(atPath: legacy.path) {
@@ -161,7 +164,8 @@ actor CaseRepository {
                 }
                 cases.append(item)
             }
-            return VaultDocument(cases: cases)
+            let quickChecks = try Row.fetchAll(db, sql: "SELECT payload FROM quick_check ORDER BY position").map { try decoder.decode(QuickCheck.self, from: $0["payload"] as Data) }
+            return VaultDocument(cases: cases, quickChecks: quickChecks.isEmpty ? nil : quickChecks)
         }
     }
     private static func write(_ document: VaultDocument, to database: DatabaseQueue) throws {
@@ -169,6 +173,10 @@ actor CaseRepository {
         try database.write { db in
             let encoder = JSONEncoder()
             // A single transaction makes replacement all-or-nothing, including every version and share event.
+            try db.execute(sql: "DELETE FROM quick_check")
+            for (position, check) in (document.quickChecks ?? []).enumerated() {
+                try db.execute(sql: "INSERT INTO quick_check VALUES (?, ?, ?)", arguments: [check.id.uuidString, position, try encoder.encode(check)])
+            }
             try db.execute(sql: "DELETE FROM clinical_case")
             for (position, original) in document.cases.enumerated() {
                 var item = original; item.encounters = []

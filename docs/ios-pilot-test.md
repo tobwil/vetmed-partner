@@ -31,3 +31,11 @@ Unter Einstellungen → API-Key & Modell den eigenen OpenAI-Key eingeben. Modell
 ## Nachtest des sofortigen Aufnahmeabbruchs
 
 Nach Installation der Korrektur vom 29.09.: Neues Diktat starten, mindestens 30 Sekunden einen synthetischen Text sprechen (damit ein Segmentwechsel enthalten ist), Pause drücken und anschließend weitere fünf Sekunden aufnehmen. Die Zeit muss laufen; nach Pause müssen gesicherte Segmente erscheinen. Danach lokal transkribieren und Anfang, Übergang sowie Schluss prüfen. Falls weiterhin ein Abbruch auftritt, den genauen eingeblendeten Aufnahmehinweis und angeschlossene Kopfhörer/Audiogeräte nennen. Für diesen Test ist kein Wechsel des WLAN- oder Flugmodus nötig.
+
+## Sparring und Schnellcheck
+
+Sparring → Schnellcheck starten öffnet eine Frage ohne Fall. Entwurf speichern, App neu starten und den Schnellcheck wieder öffnen; in Fälle darf kein zusätzlicher Eintrag entstanden sein. Für einen Fall im Sparring das passende Gespräch auswählen. Falltext nur bewusst als bearbeitbare Kopie einsetzen; ausgewählte frühere Antworten und vollständigen Payload in der Versandvorschau kontrollieren.
+
+Mit eingerichtetem Online-Key „Analyse senden“ wählen. Antwort läuft schrittweise ein; „Abbrechen“ sichert den empfangenen Zwischenstand. Nach Netzverlust keine automatische Wiederholung erwarten. Modell-/Tokenangaben nach vollständiger Antwort prüfen. Dieser Live-Streamingtest ist noch offen.
+
+In Fälle eine Zeile von rechts nach links wischen. „Löschen“ öffnet die Bestätigung; „Behalten“ darf nichts entfernen. Im geöffneten Fall steht dieselbe Aktion unter den Vorgängen; im Diktat ganz am Ende. Löschung eines synthetischen Falls und anschließender Neustart dürfen unabhängige Schnellchecks nicht entfernen.

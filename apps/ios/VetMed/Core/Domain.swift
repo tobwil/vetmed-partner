@@ -62,6 +62,8 @@ struct Encounter: Codable, Identifiable, Equatable, Sendable {
     var reports: [ReportVersion] = []
     var reportCheckpoint: ReportCheckpoint?
     var cloudReportRequests: [CloudReportRequest]?
+    var sparringDraft: SparringDraft?
+    var analysisRuns: [AnalysisRun]?
     var shares: [ShareEvent] = []
     var lastError: String?
     var playbackSegments: [TranscriptSegment] {
@@ -149,6 +151,7 @@ struct ShareEvent: Codable, Identifiable, Equatable, Sendable {
 struct VaultDocument: Codable, Equatable, Sendable {
     var schemaVersion = 1
     var cases: [VetCase] = []
+    var quickChecks: [QuickCheck]?
 }
 struct VocabularyEntry: Codable, Identifiable, Equatable, Sendable {
     var id = UUID()
