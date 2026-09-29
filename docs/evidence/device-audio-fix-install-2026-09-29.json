@@ -5,7 +5,17 @@
   "device": "iPhone 17 Pro / iOS 26.6.1",
   "installSucceeded": true,
   "launchSucceeded": true,
-  "microphoneRetest": "Pending user result; no remote microphone recording performed",
+  "microphoneRetest": {
+    "confirmedAt": "2026-09-29T20:30:06.028743+00:00",
+    "source": "User confirmation after installation and relaunch",
+    "userResult": "Aufnahme läuft jetzt",
+    "verifiedScope": "Recording starts and continues instead of immediately aborting",
+    "notYetVerified": [
+      "Long microphone recording across segment boundaries",
+      "Physical interruption and resume",
+      "ASR of this microphone recording"
+    ]
+  },
   "sourcePaths": [
     "apps/ios/VetMed/Services/AudioRecorder.swift",
     "apps/ios/VetMed/Core/VetAppModel.swift"
