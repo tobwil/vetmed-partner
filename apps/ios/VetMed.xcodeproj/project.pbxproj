@@ -27,10 +27,12 @@
 		647A22BC6BADD6423C7799FB /* Tokenizers in Frameworks */ = {isa = PBXBuildFile; productRef = 2C5C87378C04F2A0DD809A65 /* Tokenizers */; };
 		678B82A18F6B13A8B07EBBFB /* GemmaVisionCompatibility.swift in Sources */ = {isa = PBXBuildFile; fileRef = F694FD09EF9974C87A92DDC9 /* GemmaVisionCompatibility.swift */; };
 		6D7691FF5DF58FE6A401038E /* MLXHuggingFace in Frameworks */ = {isa = PBXBuildFile; productRef = 09E634B668B907B0B84DC444 /* MLXHuggingFace */; };
+		6EB120EA1F88E44AB63878CF /* ChatAttachmentImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC9880812040DEB747E862B3 /* ChatAttachmentImporter.swift */; };
 		711925F7C5A0740EFDFD3B36 /* DeviceReadiness.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64EEDE022E94FD5DC39235A5 /* DeviceReadiness.swift */; };
 		7CD8EB82EF771374DE47B534 /* WorkflowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01E31BC552506B09627A86AF /* WorkflowTests.swift */; };
 		8532CF45C34D29A95E4BEFB9 /* MLXVLM in Frameworks */ = {isa = PBXBuildFile; productRef = BDFB9DE0E55EBE7185EF65A8 /* MLXVLM */; };
 		884C4A4B11DDCB4AD40A6FCE /* SecureStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE1E3B1DC83269A276AC02CF /* SecureStore.swift */; };
+		8F31604B46D57DE2FA47C8C6 /* ChatAttachment.swift in Sources */ = {isa = PBXBuildFile; fileRef = B292223B2545A82340DF736D /* ChatAttachment.swift */; };
 		943D6676DAE3801BD98892D5 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 46A8B384B2A496A2FA1F2BE2 /* Assets.xcassets */; };
 		9F9CF4E1C211A2BFD7BA932B /* report-v1.txt in Resources */ = {isa = PBXBuildFile; fileRef = C43C15EFAC6916941801C8A9 /* report-v1.txt */; };
 		A34B0BE41BD896A83B6C2186 /* sparring-v1.txt in Resources */ = {isa = PBXBuildFile; fileRef = B23656A60E2E7C1B96EC5B56 /* sparring-v1.txt */; };
@@ -43,6 +45,7 @@
 		D43D6DDF51347F375329A5F5 /* SparringService.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFC35BB5654E0AC08F165B02 /* SparringService.swift */; };
 		D80CE04EE29E208DD5A4300C /* Sparring.swift in Sources */ = {isa = PBXBuildFile; fileRef = A52082171BF212B1430CE64D /* Sparring.swift */; };
 		D92E9305FE80A0FAC14A118B /* AudioRecorderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D757E1FF5D6915CFF9C8117 /* AudioRecorderTests.swift */; };
+		EC1D86FB80688804B8390941 /* ChatAttachmentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E668107EF219C2BA77FAA7B /* ChatAttachmentTests.swift */; };
 		ED65A3ACBEE0AFD573E17306 /* MLXLocalReportEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7271FCA8FDEB2448E508BEB /* MLXLocalReportEngine.swift */; };
 		FC77AADCB63C82BFF6D2B24E /* ModelRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = BAE519C9878644D401718E2D /* ModelRepository.swift */; };
 /* End PBXBuildFile section */
@@ -82,11 +85,14 @@
 		7028D3308308ECC47BE45DE9 /* CoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreTests.swift; sourceTree = "<group>"; };
 		7D757E1FF5D6915CFF9C8117 /* AudioRecorderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioRecorderTests.swift; sourceTree = "<group>"; };
 		8363B77F06C522CF7DFAA839 /* AudioRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioRecorder.swift; sourceTree = "<group>"; };
+		8E668107EF219C2BA77FAA7B /* ChatAttachmentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatAttachmentTests.swift; sourceTree = "<group>"; };
 		A21522ACD35514616D19255F /* OnlineReportEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnlineReportEngine.swift; sourceTree = "<group>"; };
 		A52082171BF212B1430CE64D /* Sparring.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sparring.swift; sourceTree = "<group>"; };
 		A7271FCA8FDEB2448E508BEB /* MLXLocalReportEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MLXLocalReportEngine.swift; sourceTree = "<group>"; };
 		A731EC9DD318CFF380192B22 /* VetMedTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = VetMedTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		AC9880812040DEB747E862B3 /* ChatAttachmentImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatAttachmentImporter.swift; sourceTree = "<group>"; };
 		B23656A60E2E7C1B96EC5B56 /* sparring-v1.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "sparring-v1.txt"; sourceTree = "<group>"; };
+		B292223B2545A82340DF736D /* ChatAttachment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatAttachment.swift; sourceTree = "<group>"; };
 		BAE519C9878644D401718E2D /* ModelRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelRepository.swift; sourceTree = "<group>"; };
 		C211482ED4A9C76C6B4E757F /* DocumentTextExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentTextExtractor.swift; sourceTree = "<group>"; };
 		C43C15EFAC6916941801C8A9 /* report-v1.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "report-v1.txt"; sourceTree = "<group>"; };
@@ -156,6 +162,7 @@
 			isa = PBXGroup;
 			children = (
 				8363B77F06C522CF7DFAA839 /* AudioRecorder.swift */,
+				AC9880812040DEB747E862B3 /* ChatAttachmentImporter.swift */,
 				5CEBCDC299F891DE4B60EBB7 /* DeviceQARunner.swift */,
 				5BE49736744ED77B5700BB16 /* ExportService.swift */,
 				A7271FCA8FDEB2448E508BEB /* MLXLocalReportEngine.swift */,
@@ -182,6 +189,7 @@
 			isa = PBXGroup;
 			children = (
 				7D757E1FF5D6915CFF9C8117 /* AudioRecorderTests.swift */,
+				8E668107EF219C2BA77FAA7B /* ChatAttachmentTests.swift */,
 				7028D3308308ECC47BE45DE9 /* CoreTests.swift */,
 				CA35497C4C52A3B6C746CED5 /* OnlineReportTests.swift */,
 				EFB9E242AB79D71C5DEF7DBB /* SparringTests.swift */,
@@ -223,6 +231,7 @@
 		9B6390EDE5160A635DB7EFF7 /* Core */ = {
 			isa = PBXGroup;
 			children = (
+				B292223B2545A82340DF736D /* ChatAttachment.swift */,
 				262A585FBB10F9E04B327562 /* Domain.swift */,
 				A52082171BF212B1430CE64D /* Sparring.swift */,
 				65578533E222A6F68F3F9108 /* VetAppModel.swift */,
@@ -380,6 +389,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				30D6996D94C357481658BA9B /* AudioRecorder.swift in Sources */,
+				8F31604B46D57DE2FA47C8C6 /* ChatAttachment.swift in Sources */,
+				6EB120EA1F88E44AB63878CF /* ChatAttachmentImporter.swift in Sources */,
 				17E44B0623BC192789DC0963 /* DeviceQARunner.swift in Sources */,
 				711925F7C5A0740EFDFD3B36 /* DeviceReadiness.swift in Sources */,
 				C6373D69583D21A3A563AD4E /* DocumentTextExtractor.swift in Sources */,
@@ -407,6 +418,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				D92E9305FE80A0FAC14A118B /* AudioRecorderTests.swift in Sources */,
+				EC1D86FB80688804B8390941 /* ChatAttachmentTests.swift in Sources */,
 				097619E88E05762C811249B9 /* CoreTests.swift in Sources */,
 				D231BDD55FE05C93E1D72B6C /* OnlineReportTests.swift in Sources */,
 				6076619A06F179CAC0F5C052 /* SparringTests.swift in Sources */,

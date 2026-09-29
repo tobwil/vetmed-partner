@@ -18,23 +18,77 @@ enum SparringRequestBuilder {
         if let transcriptID = draft.transcriptVersionID, !encounter.transcripts.contains(where: { $0.id == transcriptID }) {
             throw AppFailure("Der ausgewählte Falltext gehört nicht zu diesem Vorgang.")
         }
-        var messages: [[String: String]] = []
+        let selection = draft.attachmentIDs ?? []
+        guard Set(selection).count == selection.count else { throw AppFailure("Ein Anhang wurde mehrfach ausgewählt.") }
+        let attachments = encounter.chatAttachments ?? []
+        var images: [ChatImageReference] = [], documents: [ChatDocumentReference] = []
+        for id in selection {
+            guard let attachment = attachments.first(where: { $0.id == id }) else { throw AppFailure("Ein ausgewählter Anhang fehlt in diesem Chat.") }
+            if attachment.kind == .image {
+                guard let hash = attachment.uploadSHA256, let bytes = attachment.uploadByteCount, let width = attachment.width, let height = attachment.height else { throw AppFailure("Das Versandbild ist nicht vollständig vorbereitet.") }
+                images.append(.init(attachmentID: id, sha256: hash, byteCount: bytes, width: width, height: height))
+            } else {
+                guard attachment.reviewedAt != nil, let text = attachment.reviewedText else { throw AppFailure("Bitte den Text des Dokuments vor dem Senden prüfen.") }
+                documents.append(.init(attachmentID: id, originalSHA256: attachment.originalSHA256, text: text))
+            }
+        }
+        var current = SparringSnapshot(caseID: caseID, encounterID: encounter.id, modelID: modelID, draft: draft, payload: Data(), images: images, documents: documents)
+        func message(text: String, images: [ChatImageReference]) -> [String: Any] {
+            guard !images.isEmpty else { return ["role": "user", "content": text] }
+            var content: [[String: Any]] = [["type": "input_text", "text": text]]
+            for image in images { content.append(["type": "input_image", "image_url": image.placeholder, "detail": "high"]) }
+            return ["role": "user", "content": content]
+        }
+        var messages: [[String: Any]] = []
+        var allImages: [ChatImageReference] = []
         for run in runs {
-            messages.append(["role": "user", "content": run.snapshot.draft.message])
+            messages.append(message(text: run.snapshot.userText, images: run.snapshot.images ?? []))
+            allImages += run.snapshot.images ?? []
             messages.append(["role": "assistant", "content": run.text])
         }
-        messages.append(["role": "user", "content": draft.message])
+        messages.append(message(text: current.userText, images: images)); allImages += images
+        guard allImages.count <= 8, allImages.allSatisfy({ $0.byteCount > 0 && $0.byteCount <= ChatAttachmentImporter.maximumImageBytes && $0.width > 0 && $0.height > 0 }), allImages.reduce(0, { $0 + $1.byteCount }) <= 16 * 1_048_576 else {
+            throw AppFailure("Dieser Chat enthält mehr Bilder als in eine Anfrage passen. Bitte für weitere Bilder einen neuen Chat starten; es wird nichts unbemerkt weggelassen.")
+        }
         let body: [String: Any] = ["model": modelID, "store": false, "stream": true, "background": false,
                                    "max_output_tokens": 8192, "instructions": instructions, "input": messages]
         let data = try JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])
-        guard data.count <= maximumPayloadBytes else { throw AppFailure("Die Auswahl überschreitet das Anfragebudget. Bitte ältere Antworten abwählen oder den Falltext kürzen. Es wurde nichts gesendet.") }
-        return SparringSnapshot(caseID: caseID, encounterID: encounter.id, modelID: modelID, draft: draft, payload: data)
+        guard data.count <= maximumPayloadBytes else { throw AppFailure("Der Chat ist für eine weitere Anfrage zu lang. Bitte einen neuen Chat starten. Es wird nichts unbemerkt weggelassen.") }
+        current = SparringSnapshot(caseID: caseID, encounterID: encounter.id, modelID: modelID, draft: draft, payload: data, images: images, documents: documents, requestImages: allImages)
+        return current
     }
-    static func request(snapshot: SparringSnapshot, key: String) throws -> URLRequest {
+    static func request(snapshot: SparringSnapshot, key: String, imageData: [UUID: Data] = [:]) throws -> URLRequest {
         try OnlineReportStore.validateKey(key)
         guard snapshot.payload.count <= maximumPayloadBytes else { throw AppFailure("Die Anfrage ist zu groß.") }
+        var body = snapshot.payload
+        let references = snapshot.requestImages ?? []
+        guard var object = try JSONSerialization.jsonObject(with: body) as? [String: Any], var input = object["input"] as? [[String: Any]] else { throw AppFailure("Die vorbereitete Anfrage ist ungültig.") }
+        let imageParts = input.flatMap { $0["content"] as? [[String: Any]] ?? [] }.filter { $0["type"] as? String == "input_image" }
+        guard imageParts.count == references.count else { throw AppFailure("Die Bildauswahl stimmt nicht mit der Anfrage überein.") }
+        if !references.isEmpty {
+            guard references.count <= 8, references.allSatisfy({ $0.byteCount > 0 && $0.byteCount <= ChatAttachmentImporter.maximumImageBytes }), references.reduce(0, { $0 + $1.byteCount }) <= 16 * 1_048_576 else { throw AppFailure("Zu viele Bilddaten für eine Anfrage.") }
+            var urls: [String: String] = [:]
+            for ref in references {
+                guard let data = imageData[ref.attachmentID], data.count == ref.byteCount, data.count <= ChatAttachmentImporter.maximumImageBytes,
+                      ChatAttachmentImporter.digest(data) == ref.sha256 else { throw AppFailure("Ein Bild fehlt oder wurde verändert. Es wird nichts gesendet.") }
+                urls[ref.placeholder] = "data:image/jpeg;base64," + data.base64EncodedString()
+            }
+            var count = 0
+            for index in input.indices {
+                guard var content = input[index]["content"] as? [[String: Any]] else { continue }
+                for part in content.indices where content[part]["type"] as? String == "input_image" {
+                    guard let placeholder = content[part]["image_url"] as? String, let url = urls[placeholder] else { throw AppFailure("Ein Bildbezug ist ungültig.") }
+                    content[part]["image_url"] = url; count += 1
+                }
+                input[index]["content"] = content
+            }
+            guard count == references.count else { throw AppFailure("Die Bildauswahl stimmt nicht mit der Anfrage überein.") }
+            object["input"] = input
+            body = try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
+            guard body.count <= 24 * 1_048_576 else { throw AppFailure("Die Bildanfrage ist zu groß.") }
+        }
         var request = URLRequest(url: OpenAIReportAPI.responseURL)
-        request.httpMethod = "POST"; request.httpBody = snapshot.payload; request.timeoutInterval = 120
+        request.httpMethod = "POST"; request.httpBody = body; request.timeoutInterval = 120
         request.setValue("Bearer " + key, forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
@@ -175,9 +229,9 @@ final class SparringService {
     private var decoder = OpenAIAnalysisDecoder()
     private let transport: any AnalysisStreamingTransport
     init(transport: any AnalysisStreamingTransport = OpenAIAnalysisHTTP()) { self.transport = transport }
-    func run(snapshot: SparringSnapshot, key: String, beforeSending: @escaping @MainActor () async throws -> Void, receive: @escaping @MainActor (AnalysisStreamUpdate) async throws -> Void) async throws {
+    func run(snapshot: SparringSnapshot, key: String, imageData: [UUID: Data] = [:], beforeSending: @escaping @MainActor () async throws -> Void, receive: @escaping @MainActor (AnalysisStreamUpdate) async throws -> Void) async throws {
         try Task.checkCancellation()
-        let request = try SparringRequestBuilder.request(snapshot: snapshot, key: key)
+        let request = try SparringRequestBuilder.request(snapshot: snapshot, key: key, imageData: imageData)
         try await beforeSending()
         try Task.checkCancellation()
         try await transport.stream(request) { [self] event in

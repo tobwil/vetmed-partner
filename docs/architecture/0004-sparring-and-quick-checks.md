@@ -2,6 +2,8 @@
 
 29.09.2026. Nutzersteuerung: Sparring muss auch ohne Fall für einen kurzfristigen Check möglich sein. Fälle sollen per Wischen von **rechts nach links** oder unten im geöffneten Fall gelöscht werden können.
 
+**Fortgeschrieben durch [ADR 0005](0005-conversational-chat-and-attachments.md):** Normaler Chat, automatischer Verlauf und Bild-/Dokumentanhänge ersetzen die unten beschriebene erste Text-UI.
+
 ## Speicherung und Bedienung
 
 `QuickCheck` ist ein eigenständiges Gespräch ohne klinische Fall-ID. Die neue SQLCipher-Tabelle `quick_check` speichert Entwurf und Analyseläufe verschlüsselt. Ein Schnellcheck erzeugt keinen leeren Fall. Fallbezogenes Sparring liegt weiterhin im jeweiligen Encounter. Die vollständige Datenbanktransaktion umfasst beide Bereiche; Falllöschung lässt Schnellchecks erhalten und umgekehrt. Bei der Wiederherstellung werden aktive Anfragen zu unvollständigen Zwischenständen, niemals automatisch erneut versendet.

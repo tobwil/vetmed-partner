@@ -20,8 +20,9 @@ struct SparringDraft: Codable, Equatable, Sendable {
     var mode: SparringMode = .question
     var historyIDs: [UUID] = []
     var transcriptVersionID: UUID?
+    var attachmentIDs: [UUID]?
     func validate() throws {
-        guard question.utf8.count <= 16_384, context.utf8.count <= 49_152, historyIDs.count <= 40 else {
+        guard question.utf8.count <= 16_384, context.utf8.count <= 49_152, historyIDs.count <= 40, (attachmentIDs?.count ?? 0) <= 8 else {
             throw AppFailure("Der Entwurf ist zu groß. Bitte Frage, Falltext oder ausgewählten Verlauf verkleinern. Es wird nichts still gekürzt.")
         }
     }
@@ -33,6 +34,10 @@ struct SparringSnapshot: Codable, Equatable, Sendable {
     let modelID: String
     let draft: SparringDraft
     let payload: Data
+    var images: [ChatImageReference]?
+    var documents: [ChatDocumentReference]?
+    var requestImages: [ChatImageReference]?
+    var userText: String { draft.message + (documents ?? []).enumerated().map { "\n\nAnhang \($0.offset + 1) · geprüfter Text:\n\($0.element.text)" }.joined() }
 }
 enum AnalysisStatus: String, Codable, Sendable {
     case sending, streaming, completed, incomplete, cancelled, failed, refused
@@ -79,11 +84,12 @@ struct QuickCheck: Codable, Identifiable, Equatable, Sendable {
     var createdAt = Date()
     var draft = SparringDraft()
     var runs: [AnalysisRun] = []
+    var chatAttachments: [ChatAttachment]?
     var title: String {
         let text = runs.first?.snapshot.draft.question ?? draft.question
         return text.isEmpty ? "Neuer Schnellcheck" : String(text.prefix(70))
     }
     var analysisContext: Encounter {
-        Encounter(id: id, date: createdAt, reason: "Schnellcheck", sparringDraft: draft, analysisRuns: runs)
+        Encounter(id: id, date: createdAt, reason: "Schnellcheck", sparringDraft: draft, analysisRuns: runs, chatAttachments: chatAttachments)
     }
 }

@@ -18,6 +18,8 @@ final class VetAppModel: ObservableObject {
     @Published private(set) var recordingActionPending = false
     var captureInProgress: Bool { recordingActionPending || recorder.isRecording || recorder.isTransitioning }
     @Published var workStatus = ""
+    @Published private(set) var activeAnalysisID: UUID?
+    private let attachmentImporter = ChatAttachmentImporter()
     @Published var locked = true
     @Published var loaded = false
     @Published var selectedQuickCheckID: UUID?
@@ -112,9 +114,10 @@ final class VetAppModel: ObservableObject {
                     var context = document.quickChecks![index].analysisContext
                     context.recoverInterruptedAnalysis()
                     document.quickChecks?[index].runs = context.analysisRuns ?? []
+                    document.quickChecks?[index].chatAttachments = context.chatAttachments
                 }
                 loaded = true
-                do { try await recoverAudio(); try await persist() }
+                do { try await recoverAudio(); try await persist(); try await repository.cleanUnreferencedAttachments(document) }
                 catch { self.error = "Vorhandene Fälle wurden geöffnet. Wiederherstellung oder Speichern ist noch nicht vollständig: " + error.localizedDescription }
             }
             try AppPaths.clean(AppPaths.exports)
@@ -273,6 +276,7 @@ final class VetAppModel: ObservableObject {
         change(&context)
         document.quickChecks?[index].draft = context.sparringDraft ?? .init()
         document.quickChecks?[index].runs = context.analysisRuns ?? []
+        document.quickChecks?[index].chatAttachments = context.chatAttachments
     }
     func newQuickCheck() async {
         guard !busy, !captureInProgress else { return }
@@ -294,6 +298,7 @@ final class VetAppModel: ObservableObject {
             if next.quickChecks?.isEmpty == true { next.quickChecks = nil }
             try await repository.save(next); document = next
             if selectedQuickCheckID == id { selectedQuickCheckID = nil }
+            try await repository.removeQuickCheckFiles(id)
         } catch { self.error = error.localizedDescription }
     }
     @discardableResult
@@ -306,12 +311,58 @@ final class VetAppModel: ObservableObject {
             try await persist(); return true
         } catch { self.error = "Entwurf konnte nicht gespeichert werden: " + error.localizedDescription; return false }
     }
+    func importChatAttachment(url: URL, caseID: UUID?, encounterID: UUID, removeAfterImport: Bool = false, completion: @escaping @MainActor (ChatAttachment) -> Void) {
+        var importStarted = false
+        defer { if removeAfterImport && !importStarted { try? FileManager.default.removeItem(at: url) } }
+        guard !busy, !captureInProgress, let repository, let context = analysisContext(caseID: caseID, encounterID: encounterID) else { return }
+        guard (context.chatAttachments?.count ?? 0) < 30,
+              document.cases.flatMap(\.encounters).reduce(0, { $0 + ($1.chatAttachments?.count ?? 0) }) + (document.quickChecks ?? []).reduce(0, { $0 + ($1.chatAttachments?.count ?? 0) }) < 200 else {
+            error = "Das lokale Anhangslimit ist erreicht. Bitte nicht mehr benötigte Chats oder Fälle löschen."; return
+        }
+        importStarted = true
+        run(onFinish: { if removeAfterImport { try? FileManager.default.removeItem(at: url) } }) { [self] in
+            try model.unload(); workStatus = "Anhang wird lokal vorbereitet"
+            let prepared = try await attachmentImporter.read(url: url)
+            try Task.checkCancellation()
+            try await repository.storeAttachment(prepared, caseID: caseID, encounterID: encounterID)
+            mutateAnalysis(caseID: caseID, encounterID: encounterID) { $0.chatAttachments = ($0.chatAttachments ?? []) + [prepared.attachment] }
+            do { try await persist() }
+            catch {
+                mutateAnalysis(caseID: caseID, encounterID: encounterID) { $0.chatAttachments?.removeAll { $0.id == prepared.attachment.id } }
+                try? await repository.removeAttachment(caseID: caseID, encounterID: encounterID, id: prepared.attachment.id)
+                throw error
+            }
+            completion(prepared.attachment)
+        }
+    }
+    func chatAttachmentData(caseID: UUID?, encounterID: UUID, id: UUID, upload: Bool) async throws -> Data {
+        guard !captureInProgress, let repository, analysisContext(caseID: caseID, encounterID: encounterID)?.chatAttachments?.contains(where: { $0.id == id }) == true else { throw AppFailure("Dieser Anhang ist nicht verfügbar.") }
+        if !model.isBusy { try model.unload() }
+        return try await repository.attachmentData(caseID: caseID, encounterID: encounterID, id: id, upload: upload)
+    }
+    @discardableResult
+    func reviewChatDocument(caseID: UUID?, encounterID: UUID, id: UUID, text: String) async -> Bool {
+        guard !deletingRecords, text.utf8.count <= 400_000,
+              let previous = analysisContext(caseID: caseID, encounterID: encounterID)?.chatAttachments?.first(where: { $0.id == id && $0.kind == .document }) else { return false }
+        mutateAnalysis(caseID: caseID, encounterID: encounterID) { encounter in
+            guard let index = encounter.chatAttachments?.firstIndex(where: { $0.id == id }) else { return }
+            encounter.chatAttachments?[index].reviewedText = text
+            encounter.chatAttachments?[index].reviewedAt = Date()
+        }
+        do { try await persist(); return true }
+        catch {
+            mutateAnalysis(caseID: caseID, encounterID: encounterID) { encounter in
+                if let index = encounter.chatAttachments?.firstIndex(where: { $0.id == id }) { encounter.chatAttachments?[index] = previous }
+            }
+            self.error = "Der geprüfte Text konnte nicht gespeichert werden: " + error.localizedDescription; return false
+        }
+    }
     func startAnalysis(_ snapshot: SparringSnapshot) {
         guard !busy, !captureInProgress else { return }
         guard onlineConfiguration.isEnabled, hasOnlineKey, onlineConfiguration.modelID == snapshot.modelID else {
-            error = "Bitte zuerst den Online-Zugang aktivieren und die aktuelle Versandvorschau prüfen."; return
+            error = "Bitte zuerst den API-Zugang in den Chat-Details einrichten."; return
         }
-        guard (snapshot.caseID == nil ? selectedQuickCheckID == snapshot.encounterID : (currentCase?.id == snapshot.caseID && currentEncounter?.id == snapshot.encounterID)), analysisContext(caseID: snapshot.caseID, encounterID: snapshot.encounterID) != nil else { error = "Der ausgewählte Fall wurde geändert. Bitte die Vorschau erneut öffnen."; return }
+        guard (snapshot.caseID == nil ? selectedQuickCheckID == snapshot.encounterID : (currentCase?.id == snapshot.caseID && currentEncounter?.id == snapshot.encounterID)), analysisContext(caseID: snapshot.caseID, encounterID: snapshot.encounterID) != nil else { error = "Der ausgewählte Chat wurde geändert. Bitte die Nachricht dort erneut senden."; return }
         let existing = document.cases.flatMap(\.encounters).flatMap { $0.analysisRuns ?? [] } + (document.quickChecks ?? []).flatMap(\.runs)
         guard existing.count < 250, (analysisContext(caseID: snapshot.caseID, encounterID: snapshot.encounterID)?.analysisRuns?.count ?? 0) < 100 else {
             error = "Das lokale Analysebudget ist erreicht. Bitte nicht mehr benötigte Fälle exportieren und löschen oder einen neuen Vorgang verwenden."; return
@@ -321,10 +372,22 @@ final class VetAppModel: ObservableObject {
             try model.unload()
             guard let key = try onlineStore.key() else { throw AppFailure("Der API-Key fehlt.") }
             let analysis = AnalysisRun(snapshot: snapshot)
+            activeAnalysisID = analysis.id
+            defer { activeAnalysisID = nil }
+            #if !targetEnvironment(simulator)
+            if !(snapshot.requestImages ?? []).isEmpty, os_proc_available_memory() < 256 * 1_048_576 {
+                throw AppFailure("Für die Bilder ist gerade zu wenig Arbeitsspeicher frei. Bitte erneut versuchen, sobald mehr Speicher verfügbar ist.")
+            }
+            #endif
+            var imageData: [UUID: Data] = [:]
+            guard let repository else { throw AppFailure("Der lokale Speicher ist nicht geöffnet.") }
+            for reference in snapshot.requestImages ?? [] where imageData[reference.attachmentID] == nil {
+                imageData[reference.attachmentID] = try await repository.attachmentData(caseID: snapshot.caseID, encounterID: snapshot.encounterID, id: reference.attachmentID, upload: true)
+            }
             var checkpoint = Date.distantPast
             var checkpointBytes = 0
             do {
-                try await SparringService().run(snapshot: snapshot, key: key, beforeSending: { [self] in
+                try await SparringService().run(snapshot: snapshot, key: key, imageData: imageData, beforeSending: { [self] in
                     mutateAnalysis(caseID: snapshot.caseID, encounterID: snapshot.encounterID) {
                         $0.analysisRuns = ($0.analysisRuns ?? []) + [analysis]
                     }
@@ -379,7 +442,7 @@ final class VetAppModel: ObservableObject {
             configuration.verifiedAt = testedOnlineModel == id ? Date() : nil
             try onlineStore.save(configuration, key: key.isEmpty ? nil : key)
             onlineConfiguration = configuration; hasOnlineKey = true
-            onlineSettingsStatus = "Online ist der Standard für neue Berichte. Versand erfolgt erst über Bericht online erstellen."
+            onlineSettingsStatus = "Der Online-Zugang ist bereit. Inhalte werden erst beim Senden im Chat oder beim Erstellen eines Online-Berichts übertragen."
         } catch { self.error = error.localizedDescription }
     }
     func resetOnlineModelVerification() { testedOnlineModel = nil }
@@ -444,12 +507,12 @@ final class VetAppModel: ObservableObject {
     }
     func installSpeech() { run { [self] in try await AppleOfflineTranscriber.install(); speechStatus = await AppleOfflineTranscriber.status() } }
     func cancel() { work?.cancel() }
-    private func run(state: EncounterState? = nil, operation: @escaping @MainActor () async throws -> Void) {
+    private func run(state: EncounterState? = nil, onFinish: (() -> Void)? = nil, operation: @escaping @MainActor () async throws -> Void) {
         guard !busy, !captureInProgress else { return }
         busy = true; error = nil; workStatus = "Wird vorbereitet"
         if let state { mutate { $0.state = state } }
         work = Task {
-            defer { busy = false; work = nil; workStatus = "" }
+            defer { busy = false; work = nil; workStatus = ""; onFinish?() }
             do { try await persist(); try await operation() }
             catch {
                 if state != nil { mutate { $0.state = Task.isCancelled ? .interrupted : .failed; $0.lastError = Task.isCancelled ? "Abgebrochen" : error.localizedDescription }; await saveOrReport() }
@@ -482,7 +545,7 @@ final class VetAppModel: ObservableObject {
                 if duration == 0 { document.cases[c].encounters[e].lastError = "Unvollständiges Audio wurde verschlüsselt gesichert. Andere Fälle bleiben verfügbar." }
                 try await persist()
                 try FileManager.default.removeItem(at: url)
-            } else if url.lastPathComponent.hasPrefix("transcribe-") { try FileManager.default.removeItem(at: url) }
+            } else if url.lastPathComponent.hasPrefix("transcribe-") || url.lastPathComponent.hasPrefix("photo-import-") { try FileManager.default.removeItem(at: url) }
         }
         // Audio-file write and metadata transaction are separate durable operations. Recover the
         // encrypted orphan if the app was interrupted between them, without storing a cleartext index.

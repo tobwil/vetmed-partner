@@ -16,7 +16,7 @@ enum DocumentTextExtractor {
     static let extensions: Set<String> = ["pdf", "txt", "text", "md", "jpg", "jpeg", "png", "heic"]
 
     /// Called on the knowledge/attachment actor, never on the UI thread. No network involved.
-    static func extract(_ data: Data, extension ext: String, maxPages: Int = 500, maxCharacters: Int = 2_000_000, allowImageWithoutText: Bool = false, onPageRead: ((PageProgress) -> Void)? = nil) throws -> Result {
+    static func extract(_ data: Data, extension ext: String, maxPages: Int = 500, maxCharacters: Int = 2_000_000, allowImageWithoutText: Bool = false, preservePDFText: Bool = false, onPageRead: ((PageProgress) -> Void)? = nil) throws -> Result {
         try Task.checkCancellation()
         guard extensions.contains(ext) else { throw AppFailure("Format nicht unterstützt. Bitte PDF, TXT, Markdown, JPG, PNG oder HEIC verwenden.") }
         var sections: [Section] = [], usedOCR = false, characters = 0
@@ -35,7 +35,8 @@ enum DocumentTextExtractor {
                     guard let page = pdf.page(at: index) else { return }
                     let original = page.string?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
                     if !original.isEmpty {
-                        for section in try PDFLayoutReader.sections(page) { try append(section, page: index + 1) }
+                        if preservePDFText { try append(original, page: index + 1) }
+                        else { for section in try PDFLayoutReader.sections(page) { try append(section, page: index + 1) } }
                     }
                     else {
                         let bounds = page.bounds(for: .mediaBox)

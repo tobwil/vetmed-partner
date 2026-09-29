@@ -1,10 +1,10 @@
 # VetMed
 
-Native tierärztliche Arbeitsassistenz. Die Umsetzung folgt [dem vollständigen Plan](docs/implementation-plan.md): iOS-Diktatablauf, Online-Berichte mit eigenem API-Key und optionales Offline-Modell; Text-Sparring und fallfreie Schnellchecks; anschließend multimodales Sparring mit Brave und native Android-Parität.
+Native tierärztliche Arbeitsassistenz. Die Umsetzung folgt [dem vollständigen Plan](docs/implementation-plan.md): iOS-Diktatablauf, Online-Berichte mit eigenem API-Key und optionales Offline-Modell; Chat mit Bildern/Befunden und fallfreie Schnellchecks; anschließend Recherche mit Brave und native Android-Parität.
 
 ## Aktueller Stand
 
-Die erste iOS-Implementierung enthält getrennte Fall-/Vorgangsdaten, verschlüsselten Speicher, segmentierte Vordergrundaufnahme, lokale deutsche SpeechAnalyzer-Transkription, Transkriptversionen, wahlweise OpenAI- oder Gemma/MLX-Berichte mit Quellenvalidierung, Fachwortvorschläge, Review und Text-/PDF-Teilen. Sparring bietet Textfragen mit explizit ausgewähltem Verlauf, Versandvorschau, Streaming und gespeicherten Teilantworten. Schnellchecks funktionieren unabhängig von einem Fall. Dies ist ein Entwicklungsstand, keine abgeschlossene Pilotfreigabe. Der tatsächliche Prüfstand und Restumfang stehen in [docs/test-status.md](docs/test-status.md).
+Die erste iOS-Implementierung enthält getrennte Fall-/Vorgangsdaten, verschlüsselten Speicher, segmentierte Vordergrundaufnahme, lokale deutsche SpeechAnalyzer-Transkription, Transkriptversionen, wahlweise OpenAI- oder Gemma/MLX-Berichte mit Quellenvalidierung, Fachwortvorschläge, Review und Text-/PDF-Teilen. Sparring bietet einen normalen Chat mit automatischem Gesprächsverlauf, Bildern, geprüften PDF-/Textbefunden, Streaming und gespeicherten Teilantworten. Schnellchecks funktionieren unabhängig von einem Fall. Dies ist ein Entwicklungsstand, keine abgeschlossene Pilotfreigabe. Der tatsächliche Prüfstand und Restumfang stehen in [docs/test-status.md](docs/test-status.md).
 
 ## Build
 
@@ -23,7 +23,7 @@ Schema `VetMed`, eigenes Bundle `de.tobwil.vetmed`. Signing-Team in `project.yml
 
 App öffnen; es gibt auf Nutzerwunsch keine Face-ID-Abfrage. Für Online-Berichte unter Einstellungen → API-Key & Modell den eigenen Key eintragen, Modelle laden/auswählen, den synthetischen Modelltest ausführen und Online aktivieren. Danach ist Online der Standard. Für Offline-Berichte Gemma ausdrücklich installieren und Offline auswählen. Deutsche Sprachressourcen werden unabhängig davon für lokale Diktate installiert. Neues Diktat anlegen oder Text eingeben, Transkript prüfen, Bericht erstellen, Quellen prüfen und die konkrete Version freigeben. Ungeprüfte Exporte bleiben als Entwurf gekennzeichnet.
 
-Im Bereich Sparring startet „Schnellcheck starten“ ein Gespräch ohne Fall. Eine Frage und bei Bedarf einen bereinigten Falltext eingeben, optional frühere Antworten auswählen, Vorschau ansehen und bewusst senden. Fallbezogene Gespräche bleiben beim gewählten Vorgang. Fälle lassen sich in der Fallliste von rechts nach links aufwischen oder unten in der Fallansicht löschen.
+Im Bereich Sparring startet „Schnellcheck starten“ ein Gespräch ohne Fall. Eine Frage eingeben, über + bei Bedarf ein Bild oder einen Befund hinzufügen und senden. PDF-/Textbefunde werden vor dem Versand lokal geprüft. Frühere vollständige Nachrichten desselben Chats werden automatisch berücksichtigt; ein neuer Chat und technische Details liegen im Menü. Fallbezogene Gespräche bleiben beim gewählten Vorgang. Fälle lassen sich in der Fallliste von rechts nach links aufwischen oder unten in der Fallansicht löschen.
 
 ## Struktur
 

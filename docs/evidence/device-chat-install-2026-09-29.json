@@ -1,0 +1,19 @@
+{
+  "verifiedAt": "2026-09-29T21:21:08.075035+00:00",
+  "bundleID": "de.tobwil.vetmed",
+  "binarySHA256": "c74fd7bfe1626cad866115019805bc74a8e22400b6bda0acd5efb1b8607f1119",
+  "device": "iPhone 17 Pro / iOS 26.6.1",
+  "installSucceeded": true,
+  "normalLaunchSucceeded": true,
+  "liveOpenAIRequestPerformed": false,
+  "sourceSHA256": {
+    "apps/ios/VetMed/Core/ChatAttachment.swift": "4b0b09f83dbd26ea877bdef035e2ed128c1bd48d4c2c454a3af4398e567888d1",
+    "apps/ios/VetMed/Core/Sparring.swift": "0e50e3d024c4d52dad3027e988a47037db85a0bb22ccc5168b01041c1fd7c623",
+    "apps/ios/VetMed/Core/VetAppModel.swift": "9fb1aeaf009a96f3b85f60820d08fe785f52081d21e5d9060937d68df6267099",
+    "apps/ios/VetMed/Services/ChatAttachmentImporter.swift": "a2e93b91cc3417fc87bc051c7fd9364a8977d81095759ef423519120c205f8c2",
+    "apps/ios/VetMed/Services/SparringService.swift": "f0eb3c1f8f5a3888f5d2b5b568517f26e486c6584021414fb7a6bdd6b4b4fe43",
+    "apps/ios/VetMed/Services/SecureStore.swift": "868f74b0adb0821531cd8d40ff22ecf8231872285bfe3e4afa0e93e9889b3db9",
+    "apps/ios/VetMed/Views/SparringView.swift": "eb1e66b8c7b25368987cd100da0bb2405ec99bfc4a33d4cf3c062636a08753a0",
+    "shared/prompts/sparring-v1.txt": "2bfc18d103f4a8b542d2f01c96cdb5d2dc39cb2589558a236291ce2f7192687a"
+  }
+}

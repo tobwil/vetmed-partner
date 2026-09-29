@@ -191,6 +191,58 @@ actor CaseRepository {
             }
         }
     }
+    private func attachmentURL(caseID: UUID?, encounterID: UUID, id: UUID, upload: Bool) -> URL {
+        root.appendingPathComponent("ChatAttachments").appendingPathComponent(caseID?.uuidString ?? "QuickChecks")
+            .appendingPathComponent(encounterID.uuidString).appendingPathComponent(id.uuidString + (upload ? "-upload" : "-original") + ".aesgcm")
+    }
+    func storeAttachment(_ value: PreparedChatAttachment, caseID: UUID?, encounterID: UUID) throws {
+        let original = attachmentURL(caseID: caseID, encounterID: encounterID, id: value.attachment.id, upload: false)
+        try AppPaths.prepare(original.deletingLastPathComponent())
+        let available = try root.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]).volumeAvailableCapacityForImportantUsage ?? 0
+        guard available > Int64((value.original.count + (value.upload?.count ?? 0)) * 3 + 20_000_000) else { throw AppFailure("Zu wenig Gerätespeicher für diesen Anhang. Bitte Speicher freigeben.") }
+        let context = "chat-attachment-v1/\(caseID?.uuidString ?? "quick")/\(encounterID)/\(value.attachment.id)"
+        try encrypt(value.original, context: context + "/original").write(to: original, options: [.atomic, .completeFileProtection])
+        if let upload = value.upload {
+            do {
+                try encrypt(upload, context: context + "/upload").write(to: attachmentURL(caseID: caseID, encounterID: encounterID, id: value.attachment.id, upload: true), options: [.atomic, .completeFileProtection])
+            } catch { try? FileManager.default.removeItem(at: original); throw error }
+        }
+    }
+    func attachmentData(caseID: UUID?, encounterID: UUID, id: UUID, upload: Bool) throws -> Data {
+        let url = attachmentURL(caseID: caseID, encounterID: encounterID, id: id, upload: upload)
+        let bytes = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? Int.max
+        let maximum = upload ? ChatAttachmentImporter.maximumImageBytes : ChatAttachmentImporter.maximumOriginalBytes
+        guard bytes <= maximum + 128 else { throw AppFailure("Der gespeicherte Anhang überschreitet sein Größenlimit.") }
+        return try decrypt(Data(contentsOf: url), context: "chat-attachment-v1/\(caseID?.uuidString ?? "quick")/\(encounterID)/\(id)/\(upload ? "upload" : "original")")
+    }
+    func removeAttachment(caseID: UUID?, encounterID: UUID, id: UUID) throws {
+        for upload in [false, true] {
+            let url = attachmentURL(caseID: caseID, encounterID: encounterID, id: id, upload: upload)
+            if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) }
+        }
+    }
+    func removeQuickCheckFiles(_ id: UUID) throws {
+        let url = root.appendingPathComponent("ChatAttachments/QuickChecks").appendingPathComponent(id.uuidString)
+        if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) }
+    }
+    func cleanUnreferencedAttachments(_ document: VaultDocument) throws {
+        var keep = Set<URL>()
+        func retain(_ attachments: [ChatAttachment], caseID: UUID?, encounterID: UUID) {
+            for attachment in attachments {
+                keep.insert(attachmentURL(caseID: caseID, encounterID: encounterID, id: attachment.id, upload: false))
+                if attachment.uploadSHA256 != nil { keep.insert(attachmentURL(caseID: caseID, encounterID: encounterID, id: attachment.id, upload: true)) }
+            }
+        }
+        for item in document.cases { for encounter in item.encounters { retain(encounter.chatAttachments ?? [], caseID: item.id, encounterID: encounter.id) } }
+        for check in document.quickChecks ?? [] { retain(check.chatAttachments ?? [], caseID: nil, encounterID: check.id) }
+        let directory = root.appendingPathComponent("ChatAttachments")
+        guard let files = FileManager.default.enumerator(at: directory, includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey]) else { return }
+        for case let url as URL in files {
+            let values = try url.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
+            if values.isSymbolicLink == true { files.skipDescendants(); continue }
+            if values.isRegularFile == true, url.pathExtension == "aesgcm", !keep.contains(url) { try FileManager.default.removeItem(at: url) }
+        }
+    }
     func storeAudio(_ data: Data, caseID: UUID, encounterID: UUID, segmentID: UUID) throws {
         let location = audioURL(caseID, encounterID, segmentID)
         try AppPaths.prepare(location.deletingLastPathComponent())
@@ -210,6 +262,8 @@ actor CaseRepository {
     func removeCaseFiles(_ id: UUID) throws {
         let location = root.appendingPathComponent(id.uuidString, isDirectory: true)
         if FileManager.default.fileExists(atPath: location.path) { try FileManager.default.removeItem(at: location) }
+        let attachments = root.appendingPathComponent("ChatAttachments").appendingPathComponent(id.uuidString)
+        if FileManager.default.fileExists(atPath: attachments.path) { try FileManager.default.removeItem(at: attachments) }
     }
     private func audioURL(_ c: UUID, _ e: UUID, _ s: UUID) -> URL {
         root.appendingPathComponent(c.uuidString).appendingPathComponent(e.uuidString).appendingPathComponent(s.uuidString + ".aesgcm")

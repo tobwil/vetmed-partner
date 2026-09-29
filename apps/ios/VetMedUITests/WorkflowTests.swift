@@ -45,21 +45,46 @@ final class WorkflowTests: XCTestCase {
         let before = rows.count
         app.tabBars.buttons["Sparring"].tap()
         let new = app.buttons["new-quick-check"]
+        if !new.exists { app.buttons["chat-menu"].tap() }
         XCTAssertTrue(new.waitForExistence(timeout: 5)); new.tap()
         XCTAssertTrue(app.staticTexts["Schnellcheck · ohne Fall"].waitForExistence(timeout: 5))
-        let question = app.textViews["sparring-question"]
+        let question = app.descendants(matching: .any).matching(identifier: "sparring-question").firstMatch
         let text = "Schnellcheck QA " + UUID().uuidString.prefix(8)
         question.tap(); question.typeText(text)
-        app.buttons["save-sparring-draft"].tap()
-        XCTAssertTrue(app.staticTexts["Entwurf lokal gespeichert"].waitForExistence(timeout: 8))
+        let savedStatus = app.staticTexts.matching(NSPredicate(format: "identifier == 'chat-save-status' AND label BEGINSWITH 'Lokal gespeichert'")).firstMatch
+        XCTAssertTrue(savedStatus.waitForExistence(timeout: 8))
+        app.buttons["chat-add-attachment"].tap()
+        XCTAssertTrue(app.buttons["Foto auswählen"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["Datei hinzufügen"].exists)
         app.terminate(); app.launch()
         XCTAssertTrue(app.buttons["new-dictation"].waitForExistence(timeout: 15))
         app.tabBars.buttons["Fälle"].tap(); XCTAssertEqual(rows.count, before)
         app.tabBars.buttons["Sparring"].tap()
         let saved = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", text)).firstMatch
+        if !saved.exists && app.buttons["chat-menu"].exists { app.buttons["chat-menu"].tap(); app.buttons["Chat wechseln"].tap() }
         XCTAssertTrue(saved.waitForExistence(timeout: 5)); saved.tap()
         XCTAssertTrue(question.waitForExistence(timeout: 5)); XCTAssertEqual(question.value as? String, text)
-        let screenshot = XCTAttachment(screenshot: app.screenshot()); screenshot.name = "standalone-quick-check"; screenshot.lifetime = .keepAlways; add(screenshot)
+        let screenshot = XCTAttachment(screenshot: app.screenshot()); screenshot.name = "normal-chat-composer"; screenshot.lifetime = .keepAlways; add(screenshot)
+    }
+    @MainActor
+    func testChatCanAttachPhotoWithoutSendingAndRemoveItFromDraft() throws {
+        // The test script seeds one synthetic screenshot into the simulator photo library.
+        let app = XCUIApplication(); app.launchArguments = ["--ui-testing"]; app.launch()
+        XCTAssertTrue(app.buttons["new-dictation"].waitForExistence(timeout: 15))
+        app.tabBars.buttons["Sparring"].tap()
+        let new = app.buttons["new-quick-check"]
+        if !new.exists { app.buttons["chat-menu"].tap() }
+        XCTAssertTrue(new.waitForExistence(timeout: 5)); new.tap()
+        app.buttons["chat-add-attachment"].tap()
+        app.buttons["Foto auswählen"].tap()
+        let photo = app.images.matching(NSPredicate(format: "identifier == 'PXGGridLayout-Info' AND label CONTAINS 'Screenshot'")).firstMatch
+        guard photo.waitForExistence(timeout: 8) else { XCTFail("Synthetic screenshot missing from PhotosPicker: " + app.debugDescription); return }
+        photo.tap()
+        let remove = app.buttons["Anhang entfernen"]
+        guard remove.waitForExistence(timeout: 15) else { XCTFail("Photo was not attached: " + app.debugDescription); return }
+        let screenshot = XCTAttachment(screenshot: app.screenshot()); screenshot.name = "chat-with-image-attachment"; screenshot.lifetime = .keepAlways; add(screenshot)
+        XCTAssertFalse(app.buttons["Antwort abbrechen"].exists)
+        remove.tap(); XCTAssertTrue(remove.waitForNonExistence(timeout: 5))
     }
     @MainActor
     func testCaseDeletionUsesRightToLeftSwipeAndExplicitConfirmation() throws {

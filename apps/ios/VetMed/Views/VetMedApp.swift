@@ -63,7 +63,7 @@ struct RootView: View {
                     NavigationStack { SettingsView(model: app.model) }.tabItem { Label("Einstellungen", systemImage: "slider.horizontal.3") }.tag(3)
                 }
                 .safeAreaInset(edge: .bottom) {
-                    if app.busy {
+                    if app.busy && !(tab == 1 && app.activeAnalysisID != nil) {
                         HStack { ProgressView(); Text(app.workStatus).font(.caption); Spacer(); Button("Abbrechen") { app.cancel() } }.padding().background(.regularMaterial)
                     }
                 }
@@ -371,7 +371,7 @@ struct SettingsView: View {
     @ObservedObject var model: MLXLocalReportEngine
     var body: some View {
         Form {
-            Section("Online-Berichte") {
+            Section("Online-Zugang") {
                 NavigationLink("API-Key & Modell") { OnlineReportSettingsView() }
                 Text(app.hasOnlineKey ? "OpenAI · " + app.onlineConfiguration.modelID : "Noch kein API-Key hinterlegt").font(.caption).foregroundStyle(.secondary)
                 Text("Mit aktivierter Konfiguration ist Online der Standard. Offline kannst du pro Bericht ausdrücklich auswählen.").font(.caption).foregroundStyle(.secondary)

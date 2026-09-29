@@ -64,6 +64,7 @@ struct Encounter: Codable, Identifiable, Equatable, Sendable {
     var cloudReportRequests: [CloudReportRequest]?
     var sparringDraft: SparringDraft?
     var analysisRuns: [AnalysisRun]?
+    var chatAttachments: [ChatAttachment]?
     var shares: [ShareEvent] = []
     var lastError: String?
     var playbackSegments: [TranscriptSegment] {
