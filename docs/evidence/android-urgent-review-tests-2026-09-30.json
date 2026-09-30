@@ -1,0 +1,192 @@
+{
+  "checkedAt": "2026-09-30T16:18:18.795888+00:00",
+  "sourceBranch": "claude/urgent-fixes",
+  "sourceHead": "5ea7e98",
+  "reviewFix": "Compare SQLite data_version on the primary transaction connection before incremental writes, including no-op saves.",
+  "command": "JAVA_HOME=<local Temurin 21> ANDROID_HOME=<local SDK> ./scripts/test-android.sh",
+  "modules": {
+    "core": {
+      "totals": {
+        "tests": 83,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "suites": [
+        {
+          "name": "de.tobwil.vetmed.core.CaseOperationsTests",
+          "tests": "6",
+          "failures": "0",
+          "errors": "0",
+          "skipped": "0",
+          "time": "0.064"
+        },
+        {
+          "name": "de.tobwil.vetmed.core.ChatOperationsTests",
+          "tests": "4",
+          "failures": "0",
+          "errors": "0",
+          "skipped": "0",
+          "time": "0.025"
+        },
+        {
+          "name": "de.tobwil.vetmed.core.CoreTests",
+          "tests": "28",
+          "failures": "0",
+          "errors": "0",
+          "skipped": "0",
+          "time": "0.16"
+        },
+        {
+          "name": "de.tobwil.vetmed.core.DeviceReadinessTests",
+          "tests": "1",
+          "failures": "0",
+          "errors": "0",
+          "skipped": "0",
+          "time": "0.0"
+        },
+        {
+          "name": "de.tobwil.vetmed.core.LocalModelTests",
+          "tests": "8",
+          "failures": "0",
+          "errors": "0",
+          "skipped": "0",
+          "time": "0.208"
+        },
+        {
+          "name": "de.tobwil.vetmed.core.OnlineReportTests",
+          "tests": "8",
+          "failures": "0",
+          "errors": "0",
+          "skipped": "0",
+          "time": "0.024"
+        },
+        {
+          "name": "de.tobwil.vetmed.core.SharedContractTests",
+          "tests": "5",
+          "failures": "0",
+          "errors": "0",
+          "skipped": "0",
+          "time": "0.04"
+        },
+        {
+          "name": "de.tobwil.vetmed.core.SparringTests",
+          "tests": "21",
+          "failures": "0",
+          "errors": "0",
+          "skipped": "0",
+          "time": "0.043"
+        },
+        {
+          "name": "de.tobwil.vetmed.core.WavTests",
+          "tests": "2",
+          "failures": "0",
+          "errors": "0",
+          "skipped": "0",
+          "time": "0.002"
+        }
+      ]
+    },
+    "app": {
+      "totals": {
+        "tests": 44,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "suites": [
+        {
+          "name": "de.tobwil.vetmed.AudioRecorderTests",
+          "tests": "5",
+          "failures": "0",
+          "errors": "0",
+          "skipped": "0",
+          "time": "0.067"
+        },
+        {
+          "name": "de.tobwil.vetmed.CaseDatabaseTests",
+          "tests": "13",
+          "failures": "0",
+          "errors": "0",
+          "skipped": "0",
+          "time": "5.51"
+        },
+        {
+          "name": "de.tobwil.vetmed.ChatStorageTests",
+          "tests": "6",
+          "failures": "0",
+          "errors": "0",
+          "skipped": "0",
+          "time": "5.003"
+        },
+        {
+          "name": "de.tobwil.vetmed.ReportExportTests",
+          "tests": "2",
+          "failures": "0",
+          "errors": "0",
+          "skipped": "0",
+          "time": "0.005"
+        },
+        {
+          "name": "de.tobwil.vetmed.SealedStoreTests",
+          "tests": "3",
+          "failures": "0",
+          "errors": "0",
+          "skipped": "0",
+          "time": "0.005"
+        },
+        {
+          "name": "de.tobwil.vetmed.WalkthroughTests",
+          "tests": "15",
+          "failures": "0",
+          "errors": "0",
+          "skipped": "0",
+          "time": "10.06"
+        }
+      ]
+    }
+  },
+  "lintIssues": [
+    {
+      "id": "EmptySuperCall",
+      "severity": "Warning",
+      "message": "No need to call `super.onCleared`; the super method is defined to be empty"
+    },
+    {
+      "id": "UsableSpace",
+      "severity": "Warning",
+      "message": "Consider also using `StorageManager#getAllocatableBytes` and `allocateBytes` which will consider clearable cached data"
+    },
+    {
+      "id": "UsableSpace",
+      "severity": "Warning",
+      "message": "Consider also using `StorageManager#getAllocatableBytes` and `allocateBytes` which will consider clearable cached data"
+    },
+    {
+      "id": "UsableSpace",
+      "severity": "Warning",
+      "message": "Consider also using `StorageManager#getAllocatableBytes` and `allocateBytes` which will consider clearable cached data"
+    },
+    {
+      "id": "UseKtx",
+      "severity": "Warning",
+      "message": "Use the KTX function `createBitmap` instead?"
+    },
+    {
+      "id": "UseKtx",
+      "severity": "Warning",
+      "message": "Use the KTX function `createBitmap` instead?"
+    }
+  ],
+  "buildSucceeded": true,
+  "apkSHA256": "759a06cef39afcb9f7afdb8acbf092f39312f39b38a919ab1a51b56ce409bbd1",
+  "deviceTestsRun": false,
+  "baselineRegression": {
+    "test": "externalChangesCannotHideBehindAnUnchangedRowCache",
+    "result": "Failed on original branch implementation; passed after review fix."
+  },
+  "environmentNotes": [
+    "Java 21 and Android SDK 37.2 installed locally for tests.",
+    "Initial lint run crashed inside ExperimentalDetector; final unchanged lint configuration completes, with 0 errors and 6 warnings."
+  ]
+}

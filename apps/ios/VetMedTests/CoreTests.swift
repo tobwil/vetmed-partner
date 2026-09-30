@@ -359,6 +359,29 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(restored, document)
         try await repo.verifyIntegrity()
     }
+    func testExternalChangesCannotHideBehindAnUnchangedRowCache() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let key = SymmetricKey(size: .bits256)
+        let first = try CaseRepository(root: root, key: key)
+        var expected = VaultDocument(cases: [VetCase(label: "A", species: "Hund", encounters: [Encounter()]), VetCase(label: "B", species: "Katze")])
+        try await first.save(expected)
+        let other = try CaseRepository(root: root, key: key)
+        var external = try await other.load()
+        external.cases[0].label = "Extern geändert"
+        external.cases.append(VetCase(label: "Extern ergänzt", species: "Hund"))
+        try await other.save(external)
+        // Even a locally unchanged document must retain the previous full-save semantics.
+        try await first.save(expected)
+        let afterNoOp = try await CaseRepository(root: root, key: key).load()
+        XCTAssertEqual(afterNoOp, expected)
+        external = try await other.load(); external.cases[0].encounters = []
+        try await other.save(external)
+        expected.cases[1].label = "Nur B bearbeitet"
+        try await first.save(expected)
+        let afterUnrelatedEdit = try await CaseRepository(root: root, key: key).load()
+        XCTAssertEqual(afterUnrelatedEdit, expected, "Unchanged children must not disappear after an unrelated edit")
+    }
     func testVocabularyPersistsWithoutChangingOriginalTranscript() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }

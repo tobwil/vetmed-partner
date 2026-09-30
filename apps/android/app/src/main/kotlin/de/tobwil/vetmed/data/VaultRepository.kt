@@ -74,6 +74,7 @@ class VaultRepository(
 
     /** What the database holds after the last read or successful write; null means "unknown, write everything". */
     private var written: RowSnapshot? = null
+    private var writtenDataVersion: Long? = null
 
     /** Rows touched by the last save. Used by tests to prove that saves stay proportional to the change. */
     data class WriteStats(val inserted: Int, val updated: Int, val deleted: Int, val full: Boolean)
@@ -123,7 +124,7 @@ class VaultRepository(
         apiKey.delete()
     }
 
-    suspend fun close() = io { database?.close(); database = null }
+    suspend fun close() = io { database?.close(); database = null; written = null; writtenDataVersion = null }
 
     // Encrypted files: chat attachments and audio. Each file is sealed with a context naming its case,
     // encounter and purpose, so ciphertext cannot be moved to another case or reused as another file.
@@ -244,14 +245,15 @@ class VaultRepository(
     // Mapping ---------------------------------------------------------------------------------------
 
     private fun read(dao: CaseDao): VaultDocument {
-        val rows = dao.snapshot()
-        written = RowChanges.snapshot(rows)
+        written = null; writtenDataVersion = null
+        val stored = dao.versionedSnapshot()
+        val rows = stored.rows
         val transcripts = rows.transcripts.groupBy { it.encounterID }
         val reports = rows.reports.groupBy { it.encounterID }
         val shares = rows.shares.groupBy { it.encounterID }
         val encounters = rows.encounters.groupBy { it.caseID }
         val quickChecks = rows.quickChecks.map { decode(QuickCheck.serializer(), it.payload) }
-        return VaultDocument(quickChecks = quickChecks.ifEmpty { null }, cases = rows.cases.map { caseRow ->
+        val document = VaultDocument(quickChecks = quickChecks.ifEmpty { null }, cases = rows.cases.map { caseRow ->
             decode(VetCase.serializer(), caseRow.payload).copy(encounters = encounters[caseRow.id].orEmpty().map { row ->
                 decode(Encounter.serializer(), row.payload).copy(
                     transcripts = transcripts[row.id].orEmpty().map { decode(TranscriptVersion.serializer(), it.payload) },
@@ -260,6 +262,8 @@ class VaultRepository(
                 )
             })
         })
+        written = RowChanges.snapshot(rows); writtenDataVersion = stored.version
+        return document
     }
 
     private fun rows(document: VaultDocument): CaseRows {
@@ -292,27 +296,21 @@ class VaultRepository(
         // Duplicate IDs would silently collapse in the difference; the full write rejected them via the primary key.
         if (next.values.sumOf { it.size } != rows.size) throw AppFailure("Speichern fehlgeschlagen: doppelte Kennungen. Die letzte gespeicherte Fassung bleibt erhalten.")
         val previous = written
-        written = null
-        if (previous == null) {
-            guarded { dao.replaceAll(rows) }
-            lastWrite = WriteStats(rows.size, 0, 0, full = true)
-        } else {
-            val changes = RowChanges.between(previous, rows, next)
-            try {
-                if (!changes.isEmpty) dao.applyChanges(changes)
-                lastWrite = WriteStats(changes.inserts.size, changes.updates.size, changes.deletions.values.sumOf { it.size }, full = false)
+        val previousVersion = writtenDataVersion
+        written = null; writtenDataVersion = null
+        var result: RowWriteResult? = null
+        guarded {
+            result = try {
+                dao.store(rows, previous, previousVersion, next)
             } catch (error: SQLiteFullException) {
-                guarded { throw error }
+                throw error
             } catch (error: SQLiteException) {
-                // The database did not hold what we thought (the transaction rolled back): write everything.
-                guarded { dao.replaceAll(rows) }
-                lastWrite = WriteStats(rows.size, 0, 0, full = true)
+                // The failed transaction rolled back; perform a full replacement in a fresh transaction.
+                dao.store(rows, null, null, next)
             }
         }
-        written = next
+        lastWrite = result!!.stats; writtenDataVersion = result!!.version; written = next
     }
-
-
 
     private fun guarded(block: () -> Unit) {
         try { block() } catch (error: SQLiteFullException) {

@@ -98,3 +98,21 @@ Der Branch wird bewusst **nicht** vorgespult. Einige Commits ändern iOS, und iO
 6. **Übernahme:** Erst wenn 1 bis 3 grün sind, `main` vorspulen, also `git push origin claude/urgent-fixes:main` (reiner Fast-Forward, `main` hat sich seitdem nicht bewegt). Alternativ einen Pull Request öffnen. Die Punkte 4 und 5 können danach folgen, blockieren aber einen Pilotbetrieb.
 
 Falls ein iOS-Test fehlschlägt, lassen sich die Android-Commits 1 und 3 einzeln übernehmen. Commit 2 enthält iOS-Anteile und müsste dafür aufgeteilt werden.
+
+
+## Ergänzung aus dem Mac-Review am 30.09.2026
+
+Beim Review wurde ein weiterer Fall reproduziert: Der zweite Schreiber ändert oder entfernt eine Zeile, die im nächsten lokalen Dokument unverändert ist, oder fügt eine weitere Zeile ein. Der bisherige Fallback reagierte nur auf ein erfolgloses UPDATE. Bei einer lokalen Nulländerung oder einer Änderung an einem anderen Fall blieb die Abweichung unbemerkt. Der neue Android-Regressionstest scheiterte vor der Korrektur genau daran.
+
+Beide Repositories vergleichen jetzt zusätzlich `PRAGMA data_version` innerhalb der Schreibtransaktion. Ein veralteter Cache führt zum bisherigen vollständigen Speichern des übergebenen Dokuments, auch wenn lokal keine Zeile geändert wurde. Das erhält die bisherige Semantik „gesamtes Dokument speichern“; es ist keine Zusammenführung konkurrierender Bearbeitungen. Ohne fremde Änderungen bleiben Nulländerungen schreibfrei und normale Änderungen inkrementell.
+
+SQLite definiert diesen Zähler pro Verbindung; nur Werte derselben Verbindung dürfen verglichen werden ([SQLite-Dokumentation](https://www.sqlite.org/pragma.html#pragma_data_version)). iOS verwendet die einzelne GRDB-DatabaseQueue-Verbindung und liest Dokument, Zeilenstand und Version in derselben Transaktion. Android führt versioniertes Lesen und Schreiben in Room-Transaktionen auf der primären Verbindung aus, auch bei WAL. Beim Schließen des Android-Repositories wird der Cache verworfen. Ein fehlgeschlagenes Dekodieren setzt keinen gültigen Cache.
+
+Die Modelloptimierung bleibt auf Prozesslaufzeit sowie Dateigröße und Änderungszeit begrenzt. Sie ist keine kontinuierliche kryptografische Überwachung: Änderungen mit gleicher Größe und absichtlich beibehaltenem Zeitstempel werden erst bei einer erneuten vollständigen Prüfung erkannt. Eine Abweichung vom Installationsbeleg wird bereits beim Bereitschaftstest abgewiesen.
+
+Android ist auf diesem Mac mit 83 Kern- und 44 App-Tests bestanden, APK gebaut, Lint mit null Fehlern und sechs Hinweisen abgeschlossen. Die Hinweise betreffen konservative Speicherplatzabfragen und Bitmap-KTX-Stil; keine Prüfungen wurden dafür abgeschaltet. Der iOS-Branch vor der Nachbesserung bestand 104 Tests einschließlich SQLCipher und aller UI-Tests. Abschließende Nachweise stehen in `docs/test-status.md`.
+
+
+Ein weiterer UI-Lauf zeigte beim Wiederöffnen im Nachtmodus zwei Abstürze in `SwiftUI.LocationBasedFeedbackAdaptor.generate` / `AttributeGraph`. Der Nachtmodus-Schalter hatte haptisches Feedback an die automatische Umstellung von `colorScheme` gebunden. Tag/Nacht- und Farbthemen-Schalter erzeugen ihr Auswahlfeedback jetzt über UIKit direkt in der Button-Aktion. Dadurch löst das Wiederherstellen der Darstellung keine verzögerte Haptik am umgebauten SwiftUI-Viewgraph aus. Die sonstige Darstellung und ihre Animationen bleiben erhalten. Sanitierte Crash-Auszüge: `docs/evidence/ios-urgent-haptic-crashes-2026-09-30.json`.
+
+Die Speicheroptimierung reduziert SQL-Schreibvorgänge. Das Erzeugen und Hashen der Zeilen des übergebenen Gesamtdokuments bleibt linear in dessen Größe; eine konstante CPU-/RAM-Laufzeit je Bearbeitung wird nicht behauptet.

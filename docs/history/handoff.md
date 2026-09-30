@@ -2,7 +2,7 @@
 
 ## Stand und verbindliche Nutzerentscheidungen
 
-Neuester Quellstand: Berichtszielgruppe automatisch aus Vorlage und auswählbare Fallberichte im Chat. 39 gezielte Tests bestanden, signierter Gerätebuild erfolgreich. Installation dieses Updates wartet auf das derzeit nicht erreichbare iPhone; zuvor installiert bleibt der Senior-Persona-Stand. Nachweis: `docs/evidence/device-report-context-install-2026-09-30.json`.
+Neuester Quellstand am 30.09.2026 abends: Android-Stand von `main` geholt, `claude/urgent-fixes` geprüft und um die sichere Cache-Erkennung sowie eine iOS-Haptikkorrektur ergänzt. 105 iOS- und 127 Android-Tests bestanden; beide Builds erfolgreich. Aktuelles Update auf dem iPhone installiert, normaler Start vom Mac wegen Codesperre noch nicht möglich. Gerätedurchlauf offen. Nachweise: `docs/evidence/ios-urgent-reviewed-tests-2026-09-30.json`, `docs/evidence/android-urgent-review-tests-2026-09-30.json`, `docs/evidence/device-urgent-review-install-2026-09-30.json`.
 
 Die native iOS-App ist implementiert und auf dem iPhone 17 Pro installiert. Der Designstand aus `02793da` wurde am 30.09.2026 um die bestätigte Senior-Sparring-Persona ergänzt, erfolgreich installiert und normal gestartet. Prompt- und Binary-Hashes: `docs/evidence/device-senior-persona-install-2026-09-30.json`. Die App heißt VetMed, Bundle `de.tobwil.vetmed`. Der gesamte Zielumfang bleibt im [Plan](../implementation-plan.md) und der [Nachverfolgung](../requirements-trace.md) erhalten.
 
@@ -77,4 +77,4 @@ Der Prüfstand enthält auch gescheiterte Tests und korrigierte Selektoren. Der 
 
 Aktive Audiosegmente sind während der Aufnahme noch nicht durchgehend auf App-Ebene verschlüsselt; iOS-Dateischutz und Verschlüsselung abgeschlossener Segmente sind davon getrennt. Größen- und RAM-Grenzen gelten für die dokumentierten Pfade und sind keine allgemeine Garantie gegen Speicherfehler.
 
-Vor weiteren Produktzusagen [test-status.md](../test-status.md) und [requirements-trace.md](../requirements-trace.md) fortschreiben. Der umfangreiche Restplan einschließlich Android, weiterer Provider und Brave bleibt offen.
+Vor weiteren Produktzusagen [test-status.md](../test-status.md) und [requirements-trace.md](../requirements-trace.md) fortschreiben. Android ist inzwischen implementiert und auf dem JVM-Teststand geprüft; die echte Geräteabnahme bleibt offen. Weitere Provider, Brave und der übrige Restplan sind ebenfalls offen.

@@ -11,6 +11,9 @@ import androidx.room.Query
 import androidx.room.RoomDatabase
 import androidx.room.Transaction
 import androidx.room.Update
+import androidx.room.RawQuery
+import androidx.sqlite.db.SimpleSQLiteQuery
+import androidx.sqlite.db.SupportSQLiteQuery
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
@@ -117,8 +120,13 @@ class RowChanges(val inserts: CaseRows, val updates: CaseRows, val deletions: Ma
     }
 }
 
+class VersionedRows(val rows: CaseRows, val version: Long)
+class RowWriteResult(val version: Long, val stats: VaultRepository.WriteStats)
+
 @Dao
 abstract class CaseDao {
+    @RawQuery protected abstract fun readLong(query: SupportSQLiteQuery): Long
+
     @Query("SELECT * FROM clinical_case ORDER BY position") abstract fun cases(): List<CaseRow>
     @Query("SELECT * FROM encounter ORDER BY caseID, position") abstract fun encounters(): List<EncounterRow>
     @Query("SELECT * FROM transcript_version ORDER BY encounterID, position") abstract fun transcripts(): List<TranscriptRow>
@@ -158,6 +166,23 @@ abstract class CaseDao {
     /** All reads in one transaction, so a concurrent save can never produce a mixed document. */
     @Transaction
     open fun snapshot(): CaseRows = CaseRows(cases(), encounters(), transcripts(), reports(), shares(), quickChecks())
+
+    // Both operations run in Room write transactions, hence on the same primary connection even with WAL.
+    // data_version is connection-local and must never be compared across read-pool connections.
+    @Transaction
+    open fun versionedSnapshot(): VersionedRows = VersionedRows(snapshot(), readLong(SimpleSQLiteQuery("PRAGMA data_version")))
+
+    @Transaction
+    open fun store(rows: CaseRows, previous: RowSnapshot?, previousVersion: Long?, next: RowSnapshot): RowWriteResult {
+        val version = readLong(SimpleSQLiteQuery("PRAGMA data_version"))
+        if (previous != null && previousVersion == version) {
+            val changes = RowChanges.between(previous, rows, next)
+            if (!changes.isEmpty) applyChanges(changes)
+            return RowWriteResult(version, VaultRepository.WriteStats(changes.inserts.size, changes.updates.size, changes.deletions.values.sumOf { it.size }, full = false))
+        }
+        replaceAll(rows)
+        return RowWriteResult(version, VaultRepository.WriteStats(rows.size, 0, 0, full = true))
+    }
 
     /** All-or-nothing replacement, including every version and share event (iOS does the same). */
     @Transaction

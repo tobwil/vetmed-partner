@@ -1,0 +1,18 @@
+{
+  "checkedAt": "2026-09-30T16:26:55.393510+00:00",
+  "device": "iPhone 17 Pro",
+  "bundleIdentifier": "de.tobwil.vetmed",
+  "signedBuildSucceeded": true,
+  "installationSucceeded": true,
+  "normalLaunchSucceeded": false,
+  "launchFailure": "CoreDeviceError 10002 / FBSOpenApplicationErrorDomain 7: device locked.",
+  "deviceSmokeTestPerformed": false,
+  "liveProviderTestPerformed": false,
+  "binarySHA256": "d163454bf2854c09eea709e8fe8b5eb84ea5aafc3ac16b066d17f7f29e9daf30",
+  "sourceSHA256": {
+    "apps/ios/VetMed/Services/SecureStore.swift": "c6ead5a461b889e0b93e6d70aa58ae6e06bc8db518dc49bf9f0c3acab09af7e7",
+    "apps/ios/VetMed/Views/Theme.swift": "ffe62ff7344f7e849fe72499bb477e866b2befaf62c35ca573d4df645ac91b67",
+    "apps/ios/VetMed/Reused/ModelRepository.swift": "85fe04a01362ccd3eeb349c26d7d5cb58c9a0154e0d3b90f921769ae7969a60b",
+    "apps/ios/VetMed/Services/MLXLocalReportEngine.swift": "b525d9816e2e93e3eb649cd89278fc9aadcc61febeaa2ffe37ea0deb26141388"
+  }
+}

@@ -137,6 +137,23 @@ class CaseDatabaseTests {
         assertEquals(renamed, repository().load())
     }
 
+    @Test fun externalChangesCannotHideBehindAnUnchangedRowCache() = runTest {
+        val expected = SyntheticCases.seed().document
+        val first = repository(); first.save(expected)
+        val other = repository()
+        val external = other.load().let { doc -> doc.copy(cases = doc.cases.mapIndexed { index, item ->
+            if (index == 0) item.copy(label = "Extern geändert", encounters = emptyList()) else item
+        } + de.tobwil.vetmed.core.VetCase(label = "Extern ergänzt", species = "Hund")) }
+        other.save(external)
+        first.save(expected)
+        assertEquals("Auch ein lokal unveränderter Stand wird vollständig gesichert", expected, repository().load())
+        val shorter = other.load().let { it.copy(cases = it.cases.dropLast(1)) }
+        other.save(shorter)
+        val edited = expected.copy(cases = expected.cases.mapIndexed { index, item -> if (index == 0) item.copy(label = "Nur A bearbeitet") else item })
+        first.save(edited)
+        assertEquals("Unberührte Zeilen dürfen nicht unbemerkt fehlen", edited, repository().load())
+    }
+
     @Test fun aReopenedRepositoryContinuesIncrementally() = runTest {
         val seeded = SyntheticCases.seed()
         repository().apply { save(seeded.document); close() }

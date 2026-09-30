@@ -1,0 +1,108 @@
+{
+  "context": "Simulator iOS 27, app relaunch during UI tests; sanitized stack summaries only.",
+  "crashes": [
+    {
+      "reportFile": "VetMed-2026-09-30-181805.ips",
+      "exception": {
+        "codes": "0x0000000000000001, 0x00000000000001b0",
+        "rawCodes": [
+          1,
+          432
+        ],
+        "type": "EXC_BAD_ACCESS",
+        "signal": "SIGSEGV",
+        "subtype": "KERN_INVALID_ADDRESS at 0x00000000000001b0"
+      },
+      "termination": {
+        "code": 11,
+        "namespace": "SIGNAL",
+        "indicator": "Segmentation fault: 11"
+      },
+      "topSymbols": [
+        "AG::Graph::value_ref(AG::AttributeID, unsigned int, AGSwiftMetadata const*, unsigned char&)",
+        "AGGraphGetValue",
+        "closure #1 in LocationBasedFeedbackAdaptor.generate()",
+        "partial apply for closure #1 in LocationBasedFeedbackAdaptor.generate()",
+        "UpdateGroup.ensure<A>(_:)",
+        "protocol witness for PlatformSensoryFeedback.generate() in conformance LocationBasedFeedbackAdaptor",
+        "closure #3 in FeedbackGenerator.contentConfiguredWithFeedback(content:)",
+        "_ValueActionModifier2.sendAction(old:)",
+        "partial apply for closure #2 in ValueActionDispatcher.updateValue()",
+        "UpdateGroup.Action.callAsFunction()",
+        "dispatch #1 () in UpdateGroup.dispatchActions()",
+        "UpdateGroup.dispatchActions()",
+        "closure #1 in ViewGraphRootValueUpdater.render(interval:updateDisplayList:targetTimestamp:)",
+        "ViewGraphRootValueUpdater.render(interval:updateDisplayList:targetTimestamp:)"
+      ]
+    },
+    {
+      "reportFile": "VetMed-2026-09-30-181851.ips",
+      "exception": {
+        "codes": "0x0000000000000001, 0x00000000000001b0",
+        "rawCodes": [
+          1,
+          432
+        ],
+        "type": "EXC_BAD_ACCESS",
+        "signal": "SIGSEGV",
+        "subtype": "KERN_INVALID_ADDRESS at 0x00000000000001b0"
+      },
+      "termination": {
+        "code": 11,
+        "namespace": "SIGNAL",
+        "indicator": "Segmentation fault: 11"
+      },
+      "topSymbols": [
+        "AG::Graph::value_ref(AG::AttributeID, unsigned int, AGSwiftMetadata const*, unsigned char&)",
+        "AGGraphGetValue",
+        "closure #1 in LocationBasedFeedbackAdaptor.generate()",
+        "partial apply for closure #1 in LocationBasedFeedbackAdaptor.generate()",
+        "UpdateGroup.ensure<A>(_:)",
+        "protocol witness for PlatformSensoryFeedback.generate() in conformance LocationBasedFeedbackAdaptor",
+        "closure #3 in FeedbackGenerator.contentConfiguredWithFeedback(content:)",
+        "_ValueActionModifier2.sendAction(old:)",
+        "partial apply for closure #2 in ValueActionDispatcher.updateValue()",
+        "UpdateGroup.Action.callAsFunction()",
+        "dispatch #1 () in UpdateGroup.dispatchActions()",
+        "UpdateGroup.dispatchActions()",
+        "closure #1 in ViewGraphRootValueUpdater.render(interval:updateDisplayList:targetTimestamp:)",
+        "ViewGraphRootValueUpdater.render(interval:updateDisplayList:targetTimestamp:)"
+      ]
+    },
+    {
+      "reportFile": "VetMed-2026-09-30-181931.ips",
+      "exception": {
+        "codes": "0x0000000000000001, 0x00000000000001b0",
+        "rawCodes": [
+          1,
+          432
+        ],
+        "type": "EXC_BAD_ACCESS",
+        "signal": "SIGSEGV",
+        "subtype": "KERN_INVALID_ADDRESS at 0x00000000000001b0"
+      },
+      "termination": {
+        "code": 11,
+        "namespace": "SIGNAL",
+        "indicator": "Segmentation fault: 11"
+      },
+      "topSymbols": [
+        "AG::Graph::value_ref(AG::AttributeID, unsigned int, AGSwiftMetadata const*, unsigned char&)",
+        "AGGraphGetValue",
+        "closure #1 in LocationBasedFeedbackAdaptor.generate()",
+        "partial apply for closure #1 in LocationBasedFeedbackAdaptor.generate()",
+        "UpdateGroup.ensure<A>(_:)",
+        "protocol witness for PlatformSensoryFeedback.generate() in conformance LocationBasedFeedbackAdaptor",
+        "closure #3 in FeedbackGenerator.contentConfiguredWithFeedback(content:)",
+        "_ValueActionModifier2.sendAction(old:)",
+        "partial apply for closure #2 in ValueActionDispatcher.updateValue()",
+        "UpdateGroup.Action.callAsFunction()",
+        "dispatch #1 () in UpdateGroup.dispatchActions()",
+        "UpdateGroup.dispatchActions()",
+        "closure #1 in ViewGraphRootValueUpdater.render(interval:updateDisplayList:targetTimestamp:)",
+        "ViewGraphRootValueUpdater.render(interval:updateDisplayList:targetTimestamp:)"
+      ]
+    }
+  ],
+  "fix": "Theme day/night and swatch selection now emit UIKit selection feedback only in the explicit button action; removed appearance-driven sensoryFeedback modifiers."
+}

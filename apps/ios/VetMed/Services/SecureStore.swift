@@ -67,6 +67,7 @@ actor CaseRepository {
     private let database: DatabaseQueue
     /// What the database holds after the last read or successful write; nil means "unknown, write everything".
     private var written: CaseRows.Snapshot?
+    private var writtenDataVersion: Int64?
     /// Rows touched by the last save. Tests use it to prove that saves stay proportional to the change.
     struct WriteStats: Equatable, Sendable { let inserted: Int; let updated: Int; let deleted: Int; let full: Bool }
     private(set) var lastWrite: WriteStats?
@@ -119,8 +120,11 @@ actor CaseRepository {
         try FileManager.default.setAttributes([.protectionKey: FileProtectionType.complete], ofItemAtPath: root.appendingPathComponent("cases.sqlite").path)
     }
     func load() throws -> VaultDocument {
-        let document = try Self.read(database)
-        written = try database.read { try CaseRows.stored($0) }
+        written = nil; writtenDataVersion = nil
+        let (document, snapshot, version) = try database.read { db in
+            (try Self.decode(db), try CaseRows.stored(db), try Int64.fetchOne(db, sql: "PRAGMA data_version"))
+        }
+        written = snapshot; writtenDataVersion = version
         return document
     }
     func vocabulary() throws -> [VocabularyEntry] {
@@ -159,23 +163,24 @@ actor CaseRepository {
         }
     }
     private static func read(_ database: DatabaseQueue) throws -> VaultDocument {
-        try database.read { db in
-            let decoder = JSONDecoder()
-            var cases: [VetCase] = []
-            for row in try Row.fetchAll(db, sql: "SELECT payload FROM clinical_case ORDER BY position") {
-                var item = try decoder.decode(VetCase.self, from: row["payload"] as Data)
-                for encounterRow in try Row.fetchAll(db, sql: "SELECT payload FROM encounter WHERE caseID = ? ORDER BY position", arguments: [item.id.uuidString]) {
-                    var encounter = try decoder.decode(Encounter.self, from: encounterRow["payload"] as Data)
-                    encounter.transcripts = try Row.fetchAll(db, sql: "SELECT payload FROM transcript_version WHERE encounterID = ? ORDER BY position", arguments: [encounter.id.uuidString]).map { try decoder.decode(TranscriptVersion.self, from: $0["payload"] as Data) }
-                    encounter.reports = try Row.fetchAll(db, sql: "SELECT payload FROM report_version WHERE encounterID = ? ORDER BY position", arguments: [encounter.id.uuidString]).map { try decoder.decode(ReportVersion.self, from: $0["payload"] as Data) }
-                    encounter.shares = try Row.fetchAll(db, sql: "SELECT payload FROM share_event WHERE encounterID = ? ORDER BY position", arguments: [encounter.id.uuidString]).map { try decoder.decode(ShareEvent.self, from: $0["payload"] as Data) }
-                    item.encounters.append(encounter)
-                }
-                cases.append(item)
+        try database.read { try decode($0) }
+    }
+    private static func decode(_ db: Database) throws -> VaultDocument {
+        let decoder = JSONDecoder()
+        var cases: [VetCase] = []
+        for row in try Row.fetchAll(db, sql: "SELECT payload FROM clinical_case ORDER BY position") {
+            var item = try decoder.decode(VetCase.self, from: row["payload"] as Data)
+            for encounterRow in try Row.fetchAll(db, sql: "SELECT payload FROM encounter WHERE caseID = ? ORDER BY position", arguments: [item.id.uuidString]) {
+                var encounter = try decoder.decode(Encounter.self, from: encounterRow["payload"] as Data)
+                encounter.transcripts = try Row.fetchAll(db, sql: "SELECT payload FROM transcript_version WHERE encounterID = ? ORDER BY position", arguments: [encounter.id.uuidString]).map { try decoder.decode(TranscriptVersion.self, from: $0["payload"] as Data) }
+                encounter.reports = try Row.fetchAll(db, sql: "SELECT payload FROM report_version WHERE encounterID = ? ORDER BY position", arguments: [encounter.id.uuidString]).map { try decoder.decode(ReportVersion.self, from: $0["payload"] as Data) }
+                encounter.shares = try Row.fetchAll(db, sql: "SELECT payload FROM share_event WHERE encounterID = ? ORDER BY position", arguments: [encounter.id.uuidString]).map { try decoder.decode(ShareEvent.self, from: $0["payload"] as Data) }
+                item.encounters.append(encounter)
             }
-            let quickChecks = try Row.fetchAll(db, sql: "SELECT payload FROM quick_check ORDER BY position").map { try decoder.decode(QuickCheck.self, from: $0["payload"] as Data) }
-            return VaultDocument(cases: cases, quickChecks: quickChecks.isEmpty ? nil : quickChecks)
+            cases.append(item)
         }
+        let quickChecks = try Row.fetchAll(db, sql: "SELECT payload FROM quick_check ORDER BY position").map { try decoder.decode(QuickCheck.self, from: $0["payload"] as Data) }
+        return VaultDocument(cases: cases, quickChecks: quickChecks.isEmpty ? nil : quickChecks)
     }
     /// Writes only the rows that differ from the database, in one transaction. Before, every save (autosave,
     /// every second of a streaming chat answer, every audio segment) deleted and rewrote the whole store with
@@ -186,32 +191,40 @@ actor CaseRepository {
         let rows = try CaseRows(document)
         // Duplicate IDs would silently collapse in the difference; the full write rejected them via the primary key.
         guard rows.hasUniqueIDs else { throw AppFailure("Speichern fehlgeschlagen: doppelte Kennungen. Die letzte gespeicherte Fassung bleibt erhalten.") }
-        let previous = written
-        written = nil
-        if let previous {
-            let changes = RowChanges(previous: previous, next: rows)
-            do {
-                if !changes.isEmpty { try database.write { db in try changes.apply(db) } }
-                lastWrite = WriteStats(inserted: changes.inserts.count, updated: changes.updates.count, deleted: changes.deletedCount, full: false)
-            } catch let error as DatabaseError where error.resultCode == .SQLITE_FULL {
-                throw error
-            } catch {
-                // The database did not hold what we thought (the transaction rolled back): write everything.
-                try Self.replaceAll(rows, in: database)
-                lastWrite = WriteStats(inserted: rows.entries.count, updated: 0, deleted: 0, full: true)
+        let previous = written, previousVersion = writtenDataVersion
+        written = nil; writtenDataVersion = nil
+        let result: (WriteStats, Int64?)
+        do {
+            result = try database.write { db in
+                // DatabaseQueue uses one connection. Compare on that connection inside the write transaction,
+                // including no-op saves: a second writer may have changed an otherwise untouched row.
+                let version = try Int64.fetchOne(db, sql: "PRAGMA data_version")
+                if let previous, let previousVersion, previousVersion == version {
+                    let changes = RowChanges(previous: previous, next: rows)
+                    try changes.apply(db)
+                    return (WriteStats(inserted: changes.inserts.count, updated: changes.updates.count, deleted: changes.deletedCount, full: false), version)
+                }
+                try Self.replaceRows(rows, in: db)
+                return (WriteStats(inserted: rows.entries.count, updated: 0, deleted: 0, full: true), version)
             }
-        } else {
-            try Self.replaceAll(rows, in: database)
-            lastWrite = WriteStats(inserted: rows.entries.count, updated: 0, deleted: 0, full: true)
+        } catch let error as DatabaseError where error.resultCode == .SQLITE_FULL {
+            throw error
+        } catch {
+            // The failed transaction rolled back. Preserve the previous full-document save semantics.
+            result = try database.write { db in
+                try Self.replaceRows(rows, in: db)
+                return (WriteStats(inserted: rows.entries.count, updated: 0, deleted: 0, full: true), try Int64.fetchOne(db, sql: "PRAGMA data_version"))
+            }
         }
-        written = rows.snapshot
+        lastWrite = result.0; writtenDataVersion = result.1; written = rows.snapshot
     }
     private static func replaceAll(_ rows: CaseRows, in database: DatabaseQueue) throws {
-        try database.write { db in
-            // A single transaction makes replacement all-or-nothing, including every version and share event.
-            for table in CaseRows.Table.allCases.reversed() { try db.execute(sql: "DELETE FROM \(table.rawValue)") }
-            for entry in rows.entries { try RowChanges.insert(entry, into: db) }
-        }
+        try database.write { try replaceRows(rows, in: $0) }
+    }
+    private static func replaceRows(_ rows: CaseRows, in db: Database) throws {
+        // A single transaction makes replacement all-or-nothing, including every version and share event.
+        for table in CaseRows.Table.allCases.reversed() { try db.execute(sql: "DELETE FROM \(table.rawValue)") }
+        for entry in rows.entries { try RowChanges.insert(entry, into: db) }
     }
     private func attachmentURL(caseID: UUID?, encounterID: UUID, id: UUID, upload: Bool) -> URL {
         root.appendingPathComponent("ChatAttachments").appendingPathComponent(caseID?.uuidString ?? "QuickChecks")

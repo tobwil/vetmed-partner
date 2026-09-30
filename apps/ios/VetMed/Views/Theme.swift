@@ -220,6 +220,8 @@ struct DayNightToggle: View {
     @State private var frame: CGRect = .zero
     var body: some View {
         Button {
+            // Avoid SwiftUI's location-based sensory-feedback callback during appearance graph teardown.
+            UISelectionFeedbackGenerator().selectionChanged()
             let next: AppearanceMode = scheme == .dark ? .light : .dark
             AppearanceSwitcher.apply(next, revealFrom: frame == .zero ? nil : CGPoint(x: frame.midX, y: frame.midY))
             mode = next
@@ -231,7 +233,6 @@ struct DayNightToggle: View {
         }
         .accessibilityLabel(scheme == .dark ? "Tagmodus" : "Nachtmodus")
         .accessibilityIdentifier("toggle-appearance")
-        .sensoryFeedback(.selection, trigger: scheme)
         .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame = $0 }
     }
 }
@@ -264,7 +265,10 @@ private struct ThemeSwatch: View {
     let selected: Bool
     var action: () -> Void
     var body: some View {
-        Button(action: action) {
+        Button {
+            if !selected { UISelectionFeedbackGenerator().selectionChanged() }
+            action()
+        } label: {
             VStack(spacing: 6) {
                 ZStack {
                     Circle().fill(theme.gradient).frame(width: 44, height: 44)
@@ -280,7 +284,6 @@ private struct ThemeSwatch: View {
             }.frame(maxWidth: .infinity)
         }
         .buttonStyle(.plain)
-        .sensoryFeedback(.selection, trigger: selected)
         .accessibilityLabel("Farbthema " + theme.title)
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
