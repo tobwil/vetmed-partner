@@ -96,6 +96,22 @@ class LocalModelTests {
         assertEquals(0L, store.storedBytes())
     }
 
+    @Test fun theFileIsHashedOncePerProcessNotBeforeEveryLoad() = runBlocking {
+        val server = Server(payload)
+        val store = ModelStore(folder.root, manifest, server, freeSpace = { Long.MAX_VALUE })
+        store.install()
+        assertEquals("Prüfung nach dem Download", 1, store.fullChecks)
+        repeat(5) { store.verify() }
+        assertEquals("Wiederholtes Laden prüft nicht erneut", 1, store.fullChecks)
+        // A new app start (new store instance) checks the whole file once.
+        val restarted = ModelStore(folder.root, manifest, server, freeSpace = { Long.MAX_VALUE })
+        restarted.verify(); restarted.verify()
+        assertEquals(1, restarted.fullChecks)
+        // Any change to the file is noticed and rejected, even within the same process.
+        store.modelFile.writeBytes(payload.copyOf().also { it[42] = (it[42] + 1).toByte() })
+        try { restarted.verify(); fail("Veränderte Datei geladen") } catch (_: AppFailure) {}
+    }
+
     @Test fun missingSpaceStopsBeforeAnyDownload() = runBlocking {
         val server = Server(payload)
         try { ModelStore(folder.root, manifest, server, freeSpace = { 1_000 }).install(); fail() }

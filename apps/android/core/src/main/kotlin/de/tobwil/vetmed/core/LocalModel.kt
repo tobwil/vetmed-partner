@@ -109,6 +109,16 @@ class ModelStore(
     private val partial: File get() = File(root, manifest.id.replace("/", "--") + "/" + manifest.revision + ".partial")
     private val receipt: File get() = File(directory, "verified.json")
 
+    /**
+     * Size and modification time of the file after its last full SHA-256 check in this process. The check runs
+     * after installation and at most once per app start; later loads (after every app switch the model is
+     * unloaded) only confirm that the verified file is unchanged, instead of hashing gigabytes again.
+     */
+    @Volatile private var verifiedStamp: Pair<Long, Long>? = null
+    @Volatile var fullChecks = 0
+        private set
+    private fun stamp() = modelFile.length() to modelFile.lastModified()
+
     fun isInstalled(): Boolean = runCatching {
         manifest.validate()
         val value = VetJson.decodeFromString(ModelReceipt.serializer(), receipt.readText())
@@ -141,6 +151,7 @@ class ModelStore(
         if (modelFile.exists()) modelFile.delete()
         if (!partial.renameTo(modelFile)) throw AppFailure("Das Modell konnte nicht abgelegt werden.")
         receipt.writeText(VetJson.encodeToString(ModelReceipt.serializer(), ModelReceipt(manifest, modelFile.length(), modelFile.lastModified())))
+        verifiedStamp = stamp()
         progress(1.0)
         modelFile
     }
@@ -168,14 +179,20 @@ class ModelStore(
         }
     }
 
-    /** Full SHA-256 check of the installed file; runs before every load. */
+    /** Runs before every load: a full SHA-256 check once per process, afterwards only when the file changed. */
     suspend fun verify() = withContext(Dispatchers.IO) {
-        if (!isInstalled() || !matches(modelFile)) {
-            throw AppFailure("Die Modelldatei fehlt oder ist beschädigt. Bitte das Modell in den Einstellungen löschen und erneut laden; Fälle bleiben erhalten.")
-        }
+        val failure = AppFailure("Die Modelldatei fehlt oder ist beschädigt. Bitte das Modell in den Einstellungen löschen und erneut laden; Fälle bleiben erhalten.")
+        if (!isInstalled()) { verifiedStamp = null; throw failure }
+        val current = stamp()
+        if (verifiedStamp == current) return@withContext
+        verifiedStamp = null
+        fullChecks += 1
+        if (!matches(modelFile)) throw failure
+        verifiedStamp = current
     }
 
     private suspend fun matches(file: File): Boolean {
+        if (file == partial) fullChecks += 1
         if (!file.exists() || file.length() != manifest.bytes) return false
         val digest = MessageDigest.getInstance("SHA-256")
         file.inputStream().use { input ->
@@ -191,6 +208,7 @@ class ModelStore(
     }
 
     fun remove() {
+        verifiedStamp = null
         directory.deleteRecursively(); partial.delete()
     }
 }

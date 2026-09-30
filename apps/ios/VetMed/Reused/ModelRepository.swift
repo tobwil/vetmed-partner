@@ -43,6 +43,16 @@ struct ModelManifest: Codable, Equatable, Sendable {
     }
 }
 
+/// Remembers which file stamps passed a full SHA-256 check in this process. Every load used to hash the whole
+/// model again (about 3.6 GB), although the model is unloaded on each app switch. Now the full check runs after
+/// installation and once per app start; later loads only confirm that size and modification date are unchanged.
+struct ModelVerificationMemory: Sendable {
+    private(set) var verified: [String: ModelRepository.Receipt.Stamp]?
+    func needsFullCheck(current: [String: ModelRepository.Receipt.Stamp]?) -> Bool { current == nil || current != verified }
+    mutating func remember(_ stamps: [String: ModelRepository.Receipt.Stamp]?) { verified = stamps }
+    mutating func forget() { verified = nil }
+}
+
 /// All paths derive from validated, bundled manifests, never network-supplied filenames.
 /// A staging directory becomes usable only after all pinned SHA-256 checks succeed.
 struct ModelRepository: Sendable {
@@ -205,6 +215,9 @@ struct ModelRepository: Sendable {
         }
         return hash.finalize().map { String(format: "%02x", $0) }.joined() == file.sha256
     }
+
+    /// Size and modification date of every installed file, or nil when the model is incomplete.
+    func currentStamps(_ manifest: ModelManifest) -> [String: Receipt.Stamp]? { try? stamps(manifest, at: directory(manifest)) }
 
     private func stamps(_ manifest: ModelManifest, at location: URL) throws -> [String: Receipt.Stamp] {
         var result: [String: Receipt.Stamp] = [:]

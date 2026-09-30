@@ -44,6 +44,7 @@ final class MLXLocalReportEngine: ObservableObject, ReportTextEngine {
     private var installationToken: UUID?
     private var memoryStopRequested = false
     private let repository = ModelRepository()
+    private var verification = ModelVerificationMemory()
     init() {
         #if !targetEnvironment(simulator)
         Memory.cacheLimit = 32 * 1024 * 1024
@@ -63,8 +64,9 @@ final class MLXLocalReportEngine: ObservableObject, ReportTextEngine {
             _ = try await repository.prepare(manifest) { [weak self] fraction in
                 Task { @MainActor in guard self?.installationToken == token else { return }; self?.progress = fraction }
             }
+            verification.remember(repository.currentStamps(manifest))
             status = "Installiert · offline verfügbar"
-        } catch { status = "Installation unterbrochen"; throw error }
+        } catch { verification.forget(); status = "Installation unterbrochen"; throw error }
     }
     func load() async throws {
         guard !isBusy else { throw AppFailure("Modell arbeitet noch.") }
@@ -80,8 +82,13 @@ final class MLXLocalReportEngine: ObservableObject, ReportTextEngine {
         do {
             // prepare only follows the verified installed path. It cannot download in this path.
             let directory = repository.directory(manifest)
-            let verification = Task.detached { [repository] in try repository.verify(manifest, at: directory) }
-            try await withTaskCancellationHandler { try await verification.value } onCancel: { verification.cancel() }
+            let stamps = repository.currentStamps(manifest)
+            if verification.needsFullCheck(current: stamps) {
+                verification.forget()
+                let check = Task.detached { [repository] in try repository.verify(manifest, at: directory) }
+                try await withTaskCancellationHandler { try await check.value } onCancel: { check.cancel() }
+                verification.remember(stamps)
+            }
             await GemmaVisionCompatibility.register()
             let tokenizerLoader: any TokenizerLoader = #huggingFaceTokenizerLoader()
             let tokenizer = try await tokenizerLoader.load(from: directory)
@@ -99,6 +106,7 @@ final class MLXLocalReportEngine: ObservableObject, ReportTextEngine {
     }
     func delete() throws {
         try unload()
+        verification.forget()
         if let manifest = try ModelManifest.bundled().first { try repository.remove(manifest) }
         refresh(); status = "Nicht installiert"
     }

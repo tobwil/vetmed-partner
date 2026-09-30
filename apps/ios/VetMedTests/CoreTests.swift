@@ -336,6 +336,29 @@ final class CoreTests: XCTestCase {
         let manifest = ModelManifest(id: "../unsafe", revision: String(repeating: "a", count: 40), files: [file])
         XCTAssertThrowsError(try manifest.validate())
     }
+    func testModelIsHashedOncePerProcessAndAgainAfterAnyChange() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let names = ["config.json", "tokenizer.json", "model.safetensors"]
+        let manifest = ModelManifest(id: "synthetic/model", revision: String(repeating: "a", count: 40),
+                                     files: names.map { .init(name: $0, bytes: 4, sha256: String(repeating: "b", count: 64)) })
+        let repository = ModelRepository(root: root)
+        XCTAssertNil(repository.currentStamps(manifest), "Incomplete model has no stamps")
+        let directory = repository.directory(manifest)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        for name in names { try Data("1234".utf8).write(to: directory.appendingPathComponent(name)) }
+        var memory = ModelVerificationMemory()
+        let first = repository.currentStamps(manifest)
+        XCTAssertNotNil(first)
+        XCTAssertTrue(memory.needsFullCheck(current: first), "First load of an app start hashes the model")
+        memory.remember(first)
+        XCTAssertFalse(memory.needsFullCheck(current: repository.currentStamps(manifest)), "Reloading after an app switch does not hash again")
+        let later = Date().addingTimeInterval(5)
+        try FileManager.default.setAttributes([.modificationDate: later], ofItemAtPath: directory.appendingPathComponent("model.safetensors").path)
+        XCTAssertTrue(memory.needsFullCheck(current: repository.currentStamps(manifest)), "A changed file is hashed again")
+        memory.forget()
+        XCTAssertTrue(memory.needsFullCheck(current: first))
+    }
     func testEncryptedAudioIsDiscoverableAfterMissingMetadataWrite() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
