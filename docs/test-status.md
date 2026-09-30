@@ -93,6 +93,28 @@ Branch `claude/android-parity`, Details in `architecture/0010-android-parity.md`
 
 Nicht geprüft: Mikrofon, `SpeechRecognizer`, LiteRT-LM mit echten Gewichten, der 2,6-GB-Download, ML-Kit-OCR, `PdfDocument`, Teilen-Menü, SQLCipher/Keystore auf Hardware und echte OpenAI-Aufrufe. Die Gerätetests `SqlCipherDeviceTests`, `ReportPdfDeviceTests` und `LocalModelDeviceTests` sind gebaut, aber nicht ausgeführt.
 
+## Dringende Optimierungen am 30.09.2026
+
+Branch `claude/urgent-fixes`, Details in `architecture/0011-incremental-persistence-and-robustness.md`.
+
+- Beide Plattformen speichern nur noch geänderte Zeilen statt der ganzen Datenbank.
+- Das Offline-Modell wird nur noch einmal pro App-Start vollständig gehasht.
+- Auf Android beendet das Drehen des Geräts keine Aufnahme mehr.
+- Nach einem Absturz stellt Android wie iOS den Zustand wieder her und räumt auf.
+
+Prüfung:
+
+- Android: 83 Kern- und 43 App-Tests ohne Fehler, Lint ohne Befunde, Build erfolgreich.
+- iOS: Die neue Speicherlogik wurde unter Linux mit Swift 6.1 im Swift-6-Modus gegen GRDB 7.11.1 und SQLite gebaut, ohne SQLCipher. Ein Prüfprogramm mit denselben Szenarien wie der neue XCTest bestand. Die XCTests selbst sind **noch nicht in Xcode ausgeführt**; `./scripts/test-ios.sh` steht aus.
+
+**Noch nicht auf `main`.** Vorher nötig:
+
+- iOS-Tests auf dem Mac
+- iOS-Build mit SQLCipher
+- ein kurzer Rauchtest auf dem iPhone mit vorhandenen Daten
+
+Die vollständige Liste steht in ADR 0011 unter „Vor dem Übernehmen auf `main`“.
+
 ## Noch offen
 
 | Phase | Stand | Fehlende Abnahme |

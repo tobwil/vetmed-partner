@@ -65,6 +65,11 @@ actor CaseRepository {
     let root: URL
     private let key: SymmetricKey
     private let database: DatabaseQueue
+    /// What the database holds after the last read or successful write; nil means "unknown, write everything".
+    private var written: CaseRows.Snapshot?
+    /// Rows touched by the last save. Tests use it to prove that saves stay proportional to the change.
+    struct WriteStats: Equatable, Sendable { let inserted: Int; let updated: Int; let deleted: Int; let full: Bool }
+    private(set) var lastWrite: WriteStats?
     static func hasExistingData(at root: URL) -> Bool {
         ["cases.sqlite", "cases.v1.aesgcm"].contains { FileManager.default.fileExists(atPath: root.appendingPathComponent($0).path) }
     }
@@ -107,13 +112,17 @@ actor CaseRepository {
             let count = try database.read { try Int.fetchOne($0, sql: "SELECT COUNT(*) FROM clinical_case") ?? 0 }
             let data = try AES.GCM.open(AES.GCM.SealedBox(combined: Data(contentsOf: legacy)), using: key, authenticating: Data("cases-v1".utf8))
             let document = try JSONDecoder().decode(VaultDocument.self, from: data)
-            if count == 0 { try Self.write(document, to: database) }
+            if count == 0 { try Self.replaceAll(try CaseRows(document), in: database) }
             guard try Self.read(database) == document else { throw AppFailure("Migration konnte nicht vollständig bestätigt werden. Die alte verschlüsselte Datei bleibt erhalten.") }
             try FileManager.default.removeItem(at: legacy)
         }
         try FileManager.default.setAttributes([.protectionKey: FileProtectionType.complete], ofItemAtPath: root.appendingPathComponent("cases.sqlite").path)
     }
-    func load() throws -> VaultDocument { try Self.read(database) }
+    func load() throws -> VaultDocument {
+        let document = try Self.read(database)
+        written = try database.read { try CaseRows.stored($0) }
+        return document
+    }
     func vocabulary() throws -> [VocabularyEntry] {
         try database.read { db in
             try Row.fetchAll(db, sql: "SELECT payload FROM vocabulary ORDER BY position").map { try JSONDecoder().decode(VocabularyEntry.self, from: $0["payload"] as Data) }
@@ -128,7 +137,7 @@ actor CaseRepository {
         }
     }
     func save(_ document: VaultDocument) throws {
-        do { try Self.write(document, to: database) }
+        do { try write(document) }
         catch let error as DatabaseError where error.resultCode == .SQLITE_FULL {
             throw AppFailure("Der Gerätespeicher ist voll. Die letzte gespeicherte Fassung bleibt erhalten. Bitte Speicher freigeben und erneut speichern.")
         }
@@ -168,27 +177,40 @@ actor CaseRepository {
             return VaultDocument(cases: cases, quickChecks: quickChecks.isEmpty ? nil : quickChecks)
         }
     }
-    private static func write(_ document: VaultDocument, to database: DatabaseQueue) throws {
+    /// Writes only the rows that differ from the database, in one transaction. Before, every save (autosave,
+    /// every second of a streaming chat answer, every audio segment) deleted and rewrote the whole store with
+    /// secure_delete. If the known state is missing or turns out to be wrong, everything is written as before;
+    /// after any failure the known state is dropped, so the next save starts from a full write again.
+    private func write(_ document: VaultDocument) throws {
         guard document.schemaVersion == 1 else { throw AppFailure("Unbekannte Speicherversion.") }
+        let rows = try CaseRows(document)
+        // Duplicate IDs would silently collapse in the difference; the full write rejected them via the primary key.
+        guard rows.hasUniqueIDs else { throw AppFailure("Speichern fehlgeschlagen: doppelte Kennungen. Die letzte gespeicherte Fassung bleibt erhalten.") }
+        let previous = written
+        written = nil
+        if let previous {
+            let changes = RowChanges(previous: previous, next: rows)
+            do {
+                if !changes.isEmpty { try database.write { db in try changes.apply(db) } }
+                lastWrite = WriteStats(inserted: changes.inserts.count, updated: changes.updates.count, deleted: changes.deletedCount, full: false)
+            } catch let error as DatabaseError where error.resultCode == .SQLITE_FULL {
+                throw error
+            } catch {
+                // The database did not hold what we thought (the transaction rolled back): write everything.
+                try Self.replaceAll(rows, in: database)
+                lastWrite = WriteStats(inserted: rows.entries.count, updated: 0, deleted: 0, full: true)
+            }
+        } else {
+            try Self.replaceAll(rows, in: database)
+            lastWrite = WriteStats(inserted: rows.entries.count, updated: 0, deleted: 0, full: true)
+        }
+        written = rows.snapshot
+    }
+    private static func replaceAll(_ rows: CaseRows, in database: DatabaseQueue) throws {
         try database.write { db in
-            let encoder = JSONEncoder()
             // A single transaction makes replacement all-or-nothing, including every version and share event.
-            try db.execute(sql: "DELETE FROM quick_check")
-            for (position, check) in (document.quickChecks ?? []).enumerated() {
-                try db.execute(sql: "INSERT INTO quick_check VALUES (?, ?, ?)", arguments: [check.id.uuidString, position, try encoder.encode(check)])
-            }
-            try db.execute(sql: "DELETE FROM clinical_case")
-            for (position, original) in document.cases.enumerated() {
-                var item = original; item.encounters = []
-                try db.execute(sql: "INSERT INTO clinical_case VALUES (?, ?, ?)", arguments: [item.id.uuidString, position, try encoder.encode(item)])
-                for (index, originalEncounter) in original.encounters.enumerated() {
-                    var encounter = originalEncounter; encounter.transcripts = []; encounter.reports = []; encounter.shares = []
-                    try db.execute(sql: "INSERT INTO encounter VALUES (?, ?, ?, ?)", arguments: [encounter.id.uuidString, item.id.uuidString, index, try encoder.encode(encounter)])
-                    for (n, value) in originalEncounter.transcripts.enumerated() { try db.execute(sql: "INSERT INTO transcript_version VALUES (?, ?, ?, ?)", arguments: [value.id.uuidString, encounter.id.uuidString, n, try encoder.encode(value)]) }
-                    for (n, value) in originalEncounter.reports.enumerated() { try db.execute(sql: "INSERT INTO report_version VALUES (?, ?, ?, ?)", arguments: [value.id.uuidString, encounter.id.uuidString, n, try encoder.encode(value)]) }
-                    for (n, value) in originalEncounter.shares.enumerated() { try db.execute(sql: "INSERT INTO share_event VALUES (?, ?, ?, ?)", arguments: [value.id.uuidString, encounter.id.uuidString, n, try encoder.encode(value)]) }
-                }
-            }
+            for table in CaseRows.Table.allCases.reversed() { try db.execute(sql: "DELETE FROM \(table.rawValue)") }
+            for entry in rows.entries { try RowChanges.insert(entry, into: db) }
         }
     }
     private func attachmentURL(caseID: UUID?, encounterID: UUID, id: UUID, upload: Bool) -> URL {
@@ -274,5 +296,132 @@ actor CaseRepository {
     }
     private func decrypt(_ data: Data, context: String) throws -> Data {
         try AES.GCM.open(AES.GCM.SealedBox(combined: data), using: key, authenticating: Data(context.utf8))
+    }
+}
+
+/// The rows of one save, built from the document with the same layout as before: one row per case, encounter
+/// and version with a JSON payload and a position. Pure, so the difference logic is testable without a database.
+struct CaseRows: Sendable {
+    /// Parents before children; deletions run in reverse.
+    enum Table: String, CaseIterable, Sendable {
+        case clinicalCase = "clinical_case", encounter, transcriptVersion = "transcript_version"
+        case reportVersion = "report_version", shareEvent = "share_event", quickCheck = "quick_check"
+        var parentColumn: String? {
+            switch self {
+            case .encounter: return "caseID"
+            case .transcriptVersion, .reportVersion, .shareEvent: return "encounterID"
+            case .clinicalCase, .quickCheck: return nil
+            }
+        }
+    }
+    /// What is stored for one row, without its content: parent, position and a SHA-256 of the payload.
+    struct State: Equatable, Sendable { let parent: String?; let position: Int; let digest: Data }
+    struct Entry: Sendable { let table: Table; let id: String; let parent: String?; let position: Int; let payload: Data }
+    typealias Snapshot = [Table: [String: State]]
+
+    let entries: [Entry]
+    let snapshot: Snapshot
+    let hasUniqueIDs: Bool
+
+    init(_ document: VaultDocument) throws {
+        let encoder = JSONEncoder()
+        // Stable key order keeps the digest of an unchanged value unchanged.
+        encoder.outputFormatting = [.sortedKeys]
+        var entries: [Entry] = []
+        func add<Value: Encodable>(_ table: Table, _ id: UUID, _ parent: UUID?, _ position: Int, _ value: Value) throws {
+            entries.append(Entry(table: table, id: id.uuidString, parent: parent?.uuidString, position: position, payload: try encoder.encode(value)))
+        }
+        for (position, original) in document.cases.enumerated() {
+            var item = original; item.encounters = []
+            try add(.clinicalCase, item.id, nil, position, item)
+            for (index, originalEncounter) in original.encounters.enumerated() {
+                var encounter = originalEncounter; encounter.transcripts = []; encounter.reports = []; encounter.shares = []
+                try add(.encounter, encounter.id, item.id, index, encounter)
+                for (n, value) in originalEncounter.transcripts.enumerated() { try add(.transcriptVersion, value.id, encounter.id, n, value) }
+                for (n, value) in originalEncounter.reports.enumerated() { try add(.reportVersion, value.id, encounter.id, n, value) }
+                for (n, value) in originalEncounter.shares.enumerated() { try add(.shareEvent, value.id, encounter.id, n, value) }
+            }
+        }
+        for (position, check) in (document.quickChecks ?? []).enumerated() { try add(.quickCheck, check.id, nil, position, check) }
+        var snapshot: Snapshot = [:]
+        for table in Table.allCases { snapshot[table] = [:] }
+        for entry in entries {
+            snapshot[entry.table, default: [:]][entry.id] = State(parent: entry.parent, position: entry.position, digest: Data(SHA256.hash(data: entry.payload)))
+        }
+        self.entries = entries
+        self.snapshot = snapshot
+        hasUniqueIDs = snapshot.values.reduce(0) { $0 + $1.count } == entries.count
+    }
+
+    /// The state of the rows as they are stored, read once when the cases are opened.
+    static func stored(_ db: Database) throws -> Snapshot {
+        var snapshot: Snapshot = [:]
+        for table in Table.allCases {
+            let parent = table.parentColumn ?? "NULL"
+            var states: [String: State] = [:]
+            for row in try Row.fetchAll(db, sql: "SELECT id, \(parent) AS parent, position, payload FROM \(table.rawValue)") {
+                let id: String = row["id"]
+                let parentID: String? = row["parent"]
+                let position: Int = row["position"]
+                let payload: Data = row["payload"]
+                states[id] = State(parent: parentID, position: position, digest: Data(SHA256.hash(data: payload)))
+            }
+            snapshot[table] = states
+        }
+        return snapshot
+    }
+}
+
+/// The difference between what the database holds and the next document: only these rows are written.
+struct RowChanges: Sendable {
+    let inserts: [CaseRows.Entry]
+    let updates: [CaseRows.Entry]
+    let deletions: [CaseRows.Table: [String]]
+    var deletedCount: Int { deletions.values.reduce(0) { $0 + $1.count } }
+    var isEmpty: Bool { inserts.isEmpty && updates.isEmpty && deletedCount == 0 }
+
+    init(previous: CaseRows.Snapshot, next: CaseRows) {
+        var inserts: [CaseRows.Entry] = [], updates: [CaseRows.Entry] = []
+        for entry in next.entries {
+            let before = previous[entry.table]?[entry.id]
+            guard before != next.snapshot[entry.table]?[entry.id] else { continue }
+            if before == nil { inserts.append(entry) } else { updates.append(entry) }
+        }
+        var deletions: [CaseRows.Table: [String]] = [:]
+        for table in CaseRows.Table.allCases {
+            let remaining = Set(next.snapshot[table]?.keys.map { $0 } ?? [])
+            deletions[table] = (previous[table]?.keys.map { $0 } ?? []).filter { !remaining.contains($0) }
+        }
+        self.inserts = inserts; self.updates = updates; self.deletions = deletions
+    }
+
+    /// Updates never delete a row first, so ON DELETE CASCADE cannot remove versions of an unchanged encounter.
+    /// Children are deleted before and inserted after their parents.
+    func apply(_ db: Database) throws {
+        for table in CaseRows.Table.allCases.reversed() {
+            for id in deletions[table] ?? [] { try db.execute(sql: "DELETE FROM \(table.rawValue) WHERE id = ?", arguments: [id]) }
+        }
+        for entry in inserts { try Self.insert(entry, into: db) }
+        for entry in updates {
+            if let column = entry.table.parentColumn {
+                try db.execute(sql: "UPDATE \(entry.table.rawValue) SET \(column) = ?, position = ?, payload = ? WHERE id = ?",
+                               arguments: [entry.parent, entry.position, entry.payload, entry.id])
+            } else {
+                try db.execute(sql: "UPDATE \(entry.table.rawValue) SET position = ?, payload = ? WHERE id = ?",
+                               arguments: [entry.position, entry.payload, entry.id])
+            }
+            // A row that should exist but does not means the known state is wrong: roll back, write everything.
+            guard db.changesCount == 1 else { throw AppFailure("Gespeicherter Stand weicht ab.") }
+        }
+    }
+
+    static func insert(_ entry: CaseRows.Entry, into db: Database) throws {
+        if let column = entry.table.parentColumn {
+            try db.execute(sql: "INSERT INTO \(entry.table.rawValue) (id, \(column), position, payload) VALUES (?, ?, ?, ?)",
+                           arguments: [entry.id, entry.parent, entry.position, entry.payload])
+        } else {
+            try db.execute(sql: "INSERT INTO \(entry.table.rawValue) (id, position, payload) VALUES (?, ?, ?)",
+                           arguments: [entry.id, entry.position, entry.payload])
+        }
     }
 }

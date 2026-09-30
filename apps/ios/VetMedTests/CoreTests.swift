@@ -303,6 +303,62 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(restored, saved)
         try await repo.verifyIntegrity()
     }
+    func testSavesWriteOnlyChangedRowsAndFallBackWhenTheStoreDiffers() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let key = SymmetricKey(size: .bits256)
+        let repo = try CaseRepository(root: root, key: key)
+        var document = VaultDocument(cases: (0..<5).map { n in
+            var item = VetCase(label: "K-\(n)", species: "Hund")
+            var encounter = Encounter()
+            let text = "Hund \(n),5 kg. Kein Fieber."
+            encounter.transcripts = [TranscriptVersion(rawText: text, editedText: text, segments: [.init(id: "s\(n)", text: text)], engine: "synthetic")]
+            item.encounters = [encounter, Encounter()]
+            return item
+        }, quickChecks: [QuickCheck()])
+        try await repo.save(document)
+        let first = await repo.lastWrite
+        XCTAssertEqual(first?.full, true)
+        try await repo.save(document)
+        let unchanged = await repo.lastWrite
+        XCTAssertEqual(unchanged, .init(inserted: 0, updated: 0, deleted: 0, full: false))
+
+        let text = "Hund 9,5 kg. Kein Fieber. Kontrolle in 3 Tagen."
+        document.cases[2].encounters[0].transcripts.append(TranscriptVersion(rawText: text, editedText: text, segments: [.init(id: "x", text: text)], engine: "synthetic"))
+        document.cases[2].encounters[0].state = .transcriptReady
+        try await repo.save(document)
+        let edited = await repo.lastWrite
+        XCTAssertEqual(edited, .init(inserted: 1, updated: 1, deleted: 0, full: false), "One new version and its encounter, nothing else")
+
+        document.cases.reverse()
+        try await repo.save(document)
+        let reordered = await repo.lastWrite
+        XCTAssertEqual(reordered, .init(inserted: 0, updated: 4, deleted: 0, full: false), "Reordering changes positions only")
+
+        document.cases[0].encounters[1].reason = "Chat läuft"
+        try await repo.save(document)
+        let streaming = await repo.lastWrite
+        XCTAssertEqual(streaming, .init(inserted: 0, updated: 1, deleted: 0, full: false), "A streaming checkpoint rewrites one encounter row")
+
+        document.cases.remove(at: 1)
+        try await repo.save(document)
+        let deleted = await repo.lastWrite
+        XCTAssertEqual(deleted?.inserted, 0); XCTAssertEqual(deleted?.updated, 3); XCTAssertEqual(deleted?.full, false)
+        let afterDelete = try await repo.load()
+        XCTAssertEqual(afterDelete, document)
+
+        // Another writer removes a case: the stale repository must fall back to a full write instead of losing the edit.
+        let other = try CaseRepository(root: root, key: key)
+        var shorter = try await other.load(); shorter.cases.removeFirst()
+        try await other.save(shorter)
+        document.cases[0].label = "Umbenannt"
+        try await repo.save(document)
+        let fallback = await repo.lastWrite
+        XCTAssertEqual(fallback?.full, true)
+        let restored = try await CaseRepository(root: root, key: key).load()
+        XCTAssertEqual(restored, document)
+        try await repo.verifyIntegrity()
+    }
     func testVocabularyPersistsWithoutChangingOriginalTranscript() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
