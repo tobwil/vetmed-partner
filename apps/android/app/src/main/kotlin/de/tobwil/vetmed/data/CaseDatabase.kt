@@ -10,6 +10,8 @@ import androidx.room.PrimaryKey
 import androidx.room.Query
 import androidx.room.RoomDatabase
 import androidx.room.Transaction
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 
 /*
  * Same layout as the iOS SQLCipher schema: one row per case, encounter and version, each with a JSON
@@ -50,12 +52,17 @@ class ShareRow(@PrimaryKey val id: String, val encounterID: String, val position
 @Entity(tableName = "vocabulary")
 class VocabularyRow(@PrimaryKey val id: String, val position: Int, val payload: ByteArray)
 
+/** Standalone chats without a clinical case, stored apart from cases like on iOS. */
+@Entity(tableName = "quick_check")
+class QuickCheckRow(@PrimaryKey val id: String, val position: Int, val payload: ByteArray)
+
 class CaseRows(
     val cases: List<CaseRow>,
     val encounters: List<EncounterRow>,
     val transcripts: List<TranscriptRow>,
     val reports: List<ReportRow>,
     val shares: List<ShareRow>,
+    val quickChecks: List<QuickCheckRow> = emptyList(),
 )
 
 @Dao
@@ -66,6 +73,7 @@ abstract class CaseDao {
     @Query("SELECT * FROM report_version ORDER BY encounterID, position") abstract fun reports(): List<ReportRow>
     @Query("SELECT * FROM share_event ORDER BY encounterID, position") abstract fun shares(): List<ShareRow>
     @Query("SELECT * FROM vocabulary ORDER BY position") abstract fun vocabulary(): List<VocabularyRow>
+    @Query("SELECT * FROM quick_check ORDER BY position") abstract fun quickChecks(): List<QuickCheckRow>
     @Query("SELECT COUNT(*) FROM clinical_case") abstract fun caseCount(): Int
 
     @Query("DELETE FROM share_event") protected abstract fun clearShares()
@@ -74,23 +82,26 @@ abstract class CaseDao {
     @Query("DELETE FROM encounter") protected abstract fun clearEncounters()
     @Query("DELETE FROM clinical_case") protected abstract fun clearCases()
     @Query("DELETE FROM vocabulary") protected abstract fun clearVocabulary()
+    @Query("DELETE FROM quick_check") protected abstract fun clearQuickChecks()
     @Insert protected abstract fun insertCases(rows: List<CaseRow>)
     @Insert protected abstract fun insertEncounters(rows: List<EncounterRow>)
     @Insert protected abstract fun insertTranscripts(rows: List<TranscriptRow>)
     @Insert protected abstract fun insertReports(rows: List<ReportRow>)
     @Insert protected abstract fun insertShares(rows: List<ShareRow>)
     @Insert protected abstract fun insertVocabulary(rows: List<VocabularyRow>)
+    @Insert protected abstract fun insertQuickChecks(rows: List<QuickCheckRow>)
 
     /** All reads in one transaction, so a concurrent save can never produce a mixed document. */
     @Transaction
-    open fun snapshot(): CaseRows = CaseRows(cases(), encounters(), transcripts(), reports(), shares())
+    open fun snapshot(): CaseRows = CaseRows(cases(), encounters(), transcripts(), reports(), shares(), quickChecks())
 
     /** All-or-nothing replacement, including every version and share event (iOS does the same). */
     @Transaction
     open fun replaceAll(rows: CaseRows) {
-        clearShares(); clearReports(); clearTranscripts(); clearEncounters(); clearCases()
+        clearShares(); clearReports(); clearTranscripts(); clearEncounters(); clearCases(); clearQuickChecks()
         insertCases(rows.cases); insertEncounters(rows.encounters)
         insertTranscripts(rows.transcripts); insertReports(rows.reports); insertShares(rows.shares)
+        insertQuickChecks(rows.quickChecks)
     }
 
     @Transaction
@@ -98,10 +109,20 @@ abstract class CaseDao {
 }
 
 @Database(
-    entities = [CaseRow::class, EncounterRow::class, TranscriptRow::class, ReportRow::class, ShareRow::class, VocabularyRow::class],
-    version = 1,
+    entities = [CaseRow::class, EncounterRow::class, TranscriptRow::class, ReportRow::class, ShareRow::class, VocabularyRow::class, QuickCheckRow::class],
+    version = 2,
     exportSchema = true,
 )
 abstract class CaseDatabase : RoomDatabase() {
     abstract fun cases(): CaseDao
+
+    companion object {
+        /** Version 2 adds standalone chats. Existing cases are untouched. */
+        val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS `quick_check` (`id` TEXT NOT NULL, `position` INTEGER NOT NULL, `payload` BLOB NOT NULL, PRIMARY KEY(`id`))")
+            }
+        }
+        val MIGRATIONS = arrayOf(MIGRATION_1_2)
+    }
 }

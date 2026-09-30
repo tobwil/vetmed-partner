@@ -77,6 +77,9 @@ import kotlinx.serialization.Serializable
 @Serializable data class CaseRoute(val caseID: String)
 @Serializable data class EncounterRoute(val caseID: String, val encounterID: String) { val location get() = EncounterLocation(caseID, encounterID) }
 @Serializable data class ReportRoute(val caseID: String, val encounterID: String, val reportID: String) { val location get() = EncounterLocation(caseID, encounterID) }
+@Serializable data class ChatConversationRoute(val caseID: String? = null, val encounterID: String) {
+    val location get() = de.tobwil.vetmed.core.ChatLocation(caseID, encounterID)
+}
 @Serializable object SettingsRoute
 @Serializable object OnlineRoute
 @Serializable object VocabularyRoute
@@ -154,7 +157,8 @@ private fun AppContent(model: AppViewModel) {
                 ) {
                     composable<StartRoute> { StartScreen(model, navController) }
                     composable<CasesRoute> { CasesScreen(model, navController) }
-                    composable<ChatRoute> { ChatScreen() }
+                    composable<ChatRoute> { ChatListScreen(model, navController) }
+                    composable<ChatConversationRoute> { ChatConversationScreen(model, navController, it.toRoute<ChatConversationRoute>().location) }
                     composable<CaseRoute> { CaseDetailScreen(model, navController, it.toRoute<CaseRoute>().caseID) }
                     composable<EncounterRoute> { EncounterScreen(model, navController, it.toRoute<EncounterRoute>().location) }
                     composable<ReportRoute> { entry -> val route = entry.toRoute<ReportRoute>(); ReportReviewScreen(model, navController, route.location, route.reportID) }

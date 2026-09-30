@@ -20,6 +20,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.Chat
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.Add
@@ -204,6 +205,10 @@ fun CaseDetailScreen(model: AppViewModel, nav: NavHostController, caseID: String
                         if (encounter.reports.isNotEmpty()) {
                             Text("${encounter.reports.size} Berichtsversionen", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp))
                         }
+                        TextButton(
+                            enabled = !busy, modifier = Modifier.testTag("open-case-chat-" + encounter.id),
+                            onClick = { nav.navigate(ChatConversationRoute(item.id, encounter.id)) },
+                        ) { Icon(Icons.AutoMirrored.Rounded.Chat, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Zum Fall chatten") }
                     }
                 }
                 item {

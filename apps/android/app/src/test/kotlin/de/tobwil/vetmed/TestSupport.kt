@@ -1,6 +1,11 @@
 package de.tobwil.vetmed
 
+import de.tobwil.vetmed.core.AnalysisRun
+import de.tobwil.vetmed.core.AnalysisStatus
 import de.tobwil.vetmed.core.Audience
+import de.tobwil.vetmed.core.ChatOperations
+import de.tobwil.vetmed.core.SparringDraft
+import de.tobwil.vetmed.core.SparringRequestBuilder
 import de.tobwil.vetmed.core.CaseOperations
 import de.tobwil.vetmed.core.CaseOperations.mapCase
 import de.tobwil.vetmed.core.CaseOperations.mapEncounter
@@ -38,6 +43,7 @@ class MemoryKeys(var key: SecretKey? = null) : KeySource {
 val PlainSqliteOpener = DatabaseOpener { context, file, _ ->
     Room.databaseBuilder(context, CaseDatabase::class.java, file.absolutePath)
         .openHelperFactory(FrameworkSQLiteOpenHelperFactory())
+        .addMigrations(*CaseDatabase.MIGRATIONS)
         .addCallback(SecureDeleteCallback)
         .build()
 }
@@ -74,7 +80,17 @@ object SyntheticCases {
         document = CaseOperations.saveTranscript(document, bello, "Hund 12,5 kg. Kein Fieber. Lahmheit hinten links. Kontrolle in 3 Tagen.")
         val belloReport = verbatimReport(document, bello, "Befunde")
         document = document.mapEncounter(bello) { it.copy(reports = listOf(belloReport), state = EncounterState.REVIEW_REQUIRED) }
-        document = document.mapCase(bello.caseID) { it }
+        // A completed case chat with a formatted answer, and a standalone quick check.
+        val encounter = CaseOperations.encounter(document, bello)!!
+        val caseItem = document.cases.first { it.id == bello.caseID }
+        val snapshot = SparringRequestBuilder.prepare(
+            bello.caseID, encounter, SparringDraft(question = "Welche Differenzialdiagnosen bei Lahmheit hinten links?", reportIDs = listOf(belloReport.id)),
+            "synthetic-model", caseItem, instructions = "test",
+        )
+        val answer = "## Mögliche Ursachen\n\n- **Kreuzbandriss** – häufig bei plötzlicher Lahmheit\n- **Patellaluxation** – eher bei kleinen Rassen\n- *Pfotenverletzung* – Ballen prüfen\n\nSinnvoll sind Palpation und ggf. Röntgen."
+        document = document.mapEncounter(bello) { it.copy(analysisRuns = listOf(AnalysisRun(snapshot = snapshot, status = AnalysisStatus.COMPLETED, text = answer, actualModelID = "synthetic-model-snapshot"))) }
+        val (withCheck, chat) = ChatOperations.newQuickCheck(document)
+        document = ChatOperations.saveDraft(withCheck, chat, SparringDraft(question = "Allgemeine Frage zur Impfung"))
         return Seeded(document, bello, belloReport.id)
     }
 }

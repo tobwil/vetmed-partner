@@ -155,4 +155,45 @@ class WalkthroughTests {
         assertTrue(model.document.value.cases.none { it.id == seeded.withReport.caseID })
         assertEquals(2, runBlocking { repository().load() }.cases.size)
     }
+
+    @Test fun chatListSeparatesQuickChecksAndCaseChats() {
+        launch(SyntheticCases.seed().document, theme = AccentTheme.LAVENDEL)
+        compose.onNodeWithTag("tab-chat").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithText("OHNE FALL").assertIsDisplayed()
+        compose.onNodeWithText("ZU EINEM FALL").assertIsDisplayed()
+        compose.onNodeWithText("Allgemeine Frage zur Impfung").assertIsDisplayed()
+        shot("08-chats-lavendel")
+    }
+
+    @Test fun caseChatRendersFormattedAnswerWithReports() {
+        val seeded = SyntheticCases.seed()
+        val model = launch(seeded.document, AppearanceMode.DARK, AccentTheme.OZEAN)
+        compose.onNodeWithTag("tab-chat").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithTag("chat-row-" + seeded.withReport.encounterID).performClick()
+        waitFor("Chat geöffnet", model) { runCatching { compose.onNodeWithText("Mögliche Ursachen").assertIsDisplayed() }.isSuccess }
+        compose.onNodeWithTag("chat-scope", useUnmergedTree = true).assertIsDisplayed()
+        assertEquals(2, compose.onAllNodesWithText("1 Bericht als Wissen").fetchSemanticsNodes().size)
+        compose.onNodeWithTag("copy-answer-" + model.chatContext(de.tobwil.vetmed.core.ChatLocation(seeded.withReport.caseID, seeded.withReport.encounterID))!!.analysisRuns!!.single().id).assertIsDisplayed()
+        shot("09-chat-antwort-nacht")
+    }
+
+    @Test fun newQuickCheckSavesDraftWithoutCreatingACase() {
+        val model = launch(SyntheticCases.seed().document)
+        val cases = model.document.value.cases.size
+        compose.onNodeWithTag("start-chat").performClick()
+        waitFor("Chat angelegt", model) { model.document.value.quickChecks.orEmpty().size == 2 }
+        waitFor("Chat geöffnet", model) { runCatching { compose.onNodeWithTag("chat-scope", useUnmergedTree = true).assertIsDisplayed() }.isSuccess }
+        compose.onNodeWithText("Was möchtest du besprechen?").assertIsDisplayed()
+        compose.onNodeWithTag("sparring-question").performTextInput("Schnellcheck QA synthetisch")
+        compose.mainClock.advanceTimeBy(1_000)
+        waitFor("Entwurf gespeichert", model) { model.document.value.quickChecks!!.any { it.draft.question == "Schnellcheck QA synthetisch" } }
+        compose.onNodeWithText("Lokal gespeichert · KI-Antworten fachlich prüfen").assertIsDisplayed()
+        assertEquals(cases, model.document.value.cases.size)
+        compose.onNodeWithTag("chat-add-attachment").performClick()
+        compose.onNodeWithText("Foto auswählen").assertIsDisplayed()
+        compose.onNodeWithText("Datei hinzufügen").assertIsDisplayed()
+        shot("10-neuer-chat-anhang")
+    }
 }

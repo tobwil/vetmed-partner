@@ -36,7 +36,6 @@ import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Bedtime
 import androidx.compose.material.icons.rounded.ChatBubble
 import androidx.compose.material.icons.rounded.DarkMode
-import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.LightMode
@@ -68,6 +67,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -93,7 +93,7 @@ fun StartScreen(model: AppViewModel, nav: NavHostController) {
         document.cases.filter { it.archivedAt == null }.flatMap { item -> item.encounters.map { item to it } }
             .sortedByDescending { it.second.lastActivity }.take(5)
     }
-    val reportCount = remember(document) { document.cases.sumOf { item -> item.encounters.sumOf { it.reports.size } } }
+    val chatCount = remember(document) { document.quickChecks.orEmpty().size + document.cases.sumOf { item -> item.encounters.count { it.hasChat } } }
     val openReviews = remember(document) { document.cases.flatMap { it.encounters }.count { it.reports.lastOrNull()?.approvedAt == null && it.reports.isNotEmpty() } }
 
     Box(Modifier.fillMaxSize()) {
@@ -124,7 +124,7 @@ fun StartScreen(model: AppViewModel, nav: NavHostController) {
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             StatTile(document.cases.size, "Fälle", Icons.Rounded.Folder, Modifier.weight(1f)) { nav.navigate(CasesRoute) }
                             StatTile(openReviews, "Zu prüfen", Icons.Rounded.PendingActions, Modifier.weight(1f)) { nav.navigate(CasesRoute) }
-                            StatTile(reportCount, "Berichte", Icons.Rounded.Description, Modifier.weight(1f)) { nav.navigate(CasesRoute) }
+                            StatTile(chatCount, "Chats", Icons.Rounded.ChatBubble, Modifier.weight(1f)) { nav.navigate(ChatRoute) }
                         }
                     }
                 }
@@ -137,7 +137,9 @@ fun StartScreen(model: AppViewModel, nav: NavHostController) {
                 }
                 item {
                     Appear(3) {
-                        ActionCard("Frage stellen", "Chat mit Bildern und Befunden folgt auf Android", Icons.Rounded.ChatBubble) { nav.navigate(ChatRoute) }
+                        ActionCard("Frage stellen", "Mit Bildern oder Befunden · auch ohne Fall", Icons.Rounded.ChatBubble, tag = "start-chat") {
+                            if (!busy) model.newQuickCheck { nav.navigate(ChatConversationRoute(it.caseID, it.encounterID)) }
+                        }
                     }
                 }
                 item { Appear(4) { Text("Weiterarbeiten", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp)) } }
@@ -241,12 +243,12 @@ private fun HeroCard(enabled: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-private fun ActionCard(title: String, subtitle: String, icon: ImageVector, onClick: () -> Unit) {
+private fun ActionCard(title: String, subtitle: String, icon: ImageVector, tag: String, onClick: () -> Unit) {
     val colors = LocalVetColors.current
     val interaction = remember { MutableInteractionSource() }
     Row(
         Modifier.fillMaxWidth().pressable(interaction).clip(RoundedCornerShape(26.dp)).clickable(interaction, indication = null, onClick = onClick)
-            .vetCard(colors, RoundedCornerShape(26.dp), 20.dp).semantics(mergeDescendants = true) {},
+            .vetCard(colors, RoundedCornerShape(26.dp), 20.dp).semantics(mergeDescendants = true) {}.testTag(tag),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         GradientIcon(icon, size = 56.dp)

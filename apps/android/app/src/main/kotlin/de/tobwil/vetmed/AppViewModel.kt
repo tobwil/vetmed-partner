@@ -3,7 +3,19 @@ package de.tobwil.vetmed
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import android.net.Uri
+import de.tobwil.vetmed.core.AnalysisRun
+import de.tobwil.vetmed.core.AnalysisStatus
+import de.tobwil.vetmed.core.AnalysisStreamUpdate
 import de.tobwil.vetmed.core.AppFailure
+import de.tobwil.vetmed.core.ChatAttachment
+import de.tobwil.vetmed.core.ChatLocation
+import de.tobwil.vetmed.core.ChatOperations
+import de.tobwil.vetmed.core.SparringDraft
+import de.tobwil.vetmed.core.SparringService
+import de.tobwil.vetmed.core.SparringSnapshot
+import de.tobwil.vetmed.data.AttachmentImporter
+import de.tobwil.vetmed.data.ReportExports
 import de.tobwil.vetmed.core.CaseOperations
 import de.tobwil.vetmed.core.CaseOperations.mapEncounter
 import de.tobwil.vetmed.core.CloudReportRequest
@@ -73,13 +85,20 @@ class AppViewModel(application: Application, private val repository: VaultReposi
     val onlineStatus: StateFlow<String?> = _onlineStatus.asStateFlow()
     private val _vocabulary = MutableStateFlow<List<VocabularyEntry>>(emptyList())
     val vocabulary: StateFlow<List<VocabularyEntry>> = _vocabulary.asStateFlow()
+    private val _activeAnalysisID = MutableStateFlow<String?>(null)
+    val activeAnalysisID: StateFlow<String?> = _activeAnalysisID.asStateFlow()
+    val exports by lazy { ReportExports(File(application.cacheDir, "exports")) }
+    private val importer by lazy { AttachmentImporter(application, File(application.noBackupFilesDir, "scratch")) }
 
     init { open() }
 
     fun open() {
         viewModelScope.launch {
             try {
-                _document.value = repository.load()
+                val loaded = repository.load()
+                val recovered = ChatOperations.recoverInterrupted(loaded)
+                if (recovered != loaded) repository.save(recovered)
+                _document.value = recovered
                 _vocabulary.value = repository.vocabulary()
                 _online.value = repository.onlineConfiguration()
                 _hasKey.value = repository.apiKey() != null
@@ -91,6 +110,7 @@ class AppViewModel(application: Application, private val repository: VaultReposi
     }
 
     fun dismissError() { _error.value = null }
+    fun reportError(message: String) { _error.value = message }
     fun encounter(location: EncounterLocation): Encounter? = CaseOperations.encounter(_document.value, location)
 
     /** Applies and persists a change. The visible document only changes after a successful save. */
@@ -126,7 +146,13 @@ class AppViewModel(application: Application, private val repository: VaultReposi
 
     fun deleteCase(caseID: String) {
         if (_busy.value) return
-        viewModelScope.launch { commit { CaseOperations.deleteCase(it, caseID) } }
+        val reportIDs = _document.value.cases.firstOrNull { it.id == caseID }?.encounters?.flatMap { it.reports }?.map { it.id }.orEmpty()
+        viewModelScope.launch {
+            if (commit { CaseOperations.deleteCase(it, caseID) }) {
+                runCatching { repository.removeCaseFiles(caseID) }
+                exports.remove(reportIDs)
+            }
+        }
     }
 
     suspend fun saveTranscript(text: String, location: EncounterLocation): Boolean {
@@ -158,6 +184,112 @@ class AppViewModel(application: Application, private val repository: VaultReposi
     }
 
     fun cancel() { work?.cancel() }
+
+    // Chat ---------------------------------------------------------------------------------------------
+
+    fun chatContext(location: ChatLocation): Encounter? = ChatOperations.context(_document.value, location)
+
+    fun newQuickCheck(then: (ChatLocation) -> Unit) {
+        if (_busy.value) return
+        viewModelScope.launch {
+            var location: ChatLocation? = null
+            if (commit("Der Chat konnte nicht angelegt werden: ") { document -> ChatOperations.newQuickCheck(document).also { location = it.second }.first }) location?.let(then)
+        }
+    }
+
+    fun deleteQuickCheck(id: String, then: () -> Unit) {
+        if (_busy.value) return
+        viewModelScope.launch {
+            if (commit { ChatOperations.deleteQuickCheck(it, id) }) { runCatching { repository.removeQuickCheckFiles(id) }; then() }
+        }
+    }
+
+    suspend fun saveSparringDraft(draft: SparringDraft, location: ChatLocation): Boolean =
+        commit("Entwurf konnte nicht gespeichert werden: ") { ChatOperations.saveDraft(it, location, draft) }
+
+    /** Saves a draft left in a closing chat; runs in the view model so it outlives the screen. */
+    fun flushDraft(draft: SparringDraft, location: ChatLocation) { viewModelScope.launch { saveSparringDraft(draft, location) } }
+
+    fun importAttachment(uri: Uri, location: ChatLocation, then: (ChatAttachment) -> Unit) {
+        if (_busy.value) return
+        _busy.value = true; _error.value = null; _workStatus.value = "Anhang wird lokal vorbereitet"
+        work = viewModelScope.launch {
+            try {
+                if (chatContext(location) == null) throw AppFailure("Dieser Chat ist nicht mehr vorhanden.")
+                val prepared = importer.read(uri)
+                repository.storeAttachment(location.caseID, location.encounterID, prepared.attachment.id, prepared.original, prepared.upload)
+                if (commit { ChatOperations.addAttachment(it, location, prepared.attachment) }) then(prepared.attachment)
+                else repository.removeAttachment(location.caseID, location.encounterID, prepared.attachment.id)
+            } catch (error: CancellationException) {
+                _error.value = "Import abgebrochen."
+            } catch (error: AppFailure) {
+                _error.value = error.message
+            } finally {
+                _busy.value = false; _workStatus.value = ""; work = null
+            }
+        }
+    }
+
+    suspend fun attachmentData(location: ChatLocation, id: String, upload: Boolean): ByteArray {
+        if (chatContext(location)?.chatAttachments?.any { it.id == id } != true) throw AppFailure("Dieser Anhang ist nicht verfügbar.")
+        return repository.attachmentData(location.caseID, location.encounterID, id, upload)
+    }
+
+    fun reviewDocument(location: ChatLocation, id: String, text: String, then: () -> Unit) {
+        viewModelScope.launch { if (commit("Der geprüfte Text konnte nicht gespeichert werden: ") { ChatOperations.reviewDocument(it, location, id, text) }) then() }
+    }
+
+    /** Streams one answer. The run is persisted before anything is sent; partial text is checkpointed. */
+    fun startAnalysis(snapshot: SparringSnapshot) {
+        if (_busy.value) return
+        val location = ChatLocation(snapshot.caseID, snapshot.encounterID)
+        val configuration = _online.value
+        if (!configuration.isEnabled || !_hasKey.value || configuration.modelID != snapshot.modelID) {
+            _error.value = "Bitte zuerst den API-Zugang in den Chat-Details einrichten."; return
+        }
+        try { ChatOperations.checkAnalysisBudget(_document.value, location) } catch (error: AppFailure) { _error.value = error.message; return }
+        val analysis = AnalysisRun(snapshot = snapshot)
+        _busy.value = true; _error.value = null; _workStatus.value = "Chat · OpenAI · Antwort wird angefordert"
+        work = viewModelScope.launch {
+            _activeAnalysisID.value = analysis.id
+            var checkpoint = 0L; var checkpointBytes = 0
+            try {
+                val key = repository.apiKey() ?: throw AppFailure("Der API-Key fehlt.")
+                val images = snapshot.requestImages.orEmpty().associate { reference ->
+                    reference.attachmentID to repository.attachmentData(location.caseID, location.encounterID, reference.attachmentID, true)
+                }
+                SparringService().run(
+                    snapshot, key, images,
+                    beforeSending = { persist { ChatOperations.mapChat(it, location) { chat -> chat.copy(analysisRuns = chat.analysisRuns.orEmpty() + analysis) } } },
+                    receive = { update ->
+                        val change: (AnalysisRun) -> AnalysisRun = when (update) {
+                            is AnalysisStreamUpdate.Text -> { run -> run.copy(status = AnalysisStatus.STREAMING, text = update.text) }
+                            is AnalysisStreamUpdate.Terminal -> { run ->
+                                run.copy(status = update.status, text = update.text, actualModelID = update.model, usage = update.usage, notice = update.notice)
+                            }
+                        }
+                        val next = ChatOperations.updateRun(_document.value, location, analysis.id, change)
+                        _workStatus.value = "Chat · Antwort läuft"
+                        val bytes = (update as? AnalysisStreamUpdate.Text)?.text?.length ?: Int.MAX_VALUE
+                        val time = System.currentTimeMillis()
+                        if (update is AnalysisStreamUpdate.Terminal || time - checkpoint >= 1000 || bytes - checkpointBytes >= 8192) {
+                            persist { next }; checkpoint = time; checkpointBytes = bytes
+                        } else _document.value = next
+                    },
+                )
+            } catch (error: CancellationException) {
+                withContext(NonCancellable) {
+                    runCatching { persist { ChatOperations.updateRun(it, location, analysis.id) { run -> run.copy(status = AnalysisStatus.CANCELLED, notice = "Bewusst abgebrochen. Der Anbieter kann den Auftrag bereits berechnet haben. Kein automatischer Neuversand.") } } }
+                }
+            } catch (error: Exception) {
+                val message = error.message ?: "Unbekannter Fehler"
+                runCatching { persist { ChatOperations.updateRun(it, location, analysis.id) { run -> run.copy(status = AnalysisStatus.FAILED, notice = message) } } }
+                _error.value = message
+            } finally {
+                _activeAnalysisID.value = null; _busy.value = false; _workStatus.value = ""; work = null
+            }
+        }
+    }
 
     /** Online generation with the user's own key. There is no silent fallback to another provider or mode. */
     fun generate(location: EncounterLocation, template: ReportTemplate, length: ReportLength, mode: ReportExecutionMode) {

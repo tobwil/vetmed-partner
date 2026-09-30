@@ -106,10 +106,15 @@ data class Encounter(
     val reports: List<ReportVersion> = emptyList(),
     val reportCheckpoint: ReportCheckpoint? = null,
     val cloudReportRequests: List<CloudReportRequest>? = null,
+    val sparringDraft: SparringDraft? = null,
+    val analysisRuns: List<AnalysisRun>? = null,
+    val chatAttachments: List<ChatAttachment>? = null,
     val shares: List<ShareEvent> = emptyList(),
     val lastError: String? = null,
 ) {
-    val lastActivity: Instant get() = (listOf(date) + transcripts.map { it.createdAt } + reports.map { it.createdAt }).max()
+    val lastActivity: Instant get() =
+        (listOf(date) + transcripts.map { it.createdAt } + reports.map { it.createdAt } + analysisRuns.orEmpty().map { it.createdAt }).max()
+    val hasChat: Boolean get() = !analysisRuns.isNullOrEmpty() || !sparringDraft?.question.isNullOrEmpty() || !chatAttachments.isNullOrEmpty()
     val suggestedStep: EncounterStep get() = when {
         reports.isNotEmpty() -> EncounterStep.REPORT
         transcripts.isNotEmpty() -> EncounterStep.TRANSCRIPT
@@ -123,6 +128,10 @@ data class Encounter(
             audio.isEmpty() -> "Diktat aufnehmen"
             else -> "Aufnahme fortsetzen"
         }
+    }
+    val hasPendingAudio: Boolean get() {
+        val done = transcripts.flatMap { it.segments }.mapNotNull { it.audioID }.toSet()
+        return audio.any { it.id !in done }
     }
     val playbackSegments: List<TranscriptSegment> get() {
         val seen = mutableSetOf<String>()
@@ -221,7 +230,7 @@ data class CloudReportRequest(
 )
 
 @Serializable
-data class VaultDocument(val schemaVersion: Int = 1, val cases: List<VetCase> = emptyList())
+data class VaultDocument(val schemaVersion: Int = 1, val cases: List<VetCase> = emptyList(), val quickChecks: List<QuickCheck>? = null)
 
 @Serializable
 data class VocabularyEntry(val id: String = newId(), val recognized: String, val preferred: String) {

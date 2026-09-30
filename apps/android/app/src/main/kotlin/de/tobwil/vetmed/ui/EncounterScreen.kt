@@ -34,6 +34,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.Chat
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.CloudDone
@@ -149,7 +150,13 @@ fun EncounterScreen(model: AppViewModel, nav: NavHostController, location: Encou
         Scaffold(
             containerColor = Color.Transparent,
             contentColor = MaterialTheme.colorScheme.onBackground,
-            topBar = { BackTopBar(item.label, nav) },
+            topBar = {
+                BackTopBar(item.label, nav) {
+                    IconButton(enabled = !busy, modifier = Modifier.testTag("chat-from-dictation"), onClick = {
+                        nav.navigate(ChatConversationRoute(location.caseID, location.encounterID))
+                    }) { Icon(Icons.AutoMirrored.Rounded.Chat, "Zum Fall chatten") }
+                }
+            },
             bottomBar = {
                 AnimatedVisibility(!busy, enter = slideInVertically { it } + fadeIn(), exit = slideOutVertically { it } + fadeOut()) {
                     Box(Modifier.fillMaxWidth().imePadding().padding(horizontal = 20.dp, vertical = 12.dp)) {

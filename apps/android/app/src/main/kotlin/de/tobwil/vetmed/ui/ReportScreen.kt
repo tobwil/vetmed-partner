@@ -36,6 +36,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -81,7 +83,9 @@ fun ReportReviewScreen(model: AppViewModel, nav: NavHostController, location: En
     var reviewed by rememberSaveable(reportID) { mutableStateOf(false) }
     var sources by remember { mutableStateOf(false) }
     var copied by remember { mutableStateOf(false) }
-    val share = rememberShareLauncher { model.recordShare(reportID, "Text", location) }
+    val share = rememberShareLauncher { format -> model.recordShare(reportID, format, location) }
+    var shareMenu by remember { mutableStateOf(false) }
+    var pdfError by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(report == null) { if (report == null) nav.popBackStack() }
     if (report == null) return
     val approved = report.approvedAt != null
@@ -111,11 +115,26 @@ fun ReportReviewScreen(model: AppViewModel, nav: NavHostController, location: En
                         AnimatedContent(copied, label = "copied") { done -> Icon(if (done) Icons.Rounded.Check else Icons.Rounded.ContentCopy, null) }
                         Spacer(Modifier.width(8.dp)); Text(if (copied) "Text kopiert" else "Kopieren")
                     }
-                    Button(
-                        enabled = unchanged, shape = CircleShape, modifier = Modifier.weight(1f).testTag("share-report-text"),
-                        colors = ButtonDefaults.buttonColors(containerColor = colors.primary),
-                        onClick = { share(report.exportText) },
-                    ) { Icon(Icons.Rounded.Share, null); Spacer(Modifier.width(8.dp)); Text("Teilen") }
+                    Box(Modifier.weight(1f)) {
+                        Button(
+                            enabled = unchanged, shape = CircleShape, modifier = Modifier.fillMaxWidth().testTag("share-report-menu"),
+                            colors = ButtonDefaults.buttonColors(containerColor = colors.primary),
+                            onClick = { shareMenu = true },
+                        ) { Icon(Icons.Rounded.Share, null); Spacer(Modifier.width(8.dp)); Text("Teilen") }
+                        DropdownMenu(shareMenu, { shareMenu = false }) {
+                            DropdownMenuItem(
+                                text = { Text("Als Text teilen") }, modifier = Modifier.testTag("share-report-text"),
+                                onClick = { shareMenu = false; share.text(report.exportText, "Text") },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Als PDF teilen") }, modifier = Modifier.testTag("share-report-pdf"),
+                                onClick = {
+                                    shareMenu = false
+                                    try { share.file(model.exports.pdf(report), "application/pdf", "PDF") } catch (error: de.tobwil.vetmed.core.AppFailure) { pdfError = error.message }
+                                },
+                            )
+                        }
+                    }
                 }
             },
         ) { padding ->
@@ -180,30 +199,10 @@ fun ReportReviewScreen(model: AppViewModel, nav: NavHostController, location: En
             }
         }
     }
-}
-
-/**
- * Opens the Android share sheet and reports back only when the user actually picks a target,
- * like the iOS completion callback. Delivery to the recipient stays unknown.
- */
-@Composable
-fun rememberShareLauncher(onChosen: () -> Unit): (String) -> Unit {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val chosen by androidx.compose.runtime.rememberUpdatedState(onChosen)
-    val action = remember { "de.tobwil.vetmed.SHARE_CHOSEN." + java.util.UUID.randomUUID() }
-    androidx.compose.runtime.DisposableEffect(action) {
-        val receiver = object : android.content.BroadcastReceiver() {
-            override fun onReceive(context: android.content.Context, intent: android.content.Intent) { chosen() }
-        }
-        androidx.core.content.ContextCompat.registerReceiver(context, receiver, android.content.IntentFilter(action), androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED)
-        onDispose { context.unregisterReceiver(receiver) }
-    }
-    return { text ->
-        val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(android.content.Intent.EXTRA_TEXT, text) }
-        val callback = android.app.PendingIntent.getBroadcast(
-            context, 0, android.content.Intent(action).setPackage(context.packageName),
-            android.app.PendingIntent.FLAG_MUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT,
+    pdfError?.let { message ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { pdfError = null }, title = { Text("Hinweis") }, text = { Text(message) },
+            confirmButton = { TextButton(onClick = { pdfError = null }) { Text("OK") } },
         )
-        context.startActivity(android.content.Intent.createChooser(send, "Bericht teilen", callback.intentSender))
     }
 }

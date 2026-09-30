@@ -9,6 +9,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import de.tobwil.vetmed.core.AppFailure
 import de.tobwil.vetmed.core.Encounter
 import de.tobwil.vetmed.core.OnlineReportConfiguration
+import de.tobwil.vetmed.core.QuickCheck
 import de.tobwil.vetmed.core.ReportVersion
 import de.tobwil.vetmed.core.ShareEvent
 import de.tobwil.vetmed.core.TranscriptVersion
@@ -37,6 +38,7 @@ object SqlCipherOpener : DatabaseOpener {
         System.loadLibrary("sqlcipher")
         return Room.databaseBuilder(context, CaseDatabase::class.java, file.absolutePath)
             .openHelperFactory(SupportOpenHelperFactory(passphrase))
+            .addMigrations(*CaseDatabase.MIGRATIONS)
             .addCallback(SecureDeleteCallback)
             .build()
     }
@@ -115,6 +117,50 @@ class VaultRepository(
 
     suspend fun close() = io { database?.close(); database = null }
 
+    // Encrypted files: chat attachments and audio. Each file is sealed with a context naming its case,
+    // encounter and purpose, so ciphertext cannot be moved to another case or reused as another file.
+
+    private fun scope(caseID: String?) = caseID ?: "quick"
+    private fun attachmentFile(caseID: String?, encounterID: String, id: String, upload: Boolean): SealedFile {
+        val purpose = if (upload) "upload" else "original"
+        return SealedFile(
+            File(root, "attachments/${scope(caseID)}/$encounterID/$id-$purpose.sealed"), dataKeys,
+            "chat-attachment-v1/${scope(caseID)}/$encounterID/$id/$purpose",
+        )
+    }
+
+    suspend fun storeAttachment(caseID: String?, encounterID: String, id: String, original: ByteArray, upload: ByteArray?) = io {
+        val available = root.usableSpace
+        if (available < (original.size + (upload?.size ?: 0)) * 3L + 20_000_000) throw AppFailure("Zu wenig Gerätespeicher für diesen Anhang. Bitte Speicher freigeben.")
+        attachmentFile(caseID, encounterID, id, false).write(original)
+        try { upload?.let { attachmentFile(caseID, encounterID, id, true).write(it) } }
+        catch (error: AppFailure) { attachmentFile(caseID, encounterID, id, false).delete(); throw error }
+    }
+
+    suspend fun attachmentData(caseID: String?, encounterID: String, id: String, upload: Boolean): ByteArray = io {
+        attachmentFile(caseID, encounterID, id, upload).read() ?: throw AppFailure("Dieser Anhang ist nicht verfügbar.")
+    }
+
+    suspend fun removeAttachment(caseID: String?, encounterID: String, id: String) = io {
+        attachmentFile(caseID, encounterID, id, false).delete(); attachmentFile(caseID, encounterID, id, true).delete()
+    }
+
+    private fun audioFile(caseID: String, encounterID: String, segmentID: String) =
+        SealedFile(File(root, "audio/$caseID/$encounterID/$segmentID.sealed"), dataKeys, "audio-v1/$caseID/$encounterID/$segmentID")
+
+    suspend fun storeAudio(caseID: String, encounterID: String, segmentID: String, wav: ByteArray) = io { audioFile(caseID, encounterID, segmentID).write(wav) }
+
+    suspend fun audio(caseID: String, encounterID: String, segmentID: String): ByteArray = io {
+        audioFile(caseID, encounterID, segmentID).read() ?: throw AppFailure("Diese Aufnahme ist nicht verfügbar.")
+    }
+
+    /** Removes every file of a deleted case: attachments and recordings. */
+    suspend fun removeCaseFiles(caseID: String) = io {
+        File(root, "attachments/$caseID").deleteRecursively(); File(root, "audio/$caseID").deleteRecursively(); Unit
+    }
+
+    suspend fun removeQuickCheckFiles(id: String) = io { File(root, "attachments/quick/$id").deleteRecursively(); Unit }
+
     // Opening ---------------------------------------------------------------------------------------
 
     private fun dao(): CaseDao = (database ?: open().also { database = it }).cases()
@@ -169,7 +215,8 @@ class VaultRepository(
         val reports = rows.reports.groupBy { it.encounterID }
         val shares = rows.shares.groupBy { it.encounterID }
         val encounters = rows.encounters.groupBy { it.caseID }
-        return VaultDocument(cases = rows.cases.map { caseRow ->
+        val quickChecks = rows.quickChecks.map { decode(QuickCheck.serializer(), it.payload) }
+        return VaultDocument(quickChecks = quickChecks.ifEmpty { null }, cases = rows.cases.map { caseRow ->
             decode(VetCase.serializer(), caseRow.payload).copy(encounters = encounters[caseRow.id].orEmpty().map { row ->
                 decode(Encounter.serializer(), row.payload).copy(
                     transcripts = transcripts[row.id].orEmpty().map { decode(TranscriptVersion.serializer(), it.payload) },
@@ -195,7 +242,8 @@ class VaultRepository(
             }
             CaseRow(item.id, position, encode(VetCase.serializer(), item.copy(encounters = emptyList())))
         }
-        guarded { dao.replaceAll(CaseRows(cases, encounters, transcripts, reports, shares)) }
+        val quickChecks = document.quickChecks.orEmpty().mapIndexed { position, check -> QuickCheckRow(check.id, position, encode(QuickCheck.serializer(), check)) }
+        guarded { dao.replaceAll(CaseRows(cases, encounters, transcripts, reports, shares, quickChecks)) }
     }
 
     private fun guarded(block: () -> Unit) {
