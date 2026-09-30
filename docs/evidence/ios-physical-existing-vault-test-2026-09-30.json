@@ -1,0 +1,50 @@
+{
+  "devices": [
+    {
+      "architecture": "arm64",
+      "deviceName": "iPhone 17 Pro",
+      "modelName": "iPhone 17 Pro",
+      "osBuildNumber": "23G83",
+      "osVersion": "26.6.1",
+      "platform": "iOS"
+    }
+  ],
+  "duration": "Ran for 5,1 seconds",
+  "durationInSeconds": 5.0921759605407715,
+  "hasMediaAttachments": false,
+  "hasPerformanceMetrics": false,
+  "startTime": 1790786208.921,
+  "testDescription": "Test case with 1 run",
+  "testIdentifier": "WorkflowTests/testPhysicalExistingVaultOpensWithoutTestArguments()",
+  "testIdentifierURL": "test://com.apple.xcode/VetMed/VetMedUITests/WorkflowTests/testPhysicalExistingVaultOpensWithoutTestArguments",
+  "testName": "testPhysicalExistingVaultOpensWithoutTestArguments()",
+  "testPlanConfigurations": [
+    {
+      "configurationId": "1",
+      "configurationName": "Test Scheme Action"
+    }
+  ],
+  "testResult": "Passed",
+  "testRuns": [
+    {
+      "children": [
+        {
+          "duration": "5s",
+          "durationInSeconds": 5.0921759605407715,
+          "name": "Test Scheme Action",
+          "nodeIdentifier": "1",
+          "nodeIdentifierURL": "test://com.apple.xcode/VetMed/VetMedUITests/WorkflowTests/testPhysicalExistingVaultOpensWithoutTestArguments",
+          "nodeType": "Test Plan Configuration",
+          "result": "Passed"
+        }
+      ],
+      "details": "iOS 26.6.1",
+      "duration": "5s",
+      "durationInSeconds": 5.0921759605407715,
+      "name": "iPhone 17 Pro",
+      "nodeIdentifier": "00008150-000868DE22D8C01C",
+      "nodeType": "Device",
+      "result": "Passed"
+    }
+  ]
+}

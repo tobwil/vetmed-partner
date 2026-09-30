@@ -2,10 +2,10 @@
 
 Entwicklungsstand, keine fachliche Freigabe. Für Tests ausschließlich synthetische Fallangaben verwenden. Auf dem gekoppelten iPhone 17 Pro sind Gemma und deutsche Sprachressourcen installiert. Die App öffnet ohne Face ID.
 
-1. Unter **Berichte → Neues Diktat** einen Vorgang anlegen. Über die Fallzeile Kennung, Tierart und optional Tiername bearbeiten.
-2. **Aufnehmen** startet nach Mikrofonfreigabe. Beispiel: „Hund, zwölf Komma fünf Kilogramm. Seit gestern verminderter Appetit. Kein Erbrechen. Temperatur nicht gemessen. Kontrolle in drei Tagen vereinbart.“ Mit **Pause / Stopp** abschließen. Gesicherte Segmente werden angezeigt.
-3. **Lokal transkribieren** wählen. Rohtext und Audio sind unter „Original & Audio“ erreichbar. Fachwörter, Zahlen und Negationen prüfen. Texteingabe sichert nach einer kurzen Pause; „Transkript speichern“ bleibt zusätzlich verfügbar. Korrekturen aus der eigenen Fachwortliste erfordern einen bewussten Tastendruck.
-4. Vorlage, Länge und Zielgruppe wählen. Mit eingerichtetem API-Zugang ist **Online** vorausgewählt; für den lokalen Test ausdrücklich **Offline** wählen, dann **Bericht lokal erstellen**. Fertige Abschnitte bleiben bei einer späteren Unterbrechung als Zwischenstand sichtbar. Ein unvollständiger Bericht kann nicht als vollständiger Bericht freigegeben werden.
+1. Unter **Start → Neues Diktat** einen Vorgang anlegen. Über **Falldaten** Kennung, Tierart und optional Tiername bearbeiten.
+2. **Aufnahme starten** startet nach Mikrofonfreigabe. Beispiel: „Hund, zwölf Komma fünf Kilogramm. Seit gestern verminderter Appetit. Kein Erbrechen. Temperatur nicht gemessen. Kontrolle in drei Tagen vereinbart.“ Mit **Pause** unterbrechen und mit **Fortsetzen** weiter aufnehmen.
+3. **Fertig · Text prüfen** schließt die Aufnahme ab und transkribiert ausstehende Segmente lokal. Fachwörter, Zahlen und Negationen prüfen. Texteingabe sichert nach einer kurzen Pause; **Text speichern** bleibt zusätzlich verfügbar.
+4. Über **Anpassen** Vorlage, Länge und Verarbeitung wählen. Die Zielgruppe ergibt sich automatisch aus der Vorlage: nur „Information für Tierhalter“ richtet sich an Tierhalter, alle übrigen Vorlagen an Fachkollegen. Mit aktiviertem API-Zugang ist Online vorausgewählt; für den lokalen Test ausdrücklich Offline wählen. **Bericht erstellen** startet den Auftrag. Fertige Abschnitte bleiben bei einer späteren Unterbrechung als Zwischenstand sichtbar.
 5. Den Bericht öffnen, Text und Quellen prüfen. Bearbeitungen erzeugen eine neue Version ohne übernommene Freigabe. Die konkrete geprüfte Version freigeben und als Text/PDF teilen. Ohne Freigabe trägt der Export die Entwurfskennzeichnung.
 
 ## Gerätetest-Matrix
@@ -32,10 +32,24 @@ Unter Einstellungen → API-Key & Modell den eigenen OpenAI-Key eingeben. Modell
 
 Nach Installation der Korrektur vom 29.09.: Neues Diktat starten, mindestens 30 Sekunden einen synthetischen Text sprechen (damit ein Segmentwechsel enthalten ist), Pause drücken und anschließend weitere fünf Sekunden aufnehmen. Die Zeit muss laufen; nach Pause müssen gesicherte Segmente erscheinen. Danach lokal transkribieren und Anfang, Übergang sowie Schluss prüfen. Falls weiterhin ein Abbruch auftritt, den genauen eingeblendeten Aufnahmehinweis und angeschlossene Kopfhörer/Audiogeräte nennen. Für diesen Test ist kein Wechsel des WLAN- oder Flugmodus nötig.
 
-## Sparring und Schnellcheck
+## Chat, Fallberichte und Schnellcheck
 
-Sparring → Schnellcheck starten öffnet eine Frage ohne Fall. Entwurf speichern, App neu starten und den Schnellcheck wieder öffnen; in Fälle darf kein zusätzlicher Eintrag entstanden sein. Für einen Fall im Sparring das passende Gespräch auswählen. Falltext nur bewusst als bearbeitbare Kopie einsetzen; ausgewählte frühere Antworten und vollständigen Payload in der Versandvorschau kontrollieren.
+**Chat → Neuer Chat** beziehungsweise die Chataktion auf Start öffnet eine Frage ohne Fall. Entwurf eingeben, App neu starten und den Chat wieder öffnen; in Fälle darf kein zusätzlicher Eintrag entstehen. Über **+ → Foto auswählen / Datei hinzufügen** einen synthetischen Anhang hinzufügen, prüfen und wieder entfernen. Auf dem echten Gerät keine privaten Fotos für automatisierte Tests auswählen.
 
-Mit eingerichtetem Online-Key „Analyse senden“ wählen. Antwort läuft schrittweise ein; „Abbrechen“ sichert den empfangenen Zwischenstand. Nach Netzverlust keine automatische Wiederholung erwarten. Modell-/Tokenangaben nach vollständiger Antwort prüfen. Dieser Live-Streamingtest ist noch offen.
+Im Diktat **Zum Fall chatten** öffnen. **Berichte als Wissen** zeigt die gewählten Fallberichte. Beim ersten Öffnen ist der neueste Bericht des Vorgangs vorausgewählt (ersatzweise der neueste Bericht desselben Falls). Bericht ansehen, abwählen, App neu starten und prüfen, dass die Abwahl erhalten bleibt. Andere Fälle dürfen nicht angeboten werden. Die Versandvorschau muss genau die bewusst gewählten Inhalte zeigen.
 
-In Fälle eine Zeile von rechts nach links wischen. „Löschen“ öffnet die Bestätigung; „Behalten“ darf nichts entfernen. Im geöffneten Fall steht dieselbe Aktion unter den Vorgängen; im Diktat ganz am Ende. Löschung eines synthetischen Falls und anschließender Neustart dürfen unabhängige Schnellchecks nicht entfernen.
+Mit eingerichtetem Online-Key eine synthetische Frage senden. Antwort läuft schrittweise ein; Abbrechen sichert den empfangenen Zwischenstand. Nach Netzverlust keine automatische Wiederholung erwarten. Dieser Live-Providertest ist getrennt von Tests mit simulierten Antworten zu protokollieren.
+
+In Fälle eine Zeile von rechts nach links wischen. **Löschen** öffnet die Bestätigung; **Behalten** darf nichts entfernen. Im geöffneten Fall steht dieselbe Aktion unter den Vorgängen; im Diktat ganz am Ende. Löschung eines synthetischen Falls und anschließender Neustart dürfen unabhängige Chats nicht entfernen.
+
+## Teilen an WhatsApp
+
+Bei einem ausschließlich synthetischen Bericht und einer synthetischen Chatantwort **Teilen → WhatsApp** wählen. Im Entwurf Anfang, Absätze und letzten Satz auf Vollständigkeit prüfen. Für die Abnahme muss keine Nachricht gesendet werden. Danach abbrechen und zu VetMed zurückkehren; Inhalt und Fallzuordnung müssen erhalten bleiben. Ein erfolgreich geöffnetes iOS-Teilen-Menü oder Kopieren darin allein bestätigt diesen WhatsApp-Pfad noch nicht.
+
+## Automatisierte Abnahme am physischen iPhone
+
+Die UI-Tests starten mit `--ui-testing` und verwenden einen separaten verschlüsselten Fallspeicher und getrennte API-Einstellungen. Die normalen Nutzerdaten werden dadurch nicht zu Testfällen. Der Foto-Picker-Test setzt ein synthetisches Bild voraus und wird beim automatisierten Gerätelauf zunächst explizit ausgelassen.
+
+`testPhysicalMicrophoneRolloverPauseResumeBackgroundAndReopen` nimmt auf dem echten iPhone bewusst das Mikrofon auf. Währenddessen nur synthetische Inhalte sprechen. Der Test prüft mindestens 50 Sekunden Aufnahme, die 20-Sekunden-Segmentwechsel, Pause/Fortsetzen, Hintergrund-Unterbrechung und erhaltene Gesamtdauer nach Prozessneustart; anschließend löscht er seinen Testfall. Auf dem Simulator wird er übersprungen. Er führt weder Transkription noch eine Provideranfrage aus und ersetzt keine Hör-/ASR-Prüfung. Scheitert er vor der Löschung, bleibt der Fall im getrennten Testspeicher zur Diagnose erhalten.
+
+Nach den Tests die App ohne Testargumente starten und das Öffnen des bestehenden Fallspeichers prüfen. Ergebnisse, Auslassungen und Nachweise in [test-status.md](test-status.md) festhalten.

@@ -1,0 +1,22 @@
+{
+  "completed" : false,
+  "date" : "2026-09-30T16:45:37Z",
+  "durationSeconds" : 1.5296720266342163,
+  "error" : "Bitte Gemma zuerst in den Einstellungen installieren. Es wird nichts automatisch heruntergeladen.",
+  "inputFile" : "synthetic-300s.wav",
+  "networkAfter" : "unknown",
+  "networkBefore" : "satisfied",
+  "peakResidentMiB" : 84,
+  "requiredOffline" : false,
+  "sourceCount" : 100,
+  "stages" : [
+    "offline-asr",
+    "encrypted-transcript-save"
+  ],
+  "synthetic" : true,
+  "syntheticCandidates" : [
+
+  ],
+  "syntheticTranscript" : "Abschnitt erster synthetischer Testfall. Ein Hund wiegt 12,5 Kilogramm. Seit gestern ist der Appetit vermindert. Kein Erbrechen. Die Temperatur wurde nicht gemessen. Eine Kontrolle in drei Tagen wurde vereinbart. Die Beschwerden betreffen das linke Hinterbein. Rechts wurden keine Beschwerden berichtet. Eine Diagnose ist noch nicht gesichert. Weitere Ergebnisse stehen aus. Abschnitt zweiter synthetischer Testfall. Ein Hund wiegt 12,5 Kilogramm. Seit gestern ist der Appetit vermindert. Kein Erbrechen. Die Temperatur wurde nicht gemessen. Eine Kontrolle in drei Tagen wurde vereinbart. Die Beschwerden betreffen das linke Hinterbein. Rechts wurden keine Beschwerden berichtet. Eine Diagnose ist noch nicht gesichert. Weitere Ergebnisse stehen aus. Abschnitt dritter synthetischer Testfall. Ein Hund wiegt 12,5 Kilogramm. Seit gestern ist der\nAppetit vermindert.\nKein Erbrechen.\nDie Temperatur wurde nicht gemessen.\nEine Kontrolle\nin drei Tagen\nwurde vereinbart. Die Beschwerden betreffen das linke Hinterbein. Rechts wurden keine Beschwerden berichtet. Eine Diagnose ist noch nicht gesichert. Weitere Ergebnisse stehen aus. Abschnitt vierter synthetischer Testfall. Ein Hund wiegt 12,5 Kilogramm. Seit gestern ist der Appetit vermindert. Kein Erbrechen. Die Temperatur wurde nicht gemessen. Eine Kontrolle in drei Tagen wurde vereinbart. Die Beschwerden betreffen das linke Hinterbein. Rechts wurden keine Beschwerden berichtet. Eine Diagnose ist noch nicht gesichert. Weitere Ergebnisse stehen aus.\nAbschnitt fünfter\nsynthetischer Testfall. Ein Hund wiegt 12,5 Kilogramm. Seit gestern ist der Appetit vermindert. Kein Erbrechen. Die Temperatur wurde nicht gemessen. Eine Kontrolle in drei Tagen wurde vereinbart. Die Beschwerden betreffen das linke Hinterbein. Rechts wurden keine Beschwerden berichtet. Eine Diagnose ist noch nicht gesichert. Weitere Ergebnisse stehen aus.\nAbschnitt sechster synthetischer\nTestfall. Ein Hund wiegt 12,5 Kilogramm. Seit gestern ist der Appetit vermindert. Kein Erbrechen. Die Temperatur wurde nicht gemessen. Eine Kontrolle in drei Tagen wurde vereinbart. Die Beschwerden betreffen das linke Hinterbein. Rechts wurden keine Beschwerden berichtet. Eine Diagnose ist noch nicht gesichert. Weitere Ergebnisse stehen aus. Abschnitt siebter synthetischer Testfall. Ein Hund wiegt 12,5 Kilogramm. Seit gestern ist der Appetit vermindert. Kein Erbrechen. Die Temperatur wurde nicht gemessen. Eine Kontrolle in drei Tagen wurde vereinbart. Die Beschwerden betreffen das linke Hinterbein. Rechts wurden keine Beschwerden berichtet. Eine Diagnose ist noch nicht gesichert. Weitere Ergebnisse stehen aus. Abschnitt synthetischer Testfall. Ein Hund wiegt 12,5 Kilogramm. Seit gestern ist der\nAppetit vermindert.\nKein Erbrechen.\nDie Temperatur wurde nicht gemessen. Eine Kontrolle in drei Tagen\nwurde vereinbart. Die\nBeschwerden betreffen das linke Hinterbein. Rechts wurden keine Beschwerden berichtet. Eine Diagnose ist noch nicht gesichert. Weitere Ergebnisse stehen aus. Abschnitt synthetischer Testfall. Ein Hund wiegt 12,5 Kilogramm. Seit gestern ist der Appetit vermindert. Kein Erbrechen. Die Temperatur wurde nicht gemessen. Eine Kontrolle in drei Tagen wurde vereinbart. Die Beschwerden betreffen das linke Hinterbein. Rechts wurden keine Beschwerden berichtet. Eine Diagnose ist noch nicht gesichert. Weitere Ergebnisse stehen aus. Abschnitt synthetischer Testfall. Ein\nHund wiegt\n12,5 Kilogramm. Seit gestern ist der Appetit vermindert.\nKein Erbrechen.\nDie Temperatur wurde nicht gemessen. Eine Kontrolle in drei Tagen wurde vereinbart. Die Beschwerden betreffen das linke Hinterbein. Rechts wurden keine Beschwerden berichtet. Eine Diagnose ist noch nicht gesichert. Weitere Ergebnisse\nstehen aus\n.",
+  "thermalState" : "nominal"
+}

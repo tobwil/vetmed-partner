@@ -121,8 +121,10 @@ struct EncounterEditor: View {
                         .accessibilityHidden(true)
                     Text(recording ? "Aufnahme läuft" : ((encounter?.audio.isEmpty ?? true) ? "Bereit für dein Diktat" : "Aufnahme pausiert")).font(.title3.bold())
                         .contentTransition(.opacity)
+                        .accessibilityIdentifier("recording-status")
                 }
                 Text(Duration.seconds(duration).formatted(.time(pattern: .minuteSecond)))
+                    .accessibilityIdentifier("recording-elapsed")
                     .font(.system(size: 54, weight: .semibold, design: .rounded)).monospacedDigit()
                     .contentTransition(.numericText(value: duration))
                     .animation(.snappy, value: Int(duration))

@@ -1,0 +1,46 @@
+{
+  "devicesAndConfigurations": [
+    {
+      "device": {
+        "architecture": "arm64",
+        "deviceName": "iPhone 17 Pro",
+        "modelName": "iPhone 17 Pro",
+        "osBuildNumber": "23G83",
+        "osVersion": "26.6.1",
+        "platform": "iOS"
+      },
+      "expectedFailures": 0,
+      "failedTests": 1,
+      "passedTests": 0,
+      "skippedTests": 0,
+      "testPlanConfiguration": {
+        "configurationId": "1",
+        "configurationName": "Test Scheme Action"
+      }
+    }
+  ],
+  "environmentDescription": "VetMed · Built with macOS 26.6.2",
+  "expectedFailures": 0,
+  "failedTests": 1,
+  "finishTime": 1790786443.158,
+  "passedTests": 0,
+  "result": "Failed",
+  "runtimeWarnings": [],
+  "skippedTests": 0,
+  "startTime": 1790786343.725,
+  "statistics": [],
+  "testFailures": [
+    {
+      "failureText": "XCTAssertTrue failed - Require a real background transition before returning",
+      "targetName": "VetMedUITests",
+      "testIdentifier": 1,
+      "testIdentifierString": "WorkflowTests/testPhysicalMicrophoneRolloverPauseResumeBackgroundAndReopen()",
+      "testIdentifierURL": "test://com.apple.xcode/VetMed/VetMedUITests/WorkflowTests/testPhysicalMicrophoneRolloverPauseResumeBackgroundAndReopen",
+      "testName": "testPhysicalMicrophoneRolloverPauseResumeBackgroundAndReopen()"
+    }
+  ],
+  "title": "Test - VetMed",
+  "topInsights": [],
+  "totalTestCount": 1,
+  "reviewNote": "Second attempt did not observe runningBackground after the synthesized Home action. Paused state check then failed; forced termination of the ongoing recording caused a one-second difference from the sampled UI timer. Follow-up uses a verified second app in the foreground before returning, rather than assuming Home succeeded."
+}

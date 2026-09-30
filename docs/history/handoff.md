@@ -2,7 +2,7 @@
 
 ## Stand und verbindliche Nutzerentscheidungen
 
-Neuester Quellstand am 30.09.2026 abends: Android-Stand von `main` geholt, `claude/urgent-fixes` geprüft und um die sichere Cache-Erkennung sowie eine iOS-Haptikkorrektur ergänzt. 105 iOS- und 127 Android-Tests bestanden; beide Builds erfolgreich. Aktuelles Update auf dem iPhone installiert, normaler Start vom Mac wegen Codesperre noch nicht möglich. Gerätedurchlauf offen. Nachweise: `docs/evidence/ios-urgent-reviewed-tests-2026-09-30.json`, `docs/evidence/android-urgent-review-tests-2026-09-30.json`, `docs/evidence/device-urgent-review-install-2026-09-30.json`.
+Neuester Stand am 30.09.2026 abends: `claude/urgent-fixes` einschließlich Cache-/Haptikkorrektur ist auf main. Auf dem nun entsperrten iPhone bestanden 106 unterschiedliche Tests (94 Unit-/Integration, 12 UI/Gerät): bestehender Nutzerspeicher, echte 51-Sekunden-Aufnahme mit Pause/Fortsetzen, Segmentwechsel, echter Hintergrundpause und Neustart sowie Fallchat/Berichtswissen/Teilen. Physischer Fototest blieb ausgeschlossen; WhatsApp-Entwurfsprüfung ist beim Nutzer angefragt. Der lokale 300-Sekunden-Dateitest bestand ASR und verschlüsseltes Speichern, stoppt aber mangels installiertem optionalem Gemma-Modell vor dem Bericht. Keine vollständige Offline-/klinische Freigabe. Einzelheiten und auch fehlgeschlagene Testversuche: [Prüfstand](../test-status.md).
 
 Die native iOS-App ist implementiert und auf dem iPhone 17 Pro installiert. Der Designstand aus `02793da` wurde am 30.09.2026 um die bestätigte Senior-Sparring-Persona ergänzt, erfolgreich installiert und normal gestartet. Prompt- und Binary-Hashes: `docs/evidence/device-senior-persona-install-2026-09-30.json`. Die App heißt VetMed, Bundle `de.tobwil.vetmed`. Der gesamte Zielumfang bleibt im [Plan](../implementation-plan.md) und der [Nachverfolgung](../requirements-trace.md) erhalten.
 
@@ -17,7 +17,7 @@ Aktuelle Nutzerentscheidungen:
 - Start/Fälle/Chat, schrittweises Diktat und sichtbare Fallzuordnung.
 - Chatformatierung rendern und vollständigen Inhalt über Teilen an andere Apps übergeben.
 
-Letzte offene Rückfrage: Erscheint nach Teilen → WhatsApp der vollständige Text im WhatsApp-Entwurf? Die neue Version ist installiert; eine Nutzerbestätigung liegt zum Archivstand nicht vor. „Aufnahme läuft jetzt“ wurde für die vorherige Aufnahme-Korrektur ausdrücklich bestätigt.
+Letzte offene Rückfragen: Erscheint im synthetischen WhatsApp-Entwurf der vollständige Chattext einschließlich `ENDE-DER-TESTANTWORT`? Soll das derzeit fehlende optionale Gemma-Modell erneut installiert werden? Aktuell ist dafür der getrennte UI-Testbereich auf dem iPhone geöffnet. Nach Rückmeldung normal ohne Testargumente starten; Nutzerdaten sind im getrennten normalen Speicher vorhanden, dessen Start bereits bestand. Kein WhatsApp-Versand durch die Automation.
 
 ## Orientierung im Code
 
@@ -73,7 +73,7 @@ Build-/Testprozesse mit demselben DerivedData-Verzeichnis sequenziell ausführen
 
 ## Grenzen, die nicht übergangen werden dürfen
 
-Der Prüfstand enthält auch gescheiterte Tests und korrigierte Selektoren. Der Designstand vom 30.09.2026 besteht den vollständigen bisherigen Lauf mit 95 Tests sowie einen separaten zusätzlichen UI-Test für Darstellungseinstellungen (insgesamt 96 unterschiedliche Tests). Die älteren Nachweise vom 29.09.2026 bleiben historisch erhalten. Die System-Textübergabe ersetzt keine WhatsApp-Abnahme. Kurze Gemma-Lasttests ersetzen keinen langen Offlinebericht, und synthetische Audiodateien ersetzen keine Langaufnahme am Mikrofon.
+Der Prüfstand enthält auch gescheiterte Tests und korrigierte Selektoren. Der Designstand vom 30.09.2026 besteht den vollständigen bisherigen Lauf mit 95 Tests sowie einen separaten zusätzlichen UI-Test für Darstellungseinstellungen (insgesamt 96 unterschiedliche Tests). Die älteren Nachweise vom 29.09.2026 bleiben historisch erhalten. Der aktuelle physische Stand mit 106 unterschiedlichen bestandenen Tests ist oben und im Prüfstand ergänzt. Die System-Textübergabe ersetzt keine WhatsApp-Abnahme. Kurze Gemma-Lasttests ersetzen keinen langen Offlinebericht, und synthetische Audiodateien ersetzen keine Langaufnahme am Mikrofon.
 
 Aktive Audiosegmente sind während der Aufnahme noch nicht durchgehend auf App-Ebene verschlüsselt; iOS-Dateischutz und Verschlüsselung abgeschlossener Segmente sind davon getrennt. Größen- und RAM-Grenzen gelten für die dokumentierten Pfade und sind keine allgemeine Garantie gegen Speicherfehler.
 

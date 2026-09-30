@@ -1,0 +1,46 @@
+{
+  "devicesAndConfigurations": [
+    {
+      "device": {
+        "architecture": "arm64",
+        "deviceName": "iPhone 17 Pro",
+        "modelName": "iPhone 17 Pro",
+        "osBuildNumber": "23G83",
+        "osVersion": "26.6.1",
+        "platform": "iOS"
+      },
+      "expectedFailures": 0,
+      "failedTests": 1,
+      "passedTests": 0,
+      "skippedTests": 0,
+      "testPlanConfiguration": {
+        "configurationId": "1",
+        "configurationName": "Test Scheme Action"
+      }
+    }
+  ],
+  "environmentDescription": "VetMed · Built with macOS 26.6.2",
+  "expectedFailures": 0,
+  "failedTests": 1,
+  "finishTime": 1790786574.676,
+  "passedTests": 0,
+  "result": "Failed",
+  "runtimeWarnings": [],
+  "skippedTests": 0,
+  "startTime": 1790786494.675,
+  "statistics": [],
+  "testFailures": [
+    {
+      "failureText": "XCTAssertNotEqual failed: (\"XCUIApplicationState(rawValue: 4)\") is equal to (\"XCUIApplicationState(rawValue: 4)\")",
+      "targetName": "VetMedUITests",
+      "testIdentifier": 1,
+      "testIdentifierString": "WorkflowTests/testPhysicalMicrophoneRolloverPauseResumeBackgroundAndReopen()",
+      "testIdentifierURL": "test://com.apple.xcode/VetMed/VetMedUITests/WorkflowTests/testPhysicalMicrophoneRolloverPauseResumeBackgroundAndReopen",
+      "testName": "testPhysicalMicrophoneRolloverPauseResumeBackgroundAndReopen()"
+    }
+  ],
+  "title": "Test - VetMed",
+  "topInsights": [],
+  "totalTestCount": 1,
+  "reviewNote": "Activating Settings correctly paused recording and preserved duration across restart. The sole failure was an immediate synchronous app.state check during transition. Final harness waits for runningBackground OR runningBackgroundSuspended before returning; recording and persistence assertions remain unchanged."
+}

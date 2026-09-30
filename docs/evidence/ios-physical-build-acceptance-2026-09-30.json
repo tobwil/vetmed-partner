@@ -1,0 +1,18 @@
+{
+  "date": "2026-09-30T16:49:37.141856+00:00",
+  "baseCommit": "b4de5363abefb2931b3ee4f60fa03e8cba66977b",
+  "device": "iPhone 17 Pro",
+  "os": "iOS 26.6.1 (23G83)",
+  "installedBy": "xcodebuild physical-device test runs",
+  "normalExistingVaultLaunchPassed": true,
+  "physicalDistinctPassingTests": 106,
+  "manualWhatsAppPending": true,
+  "physicalPhotoPickerExcluded": true,
+  "localReportBlockedByMissingOptionalModel": true,
+  "sha256": {
+    ".build/ios/Build/Products/Debug-iphoneos/VetMed.app/VetMed": "d47df3a01da7b9b00a67fa33ad4157453c6cf476cc60ec91da0f3b2f096e12a0",
+    ".build/ios/Build/Products/Debug-iphoneos/VetMed.app/VetMed.debug.dylib": "36db73633910defd6e6e4ab36169e66ce014e79d8c5655fac339b3d5cc1dd58e",
+    "apps/ios/VetMed/Views/EncounterWorkflowView.swift": "236167a1431bdf847529e972edd7f70a1aad9546a50f28bdc6dadb568ce2e3fe",
+    "apps/ios/VetMedUITests/WorkflowTests.swift": "6bd9140d6b17bba180b7b5c37b609984a0bb598af09d9567a1a406cfac303e85"
+  }
+}

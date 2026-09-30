@@ -1,6 +1,87 @@
 import XCTest
 final class WorkflowTests: XCTestCase {
     @MainActor
+    private func switchAwayAndBack(_ app: XCUIApplication) {
+        let settings = XCUIApplication(bundleIdentifier: "com.apple.Preferences")
+        settings.activate()
+        XCTAssertTrue(settings.wait(for: .runningForeground, timeout: 10))
+        let background = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            app.state == .runningBackground || app.state == .runningBackgroundSuspended
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [background], timeout: 10), .completed)
+        app.activate()
+    }
+    @MainActor
+    func testPhysicalExistingVaultOpensWithoutTestArguments() throws {
+        #if targetEnvironment(simulator)
+        throw XCTSkip("Existing user vault acceptance is only performed on the physical device.")
+        #else
+        let app = XCUIApplication()
+        app.launch()
+        XCTAssertTrue(app.buttons["new-dictation"].waitForExistence(timeout: 20))
+        XCTAssertTrue(app.tabBars.buttons["Fälle"].exists)
+        XCTAssertTrue(app.tabBars.buttons["Chat"].exists)
+        XCTAssertFalse(app.alerts.firstMatch.exists)
+        // Do not open cases, capture screenshots or export user content here.
+        #endif
+    }
+    @MainActor
+    func testPhysicalMicrophoneRolloverPauseResumeBackgroundAndReopen() throws {
+        #if targetEnvironment(simulator)
+        throw XCTSkip("Requires the physical microphone; run during device acceptance.")
+        #else
+        // This intentionally records the microphone into the separate encrypted UI-test vault.
+        // No ASR/provider request is made; the synthetic test case is deleted after verification.
+        let app = XCUIApplication(); app.launchArguments = ["--ui-testing"]; app.launch()
+        XCTAssertTrue(app.buttons["new-dictation"].waitForExistence(timeout: 15))
+        app.buttons["new-dictation"].tap()
+        let caseLabel = app.navigationBars.element(boundBy: 0).identifier
+        let record = app.buttons["record-audio"]
+        let elapsed = app.staticTexts["recording-elapsed"]
+        func seconds() -> Int {
+            let components = elapsed.label.split(separator: ":").compactMap { Int($0) }
+            guard components.count == 2 else { return -1 }
+            return components[0] * 60 + components[1]
+        }
+        func waitForDuration(_ target: Int) {
+            let progressed = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+                elapsed.exists && seconds() >= target
+            }, object: nil)
+            XCTAssertEqual(XCTWaiter.wait(for: [progressed], timeout: 40), .completed)
+            XCTAssertEqual(record.label, "Pause", "Microphone must still run after the 20-second segment rollover")
+            XCTAssertEqual(app.staticTexts["recording-status"].label, "Aufnahme läuft")
+        }
+        let permission = addUIInterruptionMonitor(withDescription: "Microphone access") { alert in
+            let allow = alert.buttons.matching(NSPredicate(format: "label IN {'Allow', 'Erlauben', 'OK'}")).firstMatch
+            guard allow.exists else { return false }
+            allow.tap(); return true
+        }
+        defer { removeUIInterruptionMonitor(permission) }
+        XCTAssertTrue(record.waitForExistence(timeout: 5)); record.tap()
+        // Interact with a harmless label to handle an initial permission sheet if necessary.
+        app.navigationBars.element(boundBy: 0).tap()
+        waitForDuration(25)
+        record.tap()
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "identifier == 'record-audio' AND label == 'Fortsetzen' AND enabled == true")).firstMatch.waitForExistence(timeout: 8))
+        record.tap(); waitForDuration(50)
+        // On this device a synthesized Home press can leave the app in the foreground.
+        // Activate a second app and verify the transition rather than assuming it happened.
+        switchAwayAndBack(app)
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "identifier == 'record-audio' AND label == 'Fortsetzen' AND enabled == true")).firstMatch.waitForExistence(timeout: 10))
+        let savedSeconds = seconds()
+        XCTAssertGreaterThanOrEqual(savedSeconds, 50)
+        app.terminate(); app.launch()
+        XCTAssertTrue(app.buttons["new-dictation"].waitForExistence(timeout: 15))
+        app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", caseLabel)).firstMatch.tap()
+        XCTAssertTrue(record.waitForExistence(timeout: 5)); XCTAssertEqual(record.label, "Fortsetzen")
+        XCTAssertEqual(seconds(), savedSeconds, "All saved microphone segments must survive process restart")
+        let screenshot = XCTAttachment(screenshot: app.screenshot()); screenshot.name = "physical-microphone-reopened"; screenshot.lifetime = .keepAlways; add(screenshot)
+        let remove = app.buttons["delete-case-bottom"]
+        for _ in 0..<5 { if remove.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(remove.isHittable); remove.tap(); app.buttons["Fall endgültig löschen"].tap()
+        #endif
+    }
+    @MainActor
     func testCaseReportContextDefaultsCanBePreviewedAndOptOutPersists() throws {
         let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--ui-testing-share-fixture"]; app.launch()
         XCTAssertTrue(app.buttons["new-dictation"].waitForExistence(timeout: 15))
@@ -233,7 +314,7 @@ final class WorkflowTests: XCTestCase {
         app.buttons["share-answer-10000000-0000-0000-0000-000000000003"].tap()
         let copy = app.cells.matching(NSPredicate(format: "identifier == 'actionGroupCell' AND label IN {'Copy', 'Kopieren'}")).firstMatch
         XCTAssertTrue(copy.waitForExistence(timeout: 8), app.debugDescription)
-        XCUIDevice.shared.press(.home); app.activate()
+        switchAwayAndBack(app)
         XCTAssertTrue(copy.waitForExistence(timeout: 8), app.debugDescription)
         copy.tap()
         XCTAssertTrue(copy.waitForNonExistence(timeout: 5))
@@ -250,7 +331,7 @@ final class WorkflowTests: XCTestCase {
         XCTAssertTrue(copy.waitForExistence(timeout: 8), app.debugDescription)
         let hierarchy = XCTAttachment(string: app.debugDescription); hierarchy.name = "system-share-hierarchy"; hierarchy.lifetime = .keepAlways; add(hierarchy)
         let screenshot = XCTAttachment(screenshot: app.screenshot()); screenshot.name = "report-text-share-sheet"; screenshot.lifetime = .keepAlways; add(screenshot)
-        XCUIDevice.shared.press(.home); app.activate()
+        switchAwayAndBack(app)
         XCTAssertTrue(copy.waitForExistence(timeout: 8), app.debugDescription); copy.tap()
         XCTAssertTrue(copy.waitForNonExistence(timeout: 5))
         XCTAssertTrue(app.textViews["report-editor"].waitForExistence(timeout: 5))

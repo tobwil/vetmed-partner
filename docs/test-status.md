@@ -155,3 +155,31 @@ Ausgangsstand: `main` bei `4561e04`, Branch bei `5ea7e98`. Alle vier dringenden 
 - Signierter iOS-Gerätebuild erfolgreich und auf dem iPhone 17 Pro installiert. Normaler Start vom Mac wurde wegen der Codesperre abgewiesen. [Installationsnachweis](evidence/device-urgent-review-install-2026-09-30.json).
 
 Review-Ergebnis: keine verbleibenden blockierenden Codebefunde nach den beiden Korrekturen; Übernahme auf Basis der vollständigen automatisierten Läufe und beider Builds. Der im ursprünglichen Branch-Handoff zusätzlich gewünschte manuelle iPhone-Durchlauf mit bestehenden Daten ist **noch offen**, ebenso echte Android-Gerätetests (hier kein Gerät/Emulator verbunden), Offline-Modell-Langläufe und Live-Provideranfragen. Installation allein bestätigt diese Prüfungen nicht. Vor Pilot-/Releasefreigabe bleiben sie erforderlich.
+
+
+## Physische iOS-Abnahme am 30.09.2026 abends
+
+Auf dem vom Nutzer entsperrten iPhone 17 Pro / iOS 26.6.1 wurden **106 unterschiedliche Tests erfolgreich ausgeführt**: 94 Unit-/Integrationstests und 12 UI-/Gerätetests. Der Ausgangslauf bestand mit 104 Tests (`evidence/ios-physical-acceptance-tests-2026-09-30.json`). Hinzu kommen der normale Start des bestehenden Nutzerspeichers ohne Testargumente und der echte Mikrofontest. Der abschließende Lauf prüfte Mikrofon sowie beide Teilen-Wege mit verifiziertem Appwechsel erneut: drei Tests, null Fehler (`evidence/ios-physical-lifecycle-tests-2026-09-30.json`). App-Codeänderung für diesen Lauf: ausschließlich stabile Accessibility-IDs für Aufnahmestatus und Zeit; keine neue Aufnahme- oder Datenbanklogik.
+
+- Echte Mikrofonaufnahme über mindestens 50 Sekunden, einschließlich zweier 20-Sekunden-Segmentwechsel und Pause/Fortsetzen. Wechsel zu iOS-Einstellungen pausiert die Aufnahme. Die gesicherte Dauer von **0:51** bleibt nach Prozessneustart erhalten. Der synthetische Testfall wurde anschließend gelöscht. Nachweis: `evidence/ios-physical-microphone-reopened-2026-09-30.png`. Kein Hörtest und keine ASR-Prüfung dieser Mikrofonaufnahme; der separate Dateitest ist davon zu unterscheiden.
+- Bestehender normaler Fallspeicher öffnet ohne Fehlerdialog. Dafür wurden keine Fälle geöffnet oder Nutzerdaten exportiert. Einzelnachweis: `evidence/ios-physical-existing-vault-test-2026-09-30.json`; der dazugehörige erste Zusatzlauf enthält auch den zunächst fehlgeschlagenen Mikrofontest. Die übrigen UI-Tests verwenden den getrennten verschlüsselten Testspeicher.
+- Falltrennung, Autosave/Neustart, unabhängiger Chat, Wischlöschung und Löschung im Fall, Berichtsauswahl/Abwahl mit Neustart sowie Tag/Nacht und Farbthema bestanden. Physische Screenshots von Fallberichtswissen und formatiertem Chat liegen unter `evidence/ios-physical-case-report-context-2026-09-30.png` und `evidence/ios-physical-chat-formatting-2026-09-30.png`.
+- Chat- und Bericht-Teilen-Menü bestehen echten Appwechsel und die anschließende Kopieren-Aktion. Das ist noch kein Nachweis für den Inhalt eines WhatsApp-Entwurfs. Kein Versand an Kontakte durch die Testautomation.
+- Der Foto-Picker-Test wurde auf dem echten Gerät ausdrücklich ausgeschlossen: Dort wurde kein synthetisches Testfoto in die Fotobibliothek eingespielt. Der bestehende Simulator-Nachweis bleibt erhalten.
+
+### Korrektur des Gerätetest-Ablaufs
+
+Die ersten beiden Mikrofonläufe konnten nach synthetischem Home-Tastendruck keine pausierte Aufnahme nachweisen. Im zweiten Lauf wurde auch der erwartete Hintergrundzustand nicht beobachtet; das erzwungene Beenden der weiterlaufenden Aufnahme ergab eine Sekunde Differenz zur zuletzt abgelesenen Anzeige. Diese fehlgeschlagenen Versuche sind erhalten (`ios-physical-microphone-first-attempt` und `ios-physical-microphone-home-recheck`).
+
+Das gezielte Aktivieren der iOS-Einstellungen löste die korrekte Aufnahme-Pause aus. Eine unmittelbar anschließende Zustandsassertion war aber noch zu früh und schlug allein fehl (`ios-physical-microphone-transition-check`). Der finale Test wartet auf `runningBackground` **oder** `runningBackgroundSuspended`, bevor er VetMed wieder aktiviert. Aufnahme-, Dauer- und Neustartassertionen bleiben unverändert. Auch beide Teilen-Tests verwenden jetzt diesen nachgewiesenen Appwechsel. Alle drei bestanden danach. Die erste Home-basierte Teilen-Prüfung allein wird deshalb nicht als Beleg eines Hintergrundwechsels verwendet.
+
+### Lokale Fünf-Minuten-Datei und Abnahmegrenzen
+
+`--qa-full-pipeline` verarbeitete die vorhandene synthetische 300-Sekunden-Datei: lokale SpeechAnalyzer-Transkription mit 100 Satzquellen und verschlüsselte Speicherung erfolgreich. Berichtserstellung wurde **vor Modellladen kontrolliert abgewiesen**, weil Gemma derzeit nicht installiert ist. Laufzeit 1,53 Sekunden, Netzwerkpfad `satisfied`, Thermik `nominal`; kein neuer Download und keine Provideranfrage. Nachweis: `evidence/ios-physical-local-pipeline-2026-09-30.json`. Dies ist kein vollständiger Offlinebericht-/PDF-Erfolg und kein neuer Flugmodusnachweis.
+
+WhatsApp-Entwurf wird für die manuelle Abnahme mit dem ausschließlich synthetischen UI-Prüffall vorbereitet. Ob das optionale Gemma-Modell für weitere Tests erneut installiert werden soll, wurde separat gefragt. Live-Online-/Vision-Antwortqualität, physischer Fotoimport, lange Mikrofonaufnahme mit Hör-/ASR-Prüfung, vollständiger Flugmodusbericht und klinische Freigabe sind durch diesen Lauf nicht abgedeckt. Die nicht blockierenden SwiftUI-Warnungen „Invalid frame dimension“ im Ausgangslauf bleiben dokumentiert.
+
+
+Simulator-Nachprüfung desselben Teststands: **drei UI-Tests bestanden**, zwei ausschließlich physische Tests erwartungsgemäß übersprungen. Fotoimport mit synthetischem Bild und beide überarbeiteten Appwechsel-/Teilen-Tests erfolgreich. Nachweis: `evidence/ios-acceptance-simulator-followup-2026-09-30.json`. Build-/Quellhashes des installierten Gerätestands: `evidence/ios-physical-build-acceptance-2026-09-30.json`.
+
+Zum Protokollabschluss ist der getrennte UI-Testbereich für die noch angefragte WhatsApp-Prüfung geöffnet. Die Rückmeldung dazu sowie zur optionalen Neuinstallation von Gemma stehen aus. Nach der manuellen Prüfung VetMed ohne `--ui-testing` normal starten; der normale Nutzerspeicherstart wurde in diesem Lauf bereits erfolgreich getestet. Keine uneingeschränkte finale Produkt-/klinische Freigabe aus diesen Ergebnissen ableiten.
