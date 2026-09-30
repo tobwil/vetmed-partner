@@ -25,3 +25,13 @@ Bilder aus früheren vollständigen Nachrichten desselben Chats bleiben im Konte
 Die API-Verbindung ist über synthetische Verträge geprüft; echte Bild-/Chatantworten mit dem Nutzer-Key und klinische Qualität sind separat abzunehmen. Keine Kamera-Direktaufnahme, Audio-Dateianhänge, weitere Provider oder Webrecherche in dieser Änderung.
 
 Offizielle Schnittstelle: [OpenAI Images and vision](https://developers.openai.com/api/docs/guides/images-vision).
+
+## Persona geschärft am 30.09.2026
+
+Auf ausdrückliche Bestätigung des Nutzers arbeitet der Chat im Stil einer erfahrenen klinischen Kollegin mit fachübergreifendem Blick. Der [gebündelte Sparring-Prompt](../../shared/prompts/sparring-v1.txt) wählt passende Fachperspektiven, gewichtet Differenzialdiagnosen, hinterfragt Annahmen respektvoll und begründet entscheidungsrelevante nächste Schritte. Tierart und Behandlungskontext werden berücksichtigt; akute Hinweise, Wissensgrenzen und sinnvolle spezialisierte Abklärung werden gezielt benannt. Die KI behauptet keine reale Qualifikation oder eigene Behandlungserfahrung.
+
+Der normale Gesprächsstil und fallfreie Fragen bleiben erhalten. Befunde, Interpretation und Vorschläge werden getrennt; Regeln für Bildqualität, fehlende Dosierungsgrundlagen, Zahlen/Negationen, ungeprüfte KI-Vorantworten und nicht aktivierte Recherche gelten weiter. Allgemeines Fachwissen darf zur Einordnung genutzt werden, aber nicht als erhobener Fallbefund erscheinen.
+
+Die geänderten Anweisungen werden bei jeder neuen Anfrage aus dem App-Bundle in den unveränderlichen Request-Snapshot übernommen. Sie gelten daher auch beim Weiterschreiben bestehender Chats; gespeicherte Antworten und frühere Anfragesnapshots werden nicht umgeschrieben. Der Ressourcenname `sparring-v1.txt` bleibt kompatibel; Änderung und exakter Inhalt sind über Git, Bundle-Hash und gespeicherte Anfragen nachvollziehbar.
+
+Die Struktur trennt Rolle, Arbeitsweise und Fallmaterial entsprechend der [offiziellen OpenAI-Dokumentation zu Prompt-Strukturierung](https://developers.openai.com/api/docs/guides/prompt-engineering#message-formatting-with-markdown-and-xml). Die Persona steuert das gewünschte Verhalten; technische Request-/Anhangstests sind keine klinische Qualitätsabnahme von Modellantworten.

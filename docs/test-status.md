@@ -61,6 +61,15 @@ Visuell im Simulator geprüft: `evidence/theme-start-day-2026-09-30.png`, `evide
 
 Signierter Build auf dem iPhone 17 Pro erfolgreich installiert (`evidence/device-theme-install-2026-09-30.json`). Nach einem anfänglichen Verbindungsreset gelang die Installation beim zweiten Versuch. Der normale Appstart wurde vom gesperrten iPhone abgewiesen; Start/Sichtprüfung auf dem echten Gerät sind deshalb noch nicht bestätigt.
 
+
+## Senior-Sparring-Persona am 30.09.2026
+
+Der Nutzer hat die fachübergreifende Persona im Stil einer erfahrenen klinischen Kollegin bestätigt. Der Prompt priorisiert klinische Hypothesen, kritisch-kollegiale Rückfragen und entscheidungsrelevante nächste Schritte. Tierart, Kontext und Dringlichkeit sowie Grenzen bei Bildern und Dosierungsgrundlagen werden berücksichtigt. Er behauptet keine reale Qualifikation. Normaler Chatstil, Falltrennung, Befundtreue und das Verbot erfundener Quellen bleiben erhalten.
+
+Gezielt erneut geprüft: **24 Chat-/Anhangstests, null Fehler** (`evidence/ios-senior-persona-tests-2026-09-30.json`). Der Prompt ist bytegleich im Simulator- und signierten iPhone-Bundle enthalten. Der Builder übernimmt ihn weiterhin als Anweisungen in den gespeicherten Request; die neue Persona gilt für neue Anfragen in neuen und bestehenden Chats. Bereits gespeicherte Antworten bleiben unverändert. Für diese Änderung wurde keine echte Provideranfrage ausgeführt: Die Prüfung belegt Einbindung und Anfrageverträge, keine klinische Antwortqualität.
+
+Der signierte Build mit der neuen Persona wurde erfolgreich auf dem iPhone installiert und ohne Testflags normal gestartet (`evidence/device-senior-persona-install-2026-09-30.json`). Damit ist auch der zuvor durch die Bildschirmsperre blockierte Start des neuen Designstands erfolgt.
+
 ## Noch offen
 
 | Phase | Stand | Fehlende Abnahme |

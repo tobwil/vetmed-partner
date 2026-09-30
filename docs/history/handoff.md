@@ -2,13 +2,13 @@
 
 ## Stand und verbindliche Nutzerentscheidungen
 
-Die native iOS-App ist implementiert und auf dem iPhone 17 Pro installiert. Der neue Designstand aus `02793da` wurde am 30.09.2026 erfolgreich installiert; automatischer Start ist wegen der Bildschirmsperre noch nicht bestätigt. Der letzte zuvor nachweislich gestartete Stand ist `076b034`. Die App heißt VetMed, Bundle `de.tobwil.vetmed`. Der gesamte Zielumfang bleibt im [Plan](../implementation-plan.md) und der [Nachverfolgung](../requirements-trace.md) erhalten.
+Die native iOS-App ist implementiert und auf dem iPhone 17 Pro installiert. Der Designstand aus `02793da` wurde am 30.09.2026 um die bestätigte Senior-Sparring-Persona ergänzt, erfolgreich installiert und normal gestartet. Prompt- und Binary-Hashes: `docs/evidence/device-senior-persona-install-2026-09-30.json`. Die App heißt VetMed, Bundle `de.tobwil.vetmed`. Der gesamte Zielumfang bleibt im [Plan](../implementation-plan.md) und der [Nachverfolgung](../requirements-trace.md) erhalten.
 
 Aktuelle Nutzerentscheidungen:
 
 - Keine Face ID oder zusätzliche biometrische App-Sperre.
 - Online-Berichte nach bewusster Einrichtung/Aktivierung des eigenen API-Keys als Standard; Offline-Modell optional, kein stiller Fallback.
-- Normaler Chat mit Fragen/Bildern/Befunden; unabhängige Gespräche ohne Fall möglich.
+- Normaler Chat mit Fragen/Bildern/Befunden; unabhängige Gespräche ohne Fall möglich. Die Persona arbeitet im Stil einer erfahrenen klinischen Kollegin, fachübergreifend und kritisch mitdenkend.
 - Falllöschung durch Wischen von rechts nach links oder unten im Fall.
 - Start/Fälle/Chat, schrittweises Diktat und sichtbare Fallzuordnung.
 - Chatformatierung rendern und vollständigen Inhalt über Teilen an andere Apps übergeben.

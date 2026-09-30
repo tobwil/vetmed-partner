@@ -1,0 +1,14 @@
+{
+  "verifiedAt": "2026-09-30T05:22:28.895609+00:00",
+  "bundleID": "de.tobwil.vetmed",
+  "device": "iPhone 17 Pro / iOS 26.6.1",
+  "signedDeviceBuildSucceeded": true,
+  "installSucceeded": true,
+  "normalLaunchSucceeded": true,
+  "promptSHA256": "30355b82f8c2cbb941de91fe3cd63cc6c6f5b01b631f851e348a9a74f8b3a1dd",
+  "deviceBundlePromptMatchesSource": true,
+  "simulatorBundlePromptMatchesSource": true,
+  "binarySHA256": "a1724dc8cb57ee326b27a208df9db53a54b0946de6da11d5b23fff290b825561",
+  "liveProviderRequestPerformed": false,
+  "clinicalAnswerQualityVerified": false
+}
