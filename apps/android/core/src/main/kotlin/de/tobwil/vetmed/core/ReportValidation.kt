@@ -100,11 +100,13 @@ object ReportValidator {
         return warnings.sorted()
     }
 
-    // (?U) gives Unicode \w, \b and \d like NSRegularExpression (ICU) on iOS.
-    private val numberPattern = Regex("""(?U)(?<![\p{L}\d])\d+(?:[.,]\d+)?""")
-    private val unitPattern = Regex("""(?iU)(?<!\p{L})(?:µg/kg|μg/kg|mg/kg|mg/dl|mmol/l|µmol/l|ml/kg|g/l|mg|µg|μg|kg|ml|mm|cm|°c|bpm)(?!\p{L})""")
-    private val comparisonPattern = Regex("""(?U)(?:[<>≤≥]=?)\s*\d+(?:[.,]\d+)?""")
-    private val negationPattern = Regex("""(?iU)\b(?:kein\w*|nicht|ohne|verneint)\b""")
+    // Android's ICU rejects Java's embedded (?U) flag. Explicit Unicode classes also
+    // keep the JVM tests Unicode-aware without making the Android class initializer crash.
+    private const val WORD = """[\p{L}\p{M}\p{Nd}\p{Nl}\p{Pc}\u200C\u200D]"""
+    private val numberPattern = Regex("""(?<![\p{L}\p{Nd}])\p{Nd}+(?:[.,]\p{Nd}+)?""")
+    private val unitPattern = Regex("""(?i)(?<!\p{L})(?:µg/kg|μg/kg|mg/kg|mg/dl|mmol/l|µmol/l|ml/kg|g/l|mg|µg|μg|kg|ml|mm|cm|°c|bpm)(?!\p{L})""")
+    private val comparisonPattern = Regex("""(?:[<>≤≥]=?)[\p{Z}\u0009-\u000D\u0085]*\p{Nd}+(?:[.,]\p{Nd}+)?""")
+    private val negationPattern = Regex("""(?i)(?<!$WORD)(?:kein$WORD*|nicht|ohne|verneint)(?!$WORD)""")
 
     fun numbers(text: String): Set<String> = numberPattern.findAll(text).map { it.value.replace(',', '.') }.toSet()
     fun units(text: String): Set<String> = unitPattern.findAll(text.lowercase()).map { it.value }.toSet()

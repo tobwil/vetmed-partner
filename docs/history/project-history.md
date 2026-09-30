@@ -156,3 +156,10 @@ Die 300-Sekunden-Datei wurde lokal transkribiert und verschlüsselt gespeichert.
 Der Simulator-Nachtest bestand ebenfalls: drei UI-Tests (synthetischer Fotoimport, Chat- und Bericht-Teilen), die beiden physischen Tests wurden dort erwartungsgemäß übersprungen. Zum Archivzeitpunkt stehen die manuellen Rückmeldungen noch aus; das iPhone bleibt dafür bewusst im getrennten Testbereich. Der normale Fallspeicherstart ist geprüft. Der Quellstand und die Nachweise werden auf main gesichert; die offenen Punkte werden nicht als bestanden gewertet.
 
 Nutzeranschluss: „hat alles funktioniert! wie jetzt die apk testen?“ Die erfolgreiche manuelle iPhone-Rückmeldung ist erfasst; VetMed wurde wieder ohne Testargumente gestartet. Für Android liegt die geprüfte Debug-APK vor (mindestens Android 14). Bei der Geräteabfrage war noch kein Android-Gerät über ADB angeschlossen.
+
+
+## 30.09.2026 – APK auf dem verbundenen Android testen
+
+Nutzer: „android ist verbunden mit dem pc“. Auf dem Pixel 9a (Android 17) wurde die Debug-APK installiert und der echte Mikrofon-/Drehungs-/Speicherpfad geprüft. Dabei stürzte „Text prüfen“ reproduzierbar ab: JVM-Regex-Flag `(?U)` wird von Android ICU nicht akzeptiert. Die vier Validator-Muster verwenden jetzt explizite Unicode-Klassen; zusätzliche JVM- und native Gerätetests schützen Zahlen, Einheiten, Vergleiche und Verneinungen.
+
+128 lokale Tests und sieben gezielt ausgewählte Gerätetests bestehen, Build erfolgreich, Lint null Fehler/sechs Hinweise. Das Update ist auf dem Pixel installiert. Die Aufnahme von 1:14 blieb erhalten; Texteingabe, Drehung und Prozessneustart funktionierten anschließend. Nur der selbst angelegte synthetische Testfall wurde gelöscht. Die App bleibt normal auf Start; keine Provideranfrage, kein Modell-Download und kein Versand an Kontakte. Der erste Modelltest ist wegen fehlender Gewichte als fehlgeschlagene Voraussetzung archiviert. Detaillierte Versuche, Grenzen und Hashes: [Prüfstand](../test-status.md), [Gerätenachweis](../evidence/android-pixel-device-acceptance-2026-09-30.json).

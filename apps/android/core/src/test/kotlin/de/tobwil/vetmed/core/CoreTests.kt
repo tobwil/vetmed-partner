@@ -11,6 +11,14 @@ import org.junit.Test
 
 /** Kotlin port of `apps/ios/VetMedTests/CoreTests.swift` (platform-neutral cases). */
 class CoreTests {
+    @Test fun validationPatternsKeepUnicodeSemanticsWithoutJvmOnlyFlags() {
+        assertEquals(setOf("12.5", "٣.٥"), ReportValidator.numbers("Hund 12,5 kg; ٣,٥; x7"))
+        assertEquals(setOf("kg", "µg/kg", "μg/kg", "°c"), ReportValidator.units("12 KG; 3 µg/kg; 4 μg/kg; 38 °C; äkg"))
+        assertEquals(setOf("≤12.5", ">\u00a0٣"), ReportValidator.comparisons("≤ 12,5; >\u00a0٣"))
+        assertTrue(ReportValidator.hasNegation("KEIN Fieber; kein\u0308"))
+        listOf("irgendkeine", "äkein", "nichtä", "ohne\u0308", "\u0308kein").forEach { assertFalse(it, ReportValidator.hasNegation(it)) }
+    }
+
     private fun fixture(text: String = "Hund, 12,5 kg. Kein Fieber. Gabe 0,5 mg/kg."): Pair<TranscriptVersion, StructuredReport> {
         val t = TranscriptVersion(rawText = text, editedText = text, segments = listOf(TranscriptSegment("test-source", text)), engine = "synthetic")
         val report = StructuredReport(

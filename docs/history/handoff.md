@@ -17,7 +17,9 @@ Aktuelle Nutzerentscheidungen:
 - Start/Fälle/Chat, schrittweises Diktat und sichtbare Fallzuordnung.
 - Chatformatierung rendern und vollständigen Inhalt über Teilen an andere Apps übergeben.
 
-Nutzer bestätigt nach der vorbereiteten WhatsApp-Prüfung: „hat alles funktioniert!“ und fragt nach dem APK-Test. VetMed ist wieder ohne Testargumente normal gestartet. Das optionale Gemma-Modell wurde nicht erneut installiert; vollständiger Offlinebericht und weitere ausdrücklich offene technische Prüfungen bleiben davon getrennt. Android-Debug-APK liegt unter `apps/android/app/build/outputs/apk/debug/app-debug.apk`, Mindestversion Android 14. Noch kein Android-Gerät per ADB verbunden.
+Nutzer bestätigt nach der vorbereiteten WhatsApp-Prüfung: „hat alles funktioniert!“ und fragt nach dem APK-Test. VetMed ist wieder ohne Testargumente normal gestartet. Das optionale Gemma-Modell wurde nicht erneut installiert; vollständiger Offlinebericht und weitere ausdrücklich offene technische Prüfungen bleiben davon getrennt. Android-Debug-APK liegt unter `apps/android/app/build/outputs/apk/debug/app-debug.apk`, Mindestversion Android 14. Inzwischen auf Pixel 9a / Android 17 installiert und normal gestartet; Details im folgenden Absatz.
+
+Aktueller Android-Gerätestand: Ein realer Absturz in „Text prüfen“ durch das auf Android ungültige Regex-Flag `(?U)` ist mit expliziten Unicode-Zeichenklassen behoben. 128 lokale Tests und sieben native Gerätetests bestehen, Build erfolgreich, Lint null Fehler/sechs Hinweise. Echte Aufnahme lief während Drehung weiter; 1:14 Aufnahme blieb über Absturz und In-place-Update erhalten. Synthetischer Text überstand Drehung und Prozessneustart. Testfall gelöscht, App auf Start, Bildschirmdrehung wieder `free`. API-Key und optionales Offline-Modell sind auf Android noch nicht eingerichtet; Live-Provider, ASR/Hörtest, Foto/OCR, WhatsApp und vollständiger Bericht bleiben offen. Der ursprüngliche Modelltest ist als fehlgeschlagene Voraussetzung dokumentiert, nicht als bestandener Test. [Gerätenachweis](../evidence/android-pixel-device-acceptance-2026-09-30.json).
 
 ## Orientierung im Code
 
@@ -77,4 +79,4 @@ Der Prüfstand enthält auch gescheiterte Tests und korrigierte Selektoren. Der 
 
 Aktive Audiosegmente sind während der Aufnahme noch nicht durchgehend auf App-Ebene verschlüsselt; iOS-Dateischutz und Verschlüsselung abgeschlossener Segmente sind davon getrennt. Größen- und RAM-Grenzen gelten für die dokumentierten Pfade und sind keine allgemeine Garantie gegen Speicherfehler.
 
-Vor weiteren Produktzusagen [test-status.md](../test-status.md) und [requirements-trace.md](../requirements-trace.md) fortschreiben. Android ist inzwischen implementiert und auf dem JVM-Teststand geprüft; die echte Geräteabnahme bleibt offen. Weitere Provider, Brave und der übrige Restplan sind ebenfalls offen.
+Vor weiteren Produktzusagen [test-status.md](../test-status.md) und [requirements-trace.md](../requirements-trace.md) fortschreiben. Android ist implementiert und zusätzlich auf dem Pixel 9a teilweise physisch geprüft; die vollständige Geräteabnahme bleibt offen. Weitere Provider, Brave und der übrige Restplan sind ebenfalls offen.

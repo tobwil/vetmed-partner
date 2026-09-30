@@ -1,0 +1,80 @@
+{
+  "date": "2026-09-30",
+  "baseCommit": "a8d444f",
+  "device": {
+    "model": "Pixel 9a",
+    "android": "17",
+    "api": 37
+  },
+  "build": {
+    "jdk": 21,
+    "result": "BUILD SUCCESSFUL",
+    "tasks": [
+      ":core:test",
+      ":app:testDebugUnitTest",
+      ":app:lintDebug",
+      ":app:assembleDebug",
+      ":app:assembleDebugAndroidTest"
+    ],
+    "tests": {
+      "core": {
+        "tests": 84,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "app": {
+        "tests": 44,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    },
+    "lint": {
+      "Warning": 6
+    }
+  },
+  "installation": {
+    "package": "de.tobwil.vetmed",
+    "activity": ".MainActivity",
+    "result": "installed and launched normally",
+    "versionName": "0.1.0",
+    "versionCode": 1,
+    "variant": "debug",
+    "updatedInPlacePreservingRecording": true
+  },
+  "instrumentation": {
+    "runner": "androidx.test.runner.AndroidJUnitRunner",
+    "selection": [
+      "ReportValidationDeviceTests",
+      "SqlCipherDeviceTests",
+      "ReportPdfDeviceTests"
+    ],
+    "passed": 7,
+    "failed": 0,
+    "rawOutput": "\nde.tobwil.vetmed.ReportValidationDeviceTests:....\nde.tobwil.vetmed.SqlCipherDeviceTests:..\nde.tobwil.vetmed.ReportPdfDeviceTests:.\n\nTime: 2,467\n\nOK (7 tests)\n\n\n"
+  },
+  "physicalUiObservations": [
+    "Microphone permission granted; recording explicitly resumed, then observed running at 0:43 portrait and 1:01 landscape.",
+    "Initial pause at 0:05 was observed; its cause was not established. No claim of a recorder fix from this run.",
+    "After Home and reopening the app, recording was paused and saved at 1:14.",
+    "Opening Text prüfen twice crashed the initial build due to unsupported embedded regex flag U. See separate crash evidence.",
+    "After in-place fixed APK installation, recording 1:14 remained and Text prüfen opened without a crash.",
+    "Synthetic transcript saved; number preview 12.5 appeared. Exact text and saved status survived rotation and force-stop/relaunch.",
+    "Synthetic Fall 1 deleted through bottom case action and explicit confirmation; empty case list and home with zero cases/chats verified.",
+    "User rotation restored to free, test runner package uninstalled, normal app left on home screen."
+  ],
+  "limits": [
+    "No audio playback/quality or microphone ASR test",
+    "No provider request; API key not configured",
+    "Optional Gemma not installed; initial test XML records failed assumption, not a successful model run",
+    "No physical photo import, OCR, WhatsApp transfer or full report pipeline tested"
+  ],
+  "initialInstrumentedRun": "android-pixel-first-device-tests-2026-09-30.xml",
+  "sha256": {
+    "apps/android/app/build/outputs/apk/debug/app-debug.apk": "6cc6ac79bf1079da11927d2b51ce707df6d175a8224b210b2dc63c0bf0e2619e",
+    "apps/android/core/src/main/kotlin/de/tobwil/vetmed/core/ReportValidation.kt": "7f0819acd432b133525c16fd85862f83bdb577a03bcd843c9ca37fe1742dd17c",
+    "apps/android/core/src/test/kotlin/de/tobwil/vetmed/core/CoreTests.kt": "5643ff94dcb96974c0be408b0a43f5bf548cb36df964c6ae2059c34a4a787402",
+    "apps/android/app/src/androidTest/kotlin/de/tobwil/vetmed/ReportValidationDeviceTests.kt": "e7a540f81390dc134e9e0214363b9a33953773bcf2f29e66cb4eefa1f627da98"
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "device": "Pixel 9a",
+  "androidVersion": "17 (API 37)",
+  "trigger": "Open Text prüfen / Text stattdessen eingeben after recording",
+  "exception": "ExceptionInInitializerError caused by PatternSyntaxException",
+  "pattern": "(?U)(?<![\\p{L}\\d])\\d+(?:[.,]\\d+)?",
+  "source": "ReportValidation.kt:104, called by EncounterScreen.kt:283",
+  "occurrences": 2,
+  "rawLogRetainedLocally": "/tmp/vetmed-pixel-crash.log",
+  "explanation": "Embedded Java flag U is rejected by Android ICU. Unicode character classes are already enabled on Android. JVM-only tests did not expose this.",
+  "reference": "https://developer.android.com/reference/java/util/regex/Pattern#UNICODE_CHARACTER_CLASS"
+}

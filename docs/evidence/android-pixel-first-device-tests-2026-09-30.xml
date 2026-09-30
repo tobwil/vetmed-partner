@@ -1,0 +1,38 @@
+<?xml version='1.0' encoding='UTF-8' ?>
+<testsuites tests="4" failures="1" errors="0" skipped="0" time="0.000" timestamp="2026-09-30T19:55:04" hostname="localhost">
+  <testsuite name="de.tobwil.vetmed.LocalModelDeviceTests" tests="1" failures="1" errors="0" skipped="0" time="0.000" timestamp="2026-09-30T19:55:04" hostname="localhost">
+    <properties>
+      <property name="device" value="physical-pixel-9a" />
+    </properties>
+    <testcase name="gemmaWritesAVerifiableReportOnThisDevice" classname="de.tobwil.vetmed.LocalModelDeviceTests" time="0.000">
+      <failure>org.junit.AssumptionViolatedException: Offline-Modell nicht installiert
+	at org.junit.Assume.assumeTrue(Assume.java:68)
+	at de.tobwil.vetmed.LocalModelDeviceTests$gemmaWritesAVerifiableReportOnThisDevice$1.invokeSuspend(LocalModelDeviceTests.kt:29)
+	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:34)
+	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:100)
+	at kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:256)
+	at kotlinx.coroutines.BlockingCoroutine.joinBlocking(Builders.kt:54)
+	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlockingImpl(Builders.kt:30)
+	at kotlinx.coroutines.BuildersKt.runBlockingImpl(dex-id-747f5e445561c9e603b0f5985bd7887ca6c8fbef:1)
+	at kotlinx.coroutines.BuildersKt__Builders_concurrentKt.runBlockingK(Builders.concurrent.kt:172)
+	at kotlinx.coroutines.BuildersKt.runBlockingK(dex-id-747f5e445561c9e603b0f5985bd7887ca6c8fbef:1)
+	at kotlinx.coroutines.BuildersKt__Builders_concurrentKt.runBlockingK$default(Builders.concurrent.kt:157)
+	at kotlinx.coroutines.BuildersKt.runBlockingK$default(dex-id-747f5e445561c9e603b0f5985bd7887ca6c8fbef:1)
+	at de.tobwil.vetmed.LocalModelDeviceTests.gemmaWritesAVerifiableReportOnThisDevice(LocalModelDeviceTests.kt:26)
+</failure>
+    </testcase>
+  </testsuite>
+  <testsuite name="de.tobwil.vetmed.ReportPdfDeviceTests" tests="1" failures="0" errors="0" skipped="0" time="0.521" timestamp="2026-09-30T19:55:04" hostname="localhost">
+    <properties>
+      <property name="device" value="physical-pixel-9a" />
+    </properties>
+    <testcase name="longReportKeepsDraftMarkingAndLastLine" classname="de.tobwil.vetmed.ReportPdfDeviceTests" time="0.521" />
+  </testsuite>
+  <testsuite name="de.tobwil.vetmed.SqlCipherDeviceTests" tests="2" failures="0" errors="0" skipped="0" time="2.870" timestamp="2026-09-30T19:55:04" hostname="localhost">
+    <properties>
+      <property name="device" value="physical-pixel-9a" />
+    </properties>
+    <testcase name="databaseIsEncryptedAndRoundTrips" classname="de.tobwil.vetmed.SqlCipherDeviceTests" time="2.036" />
+    <testcase name="otherKeystoreKeyCannotOpenTheDatabase" classname="de.tobwil.vetmed.SqlCipherDeviceTests" time="0.834" />
+  </testsuite>
+</testsuites>
