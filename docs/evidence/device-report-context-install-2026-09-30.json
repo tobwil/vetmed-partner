@@ -1,0 +1,19 @@
+{
+  "checkedAt": "2026-09-30T05:42:17.619314+00:00",
+  "device": "iPhone 17 Pro",
+  "bundleIdentifier": "de.tobwil.vetmed",
+  "signedBuildSucceeded": true,
+  "installationSucceeded": false,
+  "normalLaunchSucceeded": false,
+  "installationFailure": "CoreDeviceError 4016: paired device unavailable; user asked to reconnect and unlock.",
+  "sourceSHA256": {
+    "apps/ios/VetMed/Core/Domain.swift": "32459b60d881dc080141573d208b33f16df3da4dad0c6a75e197159d8ee56613",
+    "apps/ios/VetMed/Core/Sparring.swift": "d9141486452e5a9ab8169b5586d0b6b54f207f6cc6513149ac0d891fb523e6ef",
+    "apps/ios/VetMed/Core/VetAppModel.swift": "e1902e74008dc8b1a2c5100d1f4571218819f41df431da6307cf7d3539780996",
+    "apps/ios/VetMed/Services/SparringService.swift": "0b4109f45687e123cd8893199799b886aef9cd3ec959b0a427a4f9784b88fcbe",
+    "apps/ios/VetMed/Views/EncounterWorkflowView.swift": "5376486996919eabde59e49e3ecc70a347665d25f4b9b116e3a6be067bfff2d4",
+    "apps/ios/VetMed/Views/SparringView.swift": "0d71ef1141779f9d2717d521f8b307383ad394f3a83603de62e8336186384047"
+  },
+  "binarySHA256": "8174bf94cefb3dc0ef065a607f278e626651644a98982411c15ccfe550f3239e",
+  "liveProviderTestPerformed": false
+}

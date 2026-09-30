@@ -23,6 +23,7 @@ enum ReportTemplate: String, CaseIterable, Codable, Identifiable, Sendable {
     var title: String {
         switch self { case .treatment_report: "Behandlungsbericht"; case .soap: "SOAP"; case .follow_up: "Verlauf / Kontrolle"; case .referral: "Überweisung"; case .owner_information: "Information für Tierhalter" }
     }
+    var audience: Audience { self == .owner_information ? .owner : .veterinarian }
     var sections: [String] {
         switch self {
         case .treatment_report: ["Anamnese", "Befunde", "Beurteilung", "Therapie", "Weiteres Vorgehen"]
@@ -41,7 +42,7 @@ enum ReportLength: String, CaseIterable, Codable, Identifiable, Sendable {
 enum Audience: String, CaseIterable, Codable, Identifiable, Sendable {
     case veterinarian, owner
     var id: String { rawValue }
-    var title: String { self == .veterinarian ? "Fachkollegin" : "Tierhalter" }
+    var title: String { self == .veterinarian ? "Tierärztliche Fachkollegen" : "Tierhalter" }
 }
 struct VetCase: Codable, Identifiable, Equatable, Sendable {
     var id = UUID()

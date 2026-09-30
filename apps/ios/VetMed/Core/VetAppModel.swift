@@ -260,8 +260,9 @@ final class VetAppModel: ObservableObject {
             try await persist()
         }
     }
-    func generate(at location: EncounterLocation, template: ReportTemplate, length: ReportLength, audience: Audience, mode: ReportExecutionMode) {
+    func generate(at location: EncounterLocation, template: ReportTemplate, length: ReportLength, mode: ReportExecutionMode) {
         let c = location.caseID, e = location.encounterID
+        let audience = template.audience
         guard let transcript = encounter(at: location)?.transcripts.last else { error = "Bitte zuerst das Transkript speichern."; return }
         let configuration = onlineConfiguration
         run(state: .generating, location: location) { [self] in

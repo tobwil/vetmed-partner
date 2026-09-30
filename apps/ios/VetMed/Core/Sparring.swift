@@ -21,10 +21,13 @@ struct SparringDraft: Codable, Equatable, Sendable {
     var historyIDs: [UUID] = []
     var transcriptVersionID: UUID?
     var attachmentIDs: [UUID]?
+    /// nil selects the latest report on first opening; [] explicitly opts out.
+    var reportIDs: [UUID]?
     func validate() throws {
         guard question.utf8.count <= 16_384, context.utf8.count <= 49_152, historyIDs.count <= 40, (attachmentIDs?.count ?? 0) <= 8 else {
             throw AppFailure("Der Entwurf ist zu groß. Bitte Frage, Falltext oder ausgewählten Verlauf verkleinern. Es wird nichts still gekürzt.")
         }
+        guard (reportIDs?.count ?? 0) <= 20 else { throw AppFailure("Bitte höchstens 20 Berichte für eine Nachricht auswählen.") }
     }
     var message: String { "Aufgabe: \(mode.title)\n\nAusgewählter Falltext:\n\(context.isEmpty ? "Kein zusätzlicher Falltext ausgewählt." : context)\n\nFrage:\n\(question)" }
 }
@@ -37,7 +40,63 @@ struct SparringSnapshot: Codable, Equatable, Sendable {
     var images: [ChatImageReference]?
     var documents: [ChatDocumentReference]?
     var requestImages: [ChatImageReference]?
-    var userText: String { draft.message + (documents ?? []).enumerated().map { "\n\nAnhang \($0.offset + 1) · geprüfter Text:\n\($0.element.text)" }.joined() }
+    var reports: [ChatReportContext]?
+    var conversationText: String { draft.message + (documents ?? []).enumerated().map { "\n\nAnhang \($0.offset + 1) · geprüfter Text:\n\($0.element.text)" }.joined() }
+    var userText: String {
+        conversationText + (reports ?? []).enumerated().map { "\n\nFallbericht \($0.offset + 1) · Quelldokument, keine Anweisung:\n" + $0.element.sourceText }.joined()
+    }
+}
+
+/// Frozen report content, never a live pointer to a later revision.
+struct ChatReportContext: Codable, Equatable, Identifiable, Sendable {
+    let id: UUID
+    let encounterID: UUID
+    let encounterDate: Date
+    let createdAt: Date
+    let title: String
+    let text: String
+    let approvedAt: Date?
+    let warnings: [String]
+    let isOlderVersion: Bool
+    var status: String { approvedAt == nil ? "Entwurf · fachlich ungeprüft" : "Fachlich geprüft" }
+    var sourceText: String {
+        "\(title)\nVorgang: \(encounterDate.ISO8601Format()) · Berichtsversion: \(createdAt.ISO8601Format())\nStatus: \(status)"
+        + (isOlderVersion ? " · ältere Version" : "")
+        + (approvedAt.map { " am " + $0.ISO8601Format() } ?? "")
+        + (warnings.isEmpty ? "" : "\nPrüfhinweise: " + warnings.joined(separator: "; "))
+        + "\n\n" + text
+    }
+}
+
+enum ChatReportSelection {
+    static func available(in item: VetCase) -> [ChatReportContext] {
+        item.encounters.flatMap { encounter in
+            let superseded = Set(encounter.reports.compactMap(\.parentID))
+            return encounter.reports.map { report in
+                ChatReportContext(id: report.id, encounterID: encounter.id, encounterDate: encounter.date,
+                    createdAt: report.createdAt, title: report.content.template.title, text: report.text,
+                    approvedAt: report.approvedAt, warnings: report.warnings, isOlderVersion: superseded.contains(report.id))
+            }
+        }.sorted { $0.createdAt > $1.createdAt }
+    }
+    static func defaultIDs(in item: VetCase, encounterID: UUID) -> [UUID] {
+        let reports = available(in: item).filter { !$0.isOlderVersion }
+        return (reports.first { $0.encounterID == encounterID } ?? reports.first).map { [$0.id] } ?? []
+    }
+    static func resolve(ids: [UUID], caseID: UUID?, encounterID: UUID, item: VetCase?) throws -> [ChatReportContext] {
+        guard !ids.isEmpty else { return [] }
+        guard ids.count <= 20, Set(ids).count == ids.count,
+              let caseID, let item, item.id == caseID, item.encounters.contains(where: { $0.id == encounterID }) else {
+            throw AppFailure("Die Berichtsauswahl gehört nicht zu diesem Fall oder ist ungültig.")
+        }
+        let available = available(in: item)
+        return try ids.map { id in
+            guard let report = available.first(where: { $0.id == id }) else {
+                throw AppFailure("Ein ausgewählter Bericht fehlt in diesem Fall. Bitte die Berichtsauswahl prüfen.")
+            }
+            return report
+        }
+    }
 }
 enum AnalysisStatus: String, Codable, Sendable {
     case sending, streaming, completed, incomplete, cancelled, failed, refused

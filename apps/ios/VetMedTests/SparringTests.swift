@@ -32,6 +32,88 @@ final class SparringTests: XCTestCase {
             "response": ["status": status, "model": "synthetic-model-snapshot", "usage": ["input_tokens": 50, "output_tokens": 20],
                          "output": [["type": "message", "content": [content]]]]])
     }
+    private func report(_ text: String, date: Date = Date(), approved: Bool = false) -> ReportVersion {
+        let content = StructuredReport(template: .treatment_report, length: .short, audience: .veterinarian,
+            sourceTranscriptVersionId: UUID().uuidString, sections: [], missingInformation: [], conflicts: [])
+        return ReportVersion(createdAt: date, content: content, editedText: text, modelID: "test", modelRevision: "test",
+            warnings: ["Zahlen prüfen"], approvedAt: approved ? date : nil)
+    }
+    func testCaseReportsIncludeSelectedEditedVersionsFromMultipleEncountersAndFreezeContent() throws {
+        let first = report("Kein Fieber. 12,5 kg.", approved: true)
+        let second = report("Kontrolle: Temperatur nicht gemessen.")
+        let ignored = report("NICHT AUSGEWÄHLT")
+        let encounter = Encounter(reports: [first, ignored])
+        var item = VetCase(label: "Nur lokal", species: "Hund", encounters: [encounter, Encounter(reports: [second])])
+        let draft = SparringDraft(question: "Wie weiter?", reportIDs: [first.id, second.id])
+        let snapshot = try SparringRequestBuilder.prepare(caseID: item.id, encounter: encounter, draft: draft, modelID: "test", caseContext: item)
+        let request = try SparringRequestBuilder.request(snapshot: snapshot, key: key)
+        XCTAssertEqual(request.httpBody, snapshot.payload)
+        let body = try XCTUnwrap(JSONSerialization.jsonObject(with: request.httpBody!) as? [String: Any])
+        let messages = try XCTUnwrap(body["input"] as? [[String: Any]])
+        let text = try XCTUnwrap(messages.last?["content"] as? String)
+        XCTAssertTrue(text.contains("Kein Fieber. 12,5 kg.")); XCTAssertTrue(text.contains(second.text))
+        XCTAssertTrue(text.contains("Fachlich geprüft")); XCTAssertTrue(text.contains("Entwurf · fachlich ungeprüft"))
+        XCTAssertTrue(text.contains("Zahlen prüfen")); XCTAssertFalse(text.contains(ignored.text)); XCTAssertFalse(text.contains(item.label))
+        item.encounters[0].reports[0].editedText = "Später verändert"
+        XCTAssertEqual(snapshot.reports?.first?.text, first.text)
+        XCTAssertEqual(try JSONDecoder().decode(SparringSnapshot.self, from: JSONEncoder().encode(snapshot)), snapshot)
+    }
+    func testReportSelectionRejectsForeignMissingDuplicateAndStandaloneReferences() throws {
+        let own = report("Eigener Bericht"), foreign = report("Fremder Bericht")
+        let encounter = Encounter(reports: [own])
+        let item = VetCase(label: "A", species: "Hund", encounters: [encounter])
+        let other = VetCase(label: "B", species: "Katze", encounters: [Encounter(reports: [foreign])])
+        func prepare(_ ids: [UUID], caseID: UUID?, context: VetCase?) throws -> SparringSnapshot {
+            try SparringRequestBuilder.prepare(caseID: caseID, encounter: encounter,
+                draft: .init(question: "Frage", reportIDs: ids), modelID: "test", caseContext: context)
+        }
+        XCTAssertThrowsError(try prepare([foreign.id], caseID: item.id, context: item))
+        XCTAssertThrowsError(try prepare([foreign.id], caseID: item.id, context: other))
+        XCTAssertThrowsError(try prepare([own.id], caseID: nil, context: item))
+        XCTAssertThrowsError(try prepare([own.id, own.id], caseID: item.id, context: item))
+        XCTAssertThrowsError(try prepare([own.id], caseID: item.id, context: nil))
+        XCTAssertThrowsError(try SparringRequestBuilder.prepare(caseID: item.id, encounter: Encounter(),
+            draft: .init(question: "Frage", reportIDs: [own.id]), modelID: "test", caseContext: item))
+    }
+    func testDeselectedReportIsNotReintroducedFromHistoryButOriginalSnapshotIsPreserved() throws {
+        let source = report("EINMALIGER QUELLTEXT")
+        var encounter = Encounter(reports: [source])
+        var item = VetCase(label: "A", species: "Hund", encounters: [encounter])
+        let first = try SparringRequestBuilder.prepare(caseID: item.id, encounter: encounter,
+            draft: .init(question: "Erste Frage", reportIDs: [source.id]), modelID: "test", caseContext: item)
+        let run = AnalysisRun(snapshot: first, status: .completed, text: "Frühere Antwort")
+        encounter.analysisRuns = [run]; item.encounters = [encounter]
+        let next = try SparringRequestBuilder.prepare(caseID: item.id, encounter: encounter,
+            draft: .init(question: "Rückfrage", historyIDs: [run.id], reportIDs: []), modelID: "test", caseContext: item)
+        let text = String(decoding: next.payload, as: UTF8.self)
+        XCTAssertFalse(text.contains(source.text)); XCTAssertTrue(text.contains(run.text)); XCTAssertTrue(text.contains("Erste Frage"))
+        XCTAssertTrue(first.userText.contains(source.text)); XCTAssertTrue(next.reports?.isEmpty == true)
+        let stillSelected = try SparringRequestBuilder.prepare(caseID: item.id, encounter: encounter,
+            draft: .init(question: "Rückfrage", historyIDs: [run.id], reportIDs: [source.id]), modelID: "test", caseContext: item)
+        XCTAssertEqual(String(decoding: stillSelected.payload, as: UTF8.self).components(separatedBy: source.text).count, 2)
+    }
+    func testLatestReportDefaultPrefersCurrentEncounterAndMarksSupersededVersions() throws {
+        let old = report("Alt", date: Date(timeIntervalSince1970: 1))
+        var revised = report("Korrigiert", date: Date(timeIntervalSince1970: 2)); revised.parentID = old.id
+        let later = report("Anderer Vorgang", date: Date(timeIntervalSince1970: 3))
+        let encounter = Encounter(reports: [old, revised])
+        let empty = Encounter()
+        let item = VetCase(label: "A", species: "Hund", encounters: [encounter, Encounter(reports: [later]), empty])
+        XCTAssertEqual(ChatReportSelection.defaultIDs(in: item, encounterID: encounter.id), [revised.id])
+        XCTAssertEqual(ChatReportSelection.defaultIDs(in: item, encounterID: empty.id), [later.id])
+        XCTAssertEqual(ChatReportSelection.available(in: item).filter(\.isOlderVersion).map(\.id), [old.id])
+        let legacy = Data("{\"question\":\"Alt\",\"context\":\"\",\"mode\":\"question\",\"historyIDs\":[]}".utf8)
+        XCTAssertNil(try JSONDecoder().decode(SparringDraft.self, from: legacy).reportIDs)
+        let optedOut = SparringDraft(reportIDs: [])
+        XCTAssertEqual(try JSONDecoder().decode(SparringDraft.self, from: JSONEncoder().encode(optedOut)).reportIDs, [])
+    }
+    func testOversizedReportContextFailsWithoutTruncation() throws {
+        let source = report(String(repeating: "x", count: SparringRequestBuilder.maximumPayloadBytes))
+        let encounter = Encounter(reports: [source])
+        let item = VetCase(label: "A", species: "Hund", encounters: [encounter])
+        XCTAssertThrowsError(try SparringRequestBuilder.prepare(caseID: item.id, encounter: encounter,
+            draft: .init(question: "Frage", reportIDs: [source.id]), modelID: "test", caseContext: item))
+    }
     func testPreviewIsExactStatelessPayloadWithoutCredentialsOrAutomaticCaseFields() throws {
         let caseID = UUID(), encounter = Encounter()
         let prepared = try snapshot(caseID: caseID, encounter: encounter)

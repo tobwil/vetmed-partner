@@ -18,7 +18,6 @@ struct EncounterEditor: View {
     @State private var reportID: UUID?
     @AppStorage("report-template") private var template: ReportTemplate = .treatment_report
     @AppStorage("report-length") private var length: ReportLength = .medium
-    @AppStorage("report-audience") private var audience: Audience = .veterinarian
     @State private var mode: ReportExecutionMode = .offline
     private var item: VetCase? { app.document.cases.first { $0.id == location.caseID } }
     private var encounter: Encounter? { app.encounter(at: location) }
@@ -193,7 +192,7 @@ struct EncounterEditor: View {
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(template.title).font(.subheadline)
-                        Text("\(length.title) · \(audience.title) · \(mode == .online ? "Online" : "Offline")").font(.caption).foregroundStyle(.secondary)
+                        Text("\(length.title) · \(mode == .online ? "Online" : "Offline")").font(.caption).foregroundStyle(.secondary)
                     }
                     Spacer(); Button("Anpassen") { options = true }.accessibilityIdentifier("report-options")
                 }
@@ -252,7 +251,7 @@ struct EncounterEditor: View {
                             let value = transcript
                             guard await app.saveTranscript(value, at: location) else { return }
                             lastSavedTranscript = value
-                            app.generate(at: location, template: template, length: length, audience: audience, mode: mode)
+                            app.generate(at: location, template: template, length: length, mode: mode)
                         }
                     }.accessibilityIdentifier("generate-report").disabled(blocked || app.captureInProgress || transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 case .report:
@@ -268,7 +267,6 @@ struct EncounterEditor: View {
                 Section {
                     Picker("Vorlage", selection: $template) { ForEach(ReportTemplate.allCases) { Text($0.title).tag($0) } }
                     Picker("Länge", selection: $length) { ForEach(ReportLength.allCases) { Text($0.title).tag($0) } }
-                    Picker("Für wen?", selection: $audience) { ForEach(Audience.allCases) { Text($0.title).tag($0) } }
                 }
                 Section("Verarbeitung") {
                     Picker("Modus", selection: $mode) { ForEach(ReportExecutionMode.allCases) { Text($0.title).tag($0) } }

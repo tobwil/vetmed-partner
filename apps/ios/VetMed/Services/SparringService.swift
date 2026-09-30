@@ -3,7 +3,7 @@ import Foundation
 enum SparringRequestBuilder {
     static let maximumPayloadBytes = 98_304
     static let maximumOutputBytes = 262_144
-    static func prepare(caseID: UUID?, encounter: Encounter, draft: SparringDraft, modelID: String) throws -> SparringSnapshot {
+    static func prepare(caseID: UUID?, encounter: Encounter, draft: SparringDraft, modelID: String, caseContext: VetCase? = nil) throws -> SparringSnapshot {
         try draft.validate()
         guard !draft.question.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw AppFailure("Bitte eine Frage eingeben.") }
         guard !modelID.isEmpty, modelID.utf8.count < 256, !modelID.contains(where: \.isWhitespace) else { throw AppFailure("Bitte eine gültige Modell-ID in Einstellungen auswählen.") }
@@ -18,6 +18,7 @@ enum SparringRequestBuilder {
         if let transcriptID = draft.transcriptVersionID, !encounter.transcripts.contains(where: { $0.id == transcriptID }) {
             throw AppFailure("Der ausgewählte Falltext gehört nicht zu diesem Vorgang.")
         }
+        let reports = try ChatReportSelection.resolve(ids: draft.reportIDs ?? [], caseID: caseID, encounterID: encounter.id, item: caseContext)
         let selection = draft.attachmentIDs ?? []
         guard Set(selection).count == selection.count else { throw AppFailure("Ein Anhang wurde mehrfach ausgewählt.") }
         let attachments = encounter.chatAttachments ?? []
@@ -32,7 +33,7 @@ enum SparringRequestBuilder {
                 documents.append(.init(attachmentID: id, originalSHA256: attachment.originalSHA256, text: text))
             }
         }
-        var current = SparringSnapshot(caseID: caseID, encounterID: encounter.id, modelID: modelID, draft: draft, payload: Data(), images: images, documents: documents)
+        var current = SparringSnapshot(caseID: caseID, encounterID: encounter.id, modelID: modelID, draft: draft, payload: Data(), images: images, documents: documents, reports: reports)
         func message(text: String, images: [ChatImageReference]) -> [String: Any] {
             guard !images.isEmpty else { return ["role": "user", "content": text] }
             var content: [[String: Any]] = [["type": "input_text", "text": text]]
@@ -41,8 +42,9 @@ enum SparringRequestBuilder {
         }
         var messages: [[String: Any]] = []
         var allImages: [ChatImageReference] = []
+        // Only the current report selection is sent; old requests retain their immutable report snapshots.
         for run in runs {
-            messages.append(message(text: run.snapshot.userText, images: run.snapshot.images ?? []))
+            messages.append(message(text: run.snapshot.conversationText, images: run.snapshot.images ?? []))
             allImages += run.snapshot.images ?? []
             messages.append(["role": "assistant", "content": run.text])
         }
@@ -53,8 +55,8 @@ enum SparringRequestBuilder {
         let body: [String: Any] = ["model": modelID, "store": false, "stream": true, "background": false,
                                    "max_output_tokens": 8192, "instructions": instructions, "input": messages]
         let data = try JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])
-        guard data.count <= maximumPayloadBytes else { throw AppFailure("Der Chat ist für eine weitere Anfrage zu lang. Bitte einen neuen Chat starten. Es wird nichts unbemerkt weggelassen.") }
-        current = SparringSnapshot(caseID: caseID, encounterID: encounter.id, modelID: modelID, draft: draft, payload: data, images: images, documents: documents, requestImages: allImages)
+        guard data.count <= maximumPayloadBytes else { throw AppFailure("Die Anfrage ist zu groß. Bitte weniger Berichte auswählen oder für einen kürzeren Verlauf einen neuen Chat starten. Es wird nichts unbemerkt weggelassen.") }
+        current = SparringSnapshot(caseID: caseID, encounterID: encounter.id, modelID: modelID, draft: draft, payload: data, images: images, documents: documents, requestImages: allImages, reports: reports)
         return current
     }
     static func request(snapshot: SparringSnapshot, key: String, imageData: [UUID: Data] = [:]) throws -> URLRequest {

@@ -131,3 +131,10 @@ Der Branch hatte bisher keinen Xcode-Build. Bei der Integration wurde das Projek
 Der Nutzer fragte, ob der Chat bereits als Senior-Sparringspartner über Fachrichtungen hinweg arbeite. Nach Prüfung des bis dahin allgemeinen Prompts wurde eine erfahrene, interdisziplinäre und kritisch mitdenkende Rolle vorgeschlagen. Mit „ok, mach dass und dann bitte wieder update“ wurden Umsetzung und Update bestätigt.
 
 Der Prompt beschreibt jetzt die Arbeitsweise einer erfahrenen klinischen Kollegin: passende Fachperspektiven auswählen, Differenzialdiagnosen gewichten, relevante Widersprüche benennen und praktikable nächste Schritte begründen. Tierart, Kontext und Dringlichkeit werden einbezogen. Normale dialogische Antworten, fallfreie Fragen und die bisherigen Regeln gegen erfundene Befunde, Dosierungen und Quellen bleiben erhalten. Die KI behauptet keine reale Approbation oder Spezialisierung. Die neue Rolle gilt für folgende Anfragen auch in bestehenden Chats; frühere Antworten bleiben unverändert. Details: [Chat-Architektur](../architecture/0005-conversational-chat-and-attachments.md).
+
+
+## 30.09.2026 – Berichtszielgruppe und Fallberichte im Chat
+
+Der Nutzer bestätigte, „Für wen?“ zu entfernen: Alle Vorlagen außer „Information für Tierhalter“ richten sich an Fachkollegen. Die Zielgruppe wird jetzt automatisch aus der Vorlage abgeleitet; historische Berichte werden nicht verändert.
+
+Zusätzlich fragte der Nutzer, warum ein Fallchat ohne Berichtswissen startet, und beauftragte die direkte Umsetzung einer Berichtseinbindung. Bisher konnte nur das Transkript manuell hinzugefügt werden. Jetzt wird beim ersten Öffnen der neueste Bericht des Vorgangs (ersatzweise desselben Falls) sichtbar vorausgewählt. Im Eingabebereich und über + lassen sich Berichte desselben Falls mit Vorschau und Prüfstatus auswählen oder abwählen. Die Auswahl bleibt über Nachrichten und Neustarts bestehen. Der gesendete Berichtsstand wird unveränderlich gespeichert, fremde Fälle und übergroße Anfragen werden abgewiesen. Details: [Architekturentscheidung 0008](../architecture/0008-report-audience-and-chat-context.md).

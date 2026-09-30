@@ -87,3 +87,14 @@ Der signierte Build mit der neuen Persona wurde erfolgreich auf dem iPhone insta
 Nach der Nutzerentscheidung ist Gemma optional. Online wird nach Hinterlegen eines eigenen Keys und bewusster Aktivierung zum Standard; Moduswechsel bleiben ausdrücklich. [ADR 2](architecture/0002-online-default.md) beschreibt den Vertrag und offene Liveprüfung. Der lange lokale Bericht blieb trotz Verbesserungen bei einzelnen Format-/Rubrikfehlern blockiert; abgeschlossene Abschnitte wurden als Zwischenstände gespeichert. Keine vollständige lokale Langdiktatfreigabe behauptet.
 
 Die Variante mit optionalem Offline-Modus und OpenAI-Berichten wurde erfolgreich für das iPhone gebaut, auf dem gekoppelten Gerät installiert und regulär gestartet. Aktueller Simulatornachweis: 47 Tests bestanden, 0 Fehler. Kein echter OpenAI-Berichtsrequest ohne eigens eingerichteten Nutzer-Key ausgeführt.
+
+
+## Berichtszielgruppe und Berichtswissen im Chat – 30.09.2026
+
+„Für wen?“ entfernt; neue Berichte leiten ihre Zielgruppe aus der Vorlage ab. Fallchats zeigen ihre Berichtsauswahl direkt am Eingabefeld. Der neueste Bericht wird initial vorausgewählt; zusätzliche Berichte desselben Falls lassen sich mit Textvorschau hinzufügen. Abwahl bleibt über Neustarts erhalten. Historische Anfragen speichern den verwendeten Berichtsstand; Folgefragen enthalten nur die aktuell ausgewählten Quelldokumente zusätzlich zum Chatverlauf.
+
+Gezielter abschließender Lauf: **39 Tests bestanden, null Fehler** (19 Sparring-, zehn Anhang-, acht Onlineberichtstests und zwei UI-Tests). Nachweis: [ios-report-context-tests-2026-09-30.json](evidence/ios-report-context-tests-2026-09-30.json). Der erste Lauf hatte 37 erfolgreiche Vertragstests und einen UI-Testfehler beim Antippen der Mitte des zusammengesetzten Switch-Elements; der Test tippt nun den sichtbaren Schalter rechts und prüft dessen Zustand vor dem Schließen. Vorauswahl, Vorschau, Abwahl und Neustart bestanden schon im ersten Lauf. Der finale Lauf bestätigt zusätzlich erneute Auswahl und die bestehende Fallnavigation. Eine SwiftUI-Laufzeitwarnung zu einer ungültigen Frame-Dimension bleibt im Ergebnisprotokoll enthalten; keine fehlerfreie Accessibility-/Layoutabnahme behauptet.
+
+[Auswahlansicht](evidence/case-reports-chat-knowledge-2026-09-30.png) visuell geprüft. Kein Live-API-Aufruf mit Nutzer-Key und keine klinische Qualitätsprüfung in diesem Nachweis. Architektur und Verhalten: [0008](architecture/0008-report-audience-and-chat-context.md).
+
+Signierter Gerätebuild erfolgreich. Die Installation des Berichtswissen-Updates ist derzeit noch offen: Das gekoppelte iPhone wird als nicht erreichbar gemeldet (CoreDeviceError 4016). Der Nutzer wurde zum erneuten Verbinden/Entsperren aufgefordert. [Gerätenachweis](evidence/device-report-context-install-2026-09-30.json).

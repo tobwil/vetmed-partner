@@ -101,11 +101,15 @@ struct ChatConversationView: View {
     @State private var filePicker = false
     @State private var review: ChatAttachment?
     @State private var details = false
+    @State private var reportPicker = false
     @State private var share: SharePayload?
     @State private var copiedID: UUID?
     @State private var deleting = false
     @FocusState private var focused: Bool
     private var caseLabel: String { caseID.flatMap { id in app.document.cases.first { $0.id == id }?.label } ?? "Ohne Fall" }
+    private var caseContext: VetCase? { caseID.flatMap { id in app.document.cases.first { $0.id == id } } }
+    private var availableReports: [ChatReportContext] { caseContext.map { ChatReportSelection.available(in: $0) } ?? [] }
+    private var selectedReports: [ChatReportContext] { availableReports.filter { (draft.reportIDs ?? []).contains($0.id) } }
     private var encounter: Encounter? { app.analysisContext(caseID: caseID, encounterID: encounterID) }
     private var runs: [AnalysisRun] { encounter?.analysisRuns ?? [] }
     private var attachments: [ChatAttachment] { encounter?.chatAttachments ?? [] }
@@ -121,7 +125,7 @@ struct ChatConversationView: View {
     private var snapshot: Result<SparringSnapshot, Error> {
         Result {
             guard let encounter else { throw AppFailure("Dieser Chat ist nicht mehr vorhanden.") }
-            return try SparringRequestBuilder.prepare(caseID: caseID, encounter: encounter, draft: preparedDraft, modelID: app.onlineConfiguration.modelID)
+            return try SparringRequestBuilder.prepare(caseID: caseID, encounter: encounter, draft: preparedDraft, modelID: app.onlineConfiguration.modelID, caseContext: caseContext)
         }
     }
     var body: some View {
@@ -133,7 +137,7 @@ struct ChatConversationView: View {
                             GradientIcon(systemName: "sparkles", size: 64)
                                 .symbolEffect(.breathe, options: .repeat(.continuous))
                             Text("Was möchtest du besprechen?").font(.title2.bold())
-                            Text("Schreib einfach los. Über + kannst du Bilder und Befunde hinzufügen.").foregroundStyle(.secondary)
+                            Text(selectedReports.isEmpty ? "Schreib einfach los. Über + kannst du Bilder und Befunde hinzufügen." : "Stell deine Frage zum Fall. Die unten ausgewählten Berichte werden beim Senden mitgegeben; über + kannst du Bilder und Befunde ergänzen.").foregroundStyle(.secondary)
                             LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
                                 suggestion("Befund erklären", symbol: "text.magnifyingglass")
                                 suggestion("Nächste Schritte", symbol: "list.bullet.clipboard")
@@ -154,6 +158,9 @@ struct ChatConversationView: View {
                                         } } }
                                     }
                                     if !(run.snapshot.documents ?? []).isEmpty { Label("\(run.snapshot.documents?.count ?? 0) Dokumenttexte", systemImage: "doc.text").font(.caption) }
+                                    if let reports = run.snapshot.reports, !reports.isEmpty {
+                                        Label("\(reports.count) Fallbericht\(reports.count == 1 ? "" : "e") verwendet", systemImage: "doc.text").font(.caption)
+                                    }
                                     Text(run.snapshot.draft.question).textSelection(.enabled)
                                 }
                                 .foregroundStyle(.white)
@@ -202,7 +209,7 @@ struct ChatConversationView: View {
                 .onChange(of: runs.last?.id) { _, id in
                     guard let run = runs.last, run.id == id, loaded else { return }
                     if run.snapshot.draft.question == preparedDraft.question, run.snapshot.draft.attachmentIDs == preparedDraft.attachmentIDs {
-                        draft = .init(); save()
+                        draft = .init(reportIDs: draft.reportIDs); save()
                     }
                     withAnimation { proxy.scrollTo("chat-bottom", anchor: .bottom) }
                 }
@@ -233,7 +240,15 @@ struct ChatConversationView: View {
             Button("Behalten", role: .cancel) {}
             Button("Chat löschen", role: .destructive) { Task { await app.deleteQuickCheck(encounterID) } }
         }
-        .onAppear { if !loaded { draft = encounter?.sparringDraft ?? .init(); savedDraft = draft; loaded = true } }
+        .onAppear {
+            if !loaded {
+                draft = encounter?.sparringDraft ?? .init(); savedDraft = draft
+                if draft.reportIDs == nil, let caseContext {
+                    draft.reportIDs = ChatReportSelection.defaultIDs(in: caseContext, encounterID: encounterID)
+                }
+                loaded = true
+            }
+        }
         .task(id: draft) {
             guard loaded else { return }
             let value = draft
@@ -267,6 +282,7 @@ struct ChatConversationView: View {
                 if error != nil { app.error = "Die Antwort konnte nicht übergeben werden. Du kannst sie auch über Kopieren einfügen." }
             }
         }
+        .sheet(isPresented: $reportPicker) { reportSelection }
         .sheet(isPresented: $details) {
             NavigationStack {
                 List {
@@ -297,6 +313,21 @@ struct ChatConversationView: View {
     }
     private var composer: some View {
         VStack(spacing: 8) {
+            if caseID != nil {
+                Button { focused = false; reportPicker = true } label: {
+                    HStack(alignment: .center, spacing: 8) {
+                        Image(systemName: "doc.text")
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(selectedReports.isEmpty ? "Berichte als Wissen hinzufügen" : "\(selectedReports.count) Fallbericht\(selectedReports.count == 1 ? "" : "e") als Wissen").font(.caption.weight(.semibold))
+                            if selectedReports.count == 1, let report = selectedReports.first {
+                                Text(report.title + " · " + report.status).font(.caption2).foregroundStyle(.secondary).lineLimit(2)
+                            }
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right").font(.caption)
+                    }.padding(.horizontal, 8).padding(.vertical, 5).contentShape(Rectangle())
+                }.buttonStyle(.plain).accessibilityIdentifier("chat-reports").disabled(sending)
+            }
             if !selectedAttachments.isEmpty {
                 ScrollView(.horizontal) {
                     HStack(spacing: 10) {
@@ -319,6 +350,9 @@ struct ChatConversationView: View {
             if photoLoading { HStack { ProgressView(); Text("Bild wird geladen …").font(.caption) } }
             HStack(alignment: .bottom, spacing: 12) {
                 Menu {
+                    if caseID != nil {
+                        Button("Fallberichte auswählen", systemImage: "doc.text") { focused = false; reportPicker = true }
+                    }
                     Button("Foto auswählen", systemImage: "photo") { focused = false; photoPicker = true }
                     Button("Datei hinzufügen", systemImage: "paperclip") { focused = false; filePicker = true }
                     if !attachments.isEmpty {
@@ -367,6 +401,47 @@ struct ChatConversationView: View {
             Text(savedDraft == draft ? "Lokal gespeichert · KI-Antworten fachlich prüfen" : "Entwurf wird gespeichert …").font(.caption2).foregroundStyle(.secondary).accessibilityIdentifier("chat-save-status")
         }.padding(.horizontal, 14).padding(.vertical, 8).background(.regularMaterial)
         .animation(.spring(response: 0.35, dampingFraction: 0.8), value: selectedAttachments.map(\.id))
+    }
+    private var reportSelection: some View {
+        NavigationStack {
+            List {
+                Section {
+                    Text("Ausgewählte Berichte werden mit deiner nächsten Nachricht gesendet. Die Auswahl bleibt für weitere Fragen erhalten.").font(.footnote)
+                    if !runs.isEmpty { Text("Frühere Chatnachrichten bleiben im Verlauf. Abgewählte Berichte werden nicht erneut als Quelldokument gesendet.").font(.footnote).foregroundStyle(.secondary) }
+                }
+                if availableReports.isEmpty {
+                    ContentUnavailableView("Noch kein Bericht", systemImage: "doc.text", description: Text("Erstelle zuerst einen Bericht zu diesem Fall. Ein vorhandenes Transkript kannst du über + hinzufügen."))
+                } else {
+                    Section("Berichte dieses Falls") {
+                        ForEach(availableReports) { report in
+                            VStack(alignment: .leading, spacing: 8) {
+                                Toggle(isOn: Binding(get: { (draft.reportIDs ?? []).contains(report.id) }, set: { selected in
+                                    var ids = draft.reportIDs ?? []
+                                    ids.removeAll { $0 == report.id }
+                                    if selected { ids.append(report.id) }
+                                    draft.reportIDs = ids
+                                })) {
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(report.title).font(.headline)
+                                        Text("Vorgang: " + report.encounterDate.formatted(date: .abbreviated, time: .shortened)).font(.caption)
+                                        Text("Version: " + report.createdAt.formatted(date: .abbreviated, time: .shortened)).font(.caption)
+                                        Text(report.status + (report.isOlderVersion ? " · ältere Version" : "")).font(.caption).foregroundStyle(.secondary)
+                                    }
+                                }.accessibilityIdentifier("chat-report-" + report.id.uuidString)
+                                DisclosureGroup("Bericht ansehen") {
+                                    Text(report.text).font(.footnote).textSelection(.enabled)
+                                    if !report.warnings.isEmpty { Text(report.warnings.joined(separator: "\n")).font(.caption).foregroundStyle(.secondary) }
+                                }
+                            }.padding(.vertical, 4)
+                        }
+                    }
+                    Section {
+                        Button("Alle Berichte abwählen") { draft.reportIDs = [] }.accessibilityIdentifier("clear-chat-reports")
+                    }
+                }
+            }.themedBackground().navigationTitle("Berichte als Wissen").navigationBarTitleDisplayMode(.inline)
+                .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Fertig") { save(); reportPicker = false } } }
+        }
     }
     private var sendDisabled: Bool {
         (app.busy && !sending) || app.captureInProgress || photoLoading || (!sending && draft.question.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && selectedAttachments.isEmpty)

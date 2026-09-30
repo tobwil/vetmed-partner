@@ -2,6 +2,8 @@
 
 ## Stand und verbindliche Nutzerentscheidungen
 
+Neuester Quellstand: Berichtszielgruppe automatisch aus Vorlage und auswählbare Fallberichte im Chat. 39 gezielte Tests bestanden, signierter Gerätebuild erfolgreich. Installation dieses Updates wartet auf das derzeit nicht erreichbare iPhone; zuvor installiert bleibt der Senior-Persona-Stand. Nachweis: `docs/evidence/device-report-context-install-2026-09-30.json`.
+
 Die native iOS-App ist implementiert und auf dem iPhone 17 Pro installiert. Der Designstand aus `02793da` wurde am 30.09.2026 um die bestätigte Senior-Sparring-Persona ergänzt, erfolgreich installiert und normal gestartet. Prompt- und Binary-Hashes: `docs/evidence/device-senior-persona-install-2026-09-30.json`. Die App heißt VetMed, Bundle `de.tobwil.vetmed`. Der gesamte Zielumfang bleibt im [Plan](../implementation-plan.md) und der [Nachverfolgung](../requirements-trace.md) erhalten.
 
 Aktuelle Nutzerentscheidungen:
@@ -9,6 +11,8 @@ Aktuelle Nutzerentscheidungen:
 - Keine Face ID oder zusätzliche biometrische App-Sperre.
 - Online-Berichte nach bewusster Einrichtung/Aktivierung des eigenen API-Keys als Standard; Offline-Modell optional, kein stiller Fallback.
 - Normaler Chat mit Fragen/Bildern/Befunden; unabhängige Gespräche ohne Fall möglich. Die Persona arbeitet im Stil einer erfahrenen klinischen Kollegin, fachübergreifend und kritisch mitdenkend.
+- Berichtszielgruppe automatisch aus der Vorlage; nur „Information für Tierhalter“ verwendet Tierhaltersprache.
+- Fallchat mit sichtbarer, gespeicherter Berichtsauswahl; neuester Bericht bei der ersten Öffnung vorausgewählt, weitere Berichte desselben Falls auswählbar. Details: [0008](../architecture/0008-report-audience-and-chat-context.md).
 - Falllöschung durch Wischen von rechts nach links oder unten im Fall.
 - Start/Fälle/Chat, schrittweises Diktat und sichtbare Fallzuordnung.
 - Chatformatierung rendern und vollständigen Inhalt über Teilen an andere Apps übergeben.

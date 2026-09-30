@@ -1,6 +1,33 @@
 import XCTest
 final class WorkflowTests: XCTestCase {
     @MainActor
+    func testCaseReportContextDefaultsCanBePreviewedAndOptOutPersists() throws {
+        let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--ui-testing-share-fixture"]; app.launch()
+        XCTAssertTrue(app.buttons["new-dictation"].waitForExistence(timeout: 15))
+        app.buttons["recent-10000000-0000-0000-0000-000000000002"].tap()
+        app.buttons["chat-from-dictation"].tap()
+        let reports = app.buttons["chat-reports"]
+        XCTAssertTrue(reports.waitForExistence(timeout: 5)); XCTAssertTrue(reports.label.contains("1 Fallbericht"))
+        reports.tap()
+        let toggle = app.switches.matching(NSPredicate(format: "identifier BEGINSWITH 'chat-report-' ")).firstMatch
+        XCTAssertTrue(toggle.waitForExistence(timeout: 5)); XCTAssertEqual(toggle.value as? String, "1")
+        app.buttons["Bericht ansehen"].firstMatch.tap()
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'ENDE-DES-TESTBERICHTS'")).firstMatch.waitForExistence(timeout: 5))
+        let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "case-reports-as-chat-knowledge"; shot.lifetime = .keepAlways; add(shot)
+        app.buttons["clear-chat-reports"].tap(); app.navigationBars.buttons["Fertig"].tap()
+        XCTAssertTrue(reports.label.contains("Berichte als Wissen hinzufügen"))
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "identifier == 'chat-save-status' AND label BEGINSWITH 'Lokal gespeichert'")).firstMatch.waitForExistence(timeout: 8))
+        app.terminate(); app.launchArguments = ["--ui-testing"]; app.launch()
+        XCTAssertTrue(app.buttons["new-dictation"].waitForExistence(timeout: 15))
+        app.buttons["recent-10000000-0000-0000-0000-000000000002"].tap(); app.buttons["chat-from-dictation"].tap()
+        XCTAssertTrue(reports.waitForExistence(timeout: 5)); XCTAssertTrue(reports.label.contains("Berichte als Wissen hinzufügen"))
+        reports.tap(); XCTAssertEqual(toggle.value as? String, "0")
+        toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: 0.5)).tap()
+        XCTAssertTrue(app.switches.matching(NSPredicate(format: "identifier BEGINSWITH 'chat-report-' AND value == '1'")).firstMatch.waitForExistence(timeout: 5), app.debugDescription)
+        app.navigationBars.buttons["Fertig"].tap()
+        XCTAssertTrue(reports.label.contains("1 Fallbericht"))
+    }
+    @MainActor
     func testAppearanceAndThemePersistAfterRelaunch() throws {
         let app = XCUIApplication(); app.launchArguments = ["--ui-testing"]; app.launch()
         XCTAssertTrue(app.buttons["open-settings"].waitForExistence(timeout: 15)); app.buttons["open-settings"].tap()
