@@ -72,6 +72,14 @@ class VaultRepository(
     private val mutex = Mutex()
     private var database: CaseDatabase? = null
 
+    /** What the database holds after the last read or successful write; null means "unknown, write everything". */
+    private var written: RowSnapshot? = null
+
+    /** Rows touched by the last save. Used by tests to prove that saves stay proportional to the change. */
+    data class WriteStats(val inserted: Int, val updated: Int, val deleted: Int, val full: Boolean)
+    @Volatile var lastWrite: WriteStats? = null
+        private set
+
     suspend fun load(): VaultDocument = io {
         try { read(dao()) } catch (error: kotlinx.serialization.SerializationException) {
             throw AppFailure("Gespeicherte Falldaten konnten nicht gelesen werden. Sie werden nicht überschrieben.")
@@ -237,6 +245,7 @@ class VaultRepository(
 
     private fun read(dao: CaseDao): VaultDocument {
         val rows = dao.snapshot()
+        written = RowChanges.snapshot(rows)
         val transcripts = rows.transcripts.groupBy { it.encounterID }
         val reports = rows.reports.groupBy { it.encounterID }
         val shares = rows.shares.groupBy { it.encounterID }
@@ -253,7 +262,7 @@ class VaultRepository(
         })
     }
 
-    private fun write(dao: CaseDao, document: VaultDocument) {
+    private fun rows(document: VaultDocument): CaseRows {
         val encounters = mutableListOf<EncounterRow>()
         val transcripts = mutableListOf<TranscriptRow>()
         val reports = mutableListOf<ReportRow>()
@@ -269,8 +278,41 @@ class VaultRepository(
             CaseRow(item.id, position, encode(VetCase.serializer(), item.copy(encounters = emptyList())))
         }
         val quickChecks = document.quickChecks.orEmpty().mapIndexed { position, check -> QuickCheckRow(check.id, position, encode(QuickCheck.serializer(), check)) }
-        guarded { dao.replaceAll(CaseRows(cases, encounters, transcripts, reports, shares, quickChecks)) }
+        return CaseRows(cases, encounters, transcripts, reports, shares, quickChecks)
     }
+
+    /**
+     * Writes only the rows that differ from the database, in one transaction. If the known state is missing or
+     * turns out to be wrong, the whole document is written as before. After any failure the known state is
+     * dropped, so the next save starts from a full, verified write again.
+     */
+    private fun write(dao: CaseDao, document: VaultDocument) {
+        val rows = rows(document)
+        val next = RowChanges.snapshot(rows)
+        // Duplicate IDs would silently collapse in the difference; the full write rejected them via the primary key.
+        if (next.values.sumOf { it.size } != rows.size) throw AppFailure("Speichern fehlgeschlagen: doppelte Kennungen. Die letzte gespeicherte Fassung bleibt erhalten.")
+        val previous = written
+        written = null
+        if (previous == null) {
+            guarded { dao.replaceAll(rows) }
+            lastWrite = WriteStats(rows.size, 0, 0, full = true)
+        } else {
+            val changes = RowChanges.between(previous, rows, next)
+            try {
+                if (!changes.isEmpty) dao.applyChanges(changes)
+                lastWrite = WriteStats(changes.inserts.size, changes.updates.size, changes.deletions.values.sumOf { it.size }, full = false)
+            } catch (error: SQLiteFullException) {
+                guarded { throw error }
+            } catch (error: SQLiteException) {
+                // The database did not hold what we thought (the transaction rolled back): write everything.
+                guarded { dao.replaceAll(rows) }
+                lastWrite = WriteStats(rows.size, 0, 0, full = true)
+            }
+        }
+        written = next
+    }
+
+
 
     private fun guarded(block: () -> Unit) {
         try { block() } catch (error: SQLiteFullException) {

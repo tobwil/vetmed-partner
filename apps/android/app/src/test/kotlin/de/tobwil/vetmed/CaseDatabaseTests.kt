@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.test.core.app.ApplicationProvider
 import de.tobwil.vetmed.core.AppFailure
 import de.tobwil.vetmed.core.CaseOperations
+import de.tobwil.vetmed.core.ChatOperations
 import de.tobwil.vetmed.core.OnlineReportConfiguration
 import de.tobwil.vetmed.core.VaultDocument
 import de.tobwil.vetmed.core.VetJson
@@ -70,6 +71,79 @@ class CaseDatabaseTests {
         val broken = seeded.document.copy(cases = seeded.document.cases + seeded.document.cases.first())
         assertFails("letzte gespeicherte Fassung bleibt erhalten") { repository.save(broken) }
         assertEquals(seeded.document, repository.load())
+    }
+
+    @Test fun savesWriteOnlyTheRowsThatChanged() = runTest {
+        val seeded = SyntheticCases.seed()
+        val repository = repository()
+        repository.save(seeded.document)
+        assertTrue("Erstes Speichern schreibt alles", repository.lastWrite!!.full)
+
+        repository.save(seeded.document)
+        assertEquals(VaultRepository.WriteStats(0, 0, 0, full = false), repository.lastWrite)
+
+        // A new transcript version: one new row, the encounter row (state), nothing else.
+        val edited = CaseOperations.saveTranscript(seeded.document, seeded.withReport, "Kaninchen 1,9 kg. Kein Durchfall. Kontrolle in 7 Tagen.")
+        repository.save(edited)
+        assertEquals(1, repository.lastWrite!!.inserted)
+        assertTrue(repository.lastWrite!!.updated <= 1)
+        assertEquals(0, repository.lastWrite!!.deleted)
+
+        // Moving a case to the top changes only positions.
+        val reordered = edited.copy(cases = edited.cases.reversed())
+        repository.save(reordered)
+        assertEquals(VaultRepository.WriteStats(0, edited.cases.size - 1, 0, full = false), repository.lastWrite)
+
+        // A streaming chat checkpoint rewrites a single encounter row.
+        val chat = de.tobwil.vetmed.core.ChatLocation(seeded.withReport.caseID, seeded.withReport.encounterID)
+        val run = ChatOperations.context(reordered, chat)!!.analysisRuns!!.single()
+        val streamed = ChatOperations.updateRun(reordered, chat, run.id) { it.copy(text = it.text + " Weiterer Text.") }
+        repository.save(streamed)
+        assertEquals(VaultRepository.WriteStats(0, 1, 0, full = false), repository.lastWrite)
+
+        // Deleting a case removes it with all versions and leaves the others untouched.
+        val remaining = CaseOperations.deleteCase(streamed, seeded.withReport.caseID)
+        repository.save(remaining)
+        assertEquals(0, repository.lastWrite!!.inserted); assertEquals(0, repository.lastWrite!!.updated)
+        assertTrue(repository.lastWrite!!.deleted >= 3)
+        repository.close()
+        assertEquals(remaining, repository().load())
+    }
+
+    @Test fun aRejectedSaveChangesNothingAndTheNextSaveIsCorrect() = runTest {
+        val seeded = SyntheticCases.seed()
+        val repository = repository()
+        repository.save(seeded.document)
+        val broken = seeded.document.copy(cases = seeded.document.cases + seeded.document.cases.first())
+        assertFails("letzte gespeicherte Fassung bleibt erhalten") { repository.save(broken) }
+        assertEquals(seeded.document, repository().load())
+        val next = CaseOperations.updateCase(seeded.document, seeded.withReport.caseID, "K-2026-099", "Kaninchen", "Luna")
+        repository.save(next)
+        repository.close()
+        assertEquals(next, repository().load())
+    }
+
+    @Test fun aDatabaseThatDiffersFromTheKnownStateIsWrittenCompletely() = runTest {
+        val seeded = SyntheticCases.seed()
+        val first = repository()
+        first.save(seeded.document)
+        // Another writer removes a case behind the first repository's back.
+        repository().apply { load(); save(CaseOperations.deleteCase(seeded.document, seeded.withReport.caseID)); close() }
+        // The first repository's update of that case finds no row: it must not silently lose it.
+        val renamed = CaseOperations.updateCase(seeded.document, seeded.withReport.caseID, "K-2026-101", "Kaninchen", "Luna")
+        first.save(renamed)
+        assertTrue(first.lastWrite!!.full)
+        first.close()
+        assertEquals(renamed, repository().load())
+    }
+
+    @Test fun aReopenedRepositoryContinuesIncrementally() = runTest {
+        val seeded = SyntheticCases.seed()
+        repository().apply { save(seeded.document); close() }
+        val reopened = repository()
+        val loaded = reopened.load()
+        reopened.save(CaseOperations.updateCase(loaded, seeded.withReport.caseID, "K-2026-100", "Kaninchen", "Luna"))
+        assertEquals(VaultRepository.WriteStats(0, 1, 0, full = false), reopened.lastWrite)
     }
 
     @Test fun missingDatabaseKeyNeverOverwritesExistingCases() = runTest {
