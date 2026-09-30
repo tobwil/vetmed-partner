@@ -2,7 +2,7 @@
 
 ## Stand und verbindliche Nutzerentscheidungen
 
-Neuester Stand am 30.09.2026 abends: `claude/urgent-fixes` einschließlich Cache-/Haptikkorrektur ist auf main. Auf dem nun entsperrten iPhone bestanden 106 unterschiedliche Tests (94 Unit-/Integration, 12 UI/Gerät): bestehender Nutzerspeicher, echte 51-Sekunden-Aufnahme mit Pause/Fortsetzen, Segmentwechsel, echter Hintergrundpause und Neustart sowie Fallchat/Berichtswissen/Teilen. Physischer Fototest blieb ausgeschlossen; WhatsApp-Entwurfsprüfung ist beim Nutzer angefragt. Der lokale 300-Sekunden-Dateitest bestand ASR und verschlüsseltes Speichern, stoppt aber mangels installiertem optionalem Gemma-Modell vor dem Bericht. Keine vollständige Offline-/klinische Freigabe. Einzelheiten und auch fehlgeschlagene Testversuche: [Prüfstand](../test-status.md).
+Neuester Stand am 30.09.2026 abends: `claude/urgent-fixes` einschließlich Cache-/Haptikkorrektur ist auf main. Auf dem nun entsperrten iPhone bestanden 106 unterschiedliche Tests (94 Unit-/Integration, 12 UI/Gerät): bestehender Nutzerspeicher, echte 51-Sekunden-Aufnahme mit Pause/Fortsetzen, Segmentwechsel, echter Hintergrundpause und Neustart sowie Fallchat/Berichtswissen/Teilen. Physischer Fototest blieb ausgeschlossen; der Nutzer hat die anschließende manuelle WhatsApp-Prüfung als erfolgreich zurückgemeldet. Der lokale 300-Sekunden-Dateitest bestand ASR und verschlüsseltes Speichern, stoppt aber mangels installiertem optionalem Gemma-Modell vor dem Bericht. Keine vollständige Offline-/klinische Freigabe. Einzelheiten und auch fehlgeschlagene Testversuche: [Prüfstand](../test-status.md).
 
 Die native iOS-App ist implementiert und auf dem iPhone 17 Pro installiert. Der Designstand aus `02793da` wurde am 30.09.2026 um die bestätigte Senior-Sparring-Persona ergänzt, erfolgreich installiert und normal gestartet. Prompt- und Binary-Hashes: `docs/evidence/device-senior-persona-install-2026-09-30.json`. Die App heißt VetMed, Bundle `de.tobwil.vetmed`. Der gesamte Zielumfang bleibt im [Plan](../implementation-plan.md) und der [Nachverfolgung](../requirements-trace.md) erhalten.
 
@@ -17,7 +17,7 @@ Aktuelle Nutzerentscheidungen:
 - Start/Fälle/Chat, schrittweises Diktat und sichtbare Fallzuordnung.
 - Chatformatierung rendern und vollständigen Inhalt über Teilen an andere Apps übergeben.
 
-Letzte offene Rückfragen: Erscheint im synthetischen WhatsApp-Entwurf der vollständige Chattext einschließlich `ENDE-DER-TESTANTWORT`? Soll das derzeit fehlende optionale Gemma-Modell erneut installiert werden? Aktuell ist dafür der getrennte UI-Testbereich auf dem iPhone geöffnet. Nach Rückmeldung normal ohne Testargumente starten; Nutzerdaten sind im getrennten normalen Speicher vorhanden, dessen Start bereits bestand. Kein WhatsApp-Versand durch die Automation.
+Nutzer bestätigt nach der vorbereiteten WhatsApp-Prüfung: „hat alles funktioniert!“ und fragt nach dem APK-Test. VetMed ist wieder ohne Testargumente normal gestartet. Das optionale Gemma-Modell wurde nicht erneut installiert; vollständiger Offlinebericht und weitere ausdrücklich offene technische Prüfungen bleiben davon getrennt. Android-Debug-APK liegt unter `apps/android/app/build/outputs/apk/debug/app-debug.apk`, Mindestversion Android 14. Noch kein Android-Gerät per ADB verbunden.
 
 ## Orientierung im Code
 

@@ -183,3 +183,8 @@ WhatsApp-Entwurf wird für die manuelle Abnahme mit dem ausschließlich syntheti
 Simulator-Nachprüfung desselben Teststands: **drei UI-Tests bestanden**, zwei ausschließlich physische Tests erwartungsgemäß übersprungen. Fotoimport mit synthetischem Bild und beide überarbeiteten Appwechsel-/Teilen-Tests erfolgreich. Nachweis: `evidence/ios-acceptance-simulator-followup-2026-09-30.json`. Build-/Quellhashes des installierten Gerätestands: `evidence/ios-physical-build-acceptance-2026-09-30.json`.
 
 Zum Protokollabschluss ist der getrennte UI-Testbereich für die noch angefragte WhatsApp-Prüfung geöffnet. Die Rückmeldung dazu sowie zur optionalen Neuinstallation von Gemma stehen aus. Nach der manuellen Prüfung VetMed ohne `--ui-testing` normal starten; der normale Nutzerspeicherstart wurde in diesem Lauf bereits erfolgreich getestet. Keine uneingeschränkte finale Produkt-/klinische Freigabe aus diesen Ergebnissen ableiten.
+
+
+### Nutzerbestätigung nach der iPhone-Abnahme
+
+Der Nutzer bestätigt anschließend: „hat alles funktioniert!“ und wechselt zur APK-Abnahme. Dies dokumentiert die erfolgreiche manuelle Rückmeldung auf die vorbereitete WhatsApp-Prüfung; es erweitert nicht die technischen Nachweise auf bislang ungetestete Live-API-, Foto- oder Offlinepfade. VetMed wurde danach ohne Testargumente auf dem iPhone gestartet. Das optionale Gemma-Modell wurde nicht neu installiert.
