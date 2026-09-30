@@ -1,0 +1,159 @@
+package de.tobwil.vetmed
+
+import android.app.Application
+import android.os.Looper
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.printToString
+import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.onFirst
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.test.core.app.ApplicationProvider
+import com.github.takahirom.roborazzi.RoborazziOptions
+import com.github.takahirom.roborazzi.captureRoboImage
+import de.tobwil.vetmed.core.CaseOperations
+import de.tobwil.vetmed.core.VaultDocument
+import de.tobwil.vetmed.data.VaultRepository
+import de.tobwil.vetmed.ui.AccentTheme
+import de.tobwil.vetmed.ui.AppearanceMode
+import de.tobwil.vetmed.ui.AppearanceStore
+import de.tobwil.vetmed.ui.VetMedApp
+import kotlinx.coroutines.runBlocking
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Rule
+import org.junit.Test
+import org.junit.rules.TemporaryFolder
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows.shadowOf
+import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
+
+/**
+ * Compose UI tests of the real app on Robolectric with synthetic data. With `-PrecordScreenshots`
+ * the run also writes the screenshots to docs/evidence/android. This is no substitute for a Pixel 9 test.
+ */
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+@Config(sdk = [36], qualifiers = "w411dp-h923dp-normal-long-notround-port-xxhdpi-keyshidden-nonav")
+class WalkthroughTests {
+    @get:Rule val compose = createComposeRule()
+    @get:Rule val folder = TemporaryFolder()
+    private val application: Application = ApplicationProvider.getApplicationContext()
+    private val keys = MemoryKeys() to MemoryKeys()
+
+    private fun repository() = VaultRepository(folder.root, keys.first, keys.second)
+
+    private fun launch(document: VaultDocument?, mode: AppearanceMode = AppearanceMode.LIGHT, theme: AccentTheme = AccentTheme.KLINIK): AppViewModel {
+        AppearanceStore(application).apply { this.mode = mode; this.theme = theme }
+        if (document != null) runBlocking { repository().save(document) }
+        val model = AppViewModel(application, repository())
+        compose.setContent { VetMedApp(model) }
+        waitFor("App geöffnet", model) { model.ready.value }
+        compose.waitForIdle()
+        return model
+    }
+
+    private fun waitFor(what: String, model: AppViewModel, condition: () -> Boolean) {
+        // View model work resumes from Dispatchers.IO onto Robolectric's paused main looper; drain it while waiting.
+        try { compose.waitUntil(20_000) { shadowOf(Looper.getMainLooper()).idle(); condition() } }
+        catch (error: Throwable) { throw AssertionError("$what: error=${model.error.value} ready=${model.ready.value} busy=${model.busy.value}", error) }
+    }
+
+    private fun shot(name: String) = compose.onRoot().captureRoboImage(
+        "../../../docs/evidence/android/$name.png",
+        RoborazziOptions(recordOptions = RoborazziOptions.RecordOptions(resizeScale = 0.5)),
+    )
+
+    @Test fun startDayShowsDashboardAndRecentWork() {
+        launch(SyntheticCases.seed().document)
+        compose.onNodeWithText("Diktat aufnehmen").assertIsDisplayed()
+        compose.onNodeWithText("Bello · K-2026-014").assertIsDisplayed()
+        compose.onAllNodesWithText("Bericht prüfen").onFirst().assertIsDisplayed()
+        shot("01-start-tag-klinik")
+    }
+
+    @Test fun startNightWithLavenderTheme() {
+        launch(SyntheticCases.seed().document, AppearanceMode.DARK, AccentTheme.LAVENDEL)
+        compose.onNodeWithContentDescription("Tagmodus").assertIsDisplayed()
+        shot("02-start-nacht-lavendel")
+    }
+
+    @Test fun casesListAndCaseDetail() {
+        val seeded = SyntheticCases.seed()
+        launch(seeded.document, theme = AccentTheme.OZEAN)
+        compose.onNodeWithTag("tab-cases").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithText("Mia · K-2026-013").assertIsDisplayed()
+        shot("03-faelle-ozean")
+        compose.onNodeWithTag("case-row-" + seeded.withReport.caseID).performClick()
+        compose.waitForIdle()
+        compose.onNodeWithText("Neues Diktat zu diesem Fall").assertIsDisplayed()
+        shot("04-fall-ozean")
+    }
+
+    @Test fun transcriptAndReportReview() {
+        launch(SyntheticCases.seed().document, AppearanceMode.DARK, AccentTheme.KLINIK)
+        compose.onNodeWithText("Bello · K-2026-014").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithTag("workflow-step-1").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithTag("transcript-save-status", useUnmergedTree = true).also {
+            runCatching { it.assertIsDisplayed() }.onFailure { error -> throw AssertionError(compose.onRoot(useUnmergedTree = true).printToString(), error) }
+        }
+        shot("05-diktat-text-nacht")
+        compose.onNodeWithTag("workflow-step-2").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithText("Bericht prüfen").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithText("Entwurf · Prüfung erforderlich").assertIsDisplayed()
+        shot("06-bericht-pruefen-nacht")
+    }
+
+    @Test fun settingsShowAppearanceAndThemes() {
+        launch(SyntheticCases.seed().document, theme = AccentTheme.KORALLE)
+        compose.onNodeWithContentDescription("Einstellungen").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithContentDescription("Farbthema Koralle").assertIsDisplayed()
+        shot("07-einstellungen-koralle")
+    }
+
+    @Test fun typedTextAutosavesAndSurvivesRelaunch() {
+        val model = launch(null)
+        compose.onNodeWithText("Diktat aufnehmen").performClick()
+        waitFor("Diktat angelegt", model) { model.document.value.cases.isNotEmpty() }
+        compose.onNodeWithTag("enter-transcript").performClick()
+        compose.waitForIdle()
+        val text = "Synthetischer Autosave. Temperatur nicht gemessen."
+        compose.onNodeWithTag("transcript-editor").performTextInput(text)
+        compose.mainClock.advanceTimeBy(1_500)
+        waitFor("Text gespeichert", model) { model.document.value.cases.first().encounters.first().transcripts.isNotEmpty() }
+        compose.onNodeWithText("Text gespeichert").assertIsDisplayed()
+        // A fresh repository on the same files and keys, like an app restart.
+        val reopened = runBlocking { repository().load() }
+        assertEquals(text, reopened.cases.single().encounters.single().transcripts.last().editedText)
+    }
+
+    @Test fun deletingFromCaseDetailRemovesOnlyThatCase() {
+        val seeded = SyntheticCases.seed()
+        val model = launch(seeded.document)
+        compose.onNodeWithTag("tab-cases").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithTag("case-row-" + seeded.withReport.caseID).performClick()
+        compose.waitForIdle()
+        compose.onNodeWithTag("delete-case-bottom").performClick()
+        compose.onNodeWithText("Fall endgültig löschen").performClick()
+        waitFor("Fall gelöscht", model) { model.document.value.cases.size == 2 }
+        assertTrue(model.document.value.cases.none { it.id == seeded.withReport.caseID })
+        assertEquals(2, runBlocking { repository().load() }.cases.size)
+    }
+}

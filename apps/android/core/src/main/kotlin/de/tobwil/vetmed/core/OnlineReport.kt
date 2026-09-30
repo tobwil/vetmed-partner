@@ -232,6 +232,6 @@ class OpenAIReportEngine(
 /** Synthetic single-sentence check used before online mode can be enabled. Sends no case data. */
 object OnlineModelCheck {
     const val SYNTHETIC_TEXT = "Synthetischer Testfall. Hund 12,5 kg. Kein Fieber."
-    fun verified(configuration: OnlineReportConfiguration, modelID: String, now: Instant = Instant.now()) =
+    fun verified(configuration: OnlineReportConfiguration, modelID: String, now: Instant = now()) =
         configuration.copy(verifiedModelID = modelID, verifiedAt = now)
 }

@@ -11,6 +11,7 @@ import kotlinx.serialization.json.Json
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.time.temporal.ChronoUnit
 import java.util.Locale
 import java.util.UUID
 
@@ -26,12 +27,13 @@ object AppleDateSerializer : KSerializer<Instant> {
     override fun serialize(encoder: Encoder, value: Instant) {
         encoder.encodeDouble(value.epochSecond + value.nano / 1e9 - REFERENCE_EPOCH)
     }
-    override fun deserialize(decoder: Decoder): Instant {
-        val seconds = decoder.decodeDouble() + REFERENCE_EPOCH
-        val whole = kotlin.math.floor(seconds)
-        return Instant.ofEpochSecond(whole.toLong(), ((seconds - whole) * 1e9).toLong())
-    }
+    // A Double near 8e8 s resolves ~0.1 µs; rounding to µs makes app-created (ms) times round-trip exactly.
+    override fun deserialize(decoder: Decoder): Instant =
+        Instant.EPOCH.plus(Math.round((decoder.decodeDouble() + REFERENCE_EPOCH) * 1e6), ChronoUnit.MICROS)
 }
+
+/** Current time at millisecond precision, the resolution the stored JSON keeps exactly. */
+fun now(): Instant = Instant.now().truncatedTo(ChronoUnit.MILLIS)
 typealias AppleDate = @Serializable(with = AppleDateSerializer::class) Instant
 
 val VetJson = Json {
@@ -86,7 +88,7 @@ data class VetCase(
     val label: String,
     val species: String,
     val animalName: String = "",
-    val createdAt: AppleDate = Instant.now(),
+    val createdAt: AppleDate = now(),
     val archivedAt: AppleDate? = null,
     val encounters: List<Encounter> = emptyList(),
 ) {
@@ -96,7 +98,7 @@ data class VetCase(
 @Serializable
 data class Encounter(
     val id: String = newId(),
-    val date: AppleDate = Instant.now(),
+    val date: AppleDate = now(),
     val reason: String = "Neues Diktat",
     val state: EncounterState = EncounterState.DRAFT,
     val audio: List<AudioSegment> = emptyList(),
@@ -131,7 +133,7 @@ data class Encounter(
 enum class EncounterStep(val title: String) { RECORDING("Aufnehmen"), TRANSCRIPT("Text prüfen"), REPORT("Bericht") }
 
 @Serializable
-data class AudioSegment(val id: String, val duration: Double, val createdAt: AppleDate = Instant.now(), val recovered: Boolean = false)
+data class AudioSegment(val id: String, val duration: Double, val createdAt: AppleDate = now(), val recovered: Boolean = false)
 
 @Serializable
 data class TranscriptSegment(
@@ -146,7 +148,7 @@ data class TranscriptSegment(
 data class TranscriptVersion(
     val id: String = newId(),
     val parentID: String? = null,
-    val createdAt: AppleDate = Instant.now(),
+    val createdAt: AppleDate = now(),
     val rawText: String,
     val editedText: String,
     val segments: List<TranscriptSegment>,
@@ -179,7 +181,7 @@ data class StructuredReport(
 data class ReportVersion(
     val id: String = newId(),
     val parentID: String? = null,
-    val createdAt: AppleDate = Instant.now(),
+    val createdAt: AppleDate = now(),
     val content: StructuredReport,
     val editedText: String? = null,
     val modelID: String,
@@ -201,14 +203,14 @@ data class ShareEvent(
     val id: String = newId(),
     val reportID: String,
     val format: String,
-    val date: AppleDate = Instant.now(),
+    val date: AppleDate = now(),
     val status: String = "An Systemfunktion übergeben; Zustellung unbekannt",
 )
 
 @Serializable
 data class CloudReportRequest(
     val id: String = newId(),
-    val date: AppleDate = Instant.now(),
+    val date: AppleDate = now(),
     val provider: String = "OpenAI",
     val modelID: String,
     val transcriptVersionID: String,

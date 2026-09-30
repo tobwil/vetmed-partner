@@ -38,7 +38,7 @@ object CaseOperations {
         return document.mapEncounter(location) { it.copy(transcripts = it.transcripts + version, state = EncounterState.TRANSCRIPT_READY) }
     }
 
-    fun saveReportEdit(document: VaultDocument, location: EncounterLocation, reportID: String, text: String, now: Instant = Instant.now()): VaultDocument {
+    fun saveReportEdit(document: VaultDocument, location: EncounterLocation, reportID: String, text: String, now: Instant = now()): VaultDocument {
         val report = encounter(document, location)?.reports?.firstOrNull { it.id == reportID } ?: throw AppFailure("Dieser Bericht ist nicht mehr vorhanden.")
         if (text == report.text) return document
         val revision = report.copy(
@@ -48,7 +48,7 @@ object CaseOperations {
         return document.mapEncounter(location) { it.copy(reports = it.reports + revision, state = EncounterState.REVIEW_REQUIRED) }
     }
 
-    fun approve(document: VaultDocument, location: EncounterLocation, reportID: String, now: Instant = Instant.now()): VaultDocument =
+    fun approve(document: VaultDocument, location: EncounterLocation, reportID: String, now: Instant = now()): VaultDocument =
         document.mapEncounter(location) { encounter ->
             if (encounter.reports.none { it.id == reportID && it.approvedAt == null }) encounter
             else encounter.copy(

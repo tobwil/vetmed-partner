@@ -70,6 +70,17 @@ Gezielt erneut geprüft: **24 Chat-/Anhangstests, null Fehler** (`evidence/ios-s
 
 Der signierte Build mit der neuen Persona wurde erfolgreich auf dem iPhone installiert und ohne Testflags normal gestartet (`evidence/device-senior-persona-install-2026-09-30.json`). Damit ist auch der zuvor durch die Bildschirmsperre blockierte Start des neuen Designstands erfolgt.
 
+## Android-Start am 30.09.2026
+
+Branch `claude/android-app`, Details in `architecture/0009-android-start.md`. Gebaut und getestet unter Linux mit JDK 21, Android SDK 37.2 und Gradle 9.8:
+
+- `./gradlew :core:test`: 46 Tests ohne Fehler (portierte iOS-Kern- und Online-Vertragstests, gemeinsames Korpus, Schema, Prompt, iOS-kompatibles JSON).
+- `./gradlew :app:testDebugUnitTest`: 12 Tests ohne Fehler (versiegelter Speicher; sieben Compose-UI-Tests auf Robolectric mit synthetischen Fällen). Zweimal wiederholt, stabil.
+- `./gradlew :app:lintDebug`: keine Befunde. `assembleDebug` und `assembleRelease` (R8, unsigniert) bauen.
+- Screenshots der UI-Tests: `evidence/android/`. Sie stammen aus Robolectric, nicht von einem Gerät.
+
+Nicht geprüft: Android-Keystore auf echter Hardware, Emulator, Pixel 9, echter OpenAI-Aufruf, Android-Teilen-Menü, Release-Build zur Laufzeit. Aufnahme/ASR, LiteRT-LM, Chat, PDF und Brave fehlen auf Android noch.
+
 ## Noch offen
 
 | Phase | Stand | Fehlende Abnahme |
