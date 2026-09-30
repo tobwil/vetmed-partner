@@ -61,10 +61,11 @@ class WalkthroughTests {
     private fun launch(
         document: VaultDocument?, mode: AppearanceMode = AppearanceMode.LIGHT, theme: AccentTheme = AccentTheme.KLINIK,
         microphone: AudioSourceFactory = SyntheticMicrophone(0), transcriber: Transcriber = SyntheticTranscriber(),
+        localModel: de.tobwil.vetmed.data.LocalReportModel = syntheticLocalModel(folder.root, SyntheticModelServer(), SyntheticRuntime("Befunde")),
     ): AppViewModel {
         AppearanceStore(application).apply { this.mode = mode; this.theme = theme }
         if (document != null) runBlocking { repository().save(document) }
-        val model = AppViewModel(application, repository(), microphone, transcriber)
+        val model = AppViewModel(application, repository(), microphone, transcriber, localModel)
         compose.setContent { VetMedApp(model) }
         waitFor("App geöffnet", model) { model.ready.value }
         compose.waitForIdle()
@@ -248,9 +249,44 @@ class WalkthroughTests {
         compose.onNodeWithTag("speech-status", useUnmergedTree = true).performScrollTo()
         compose.onNodeWithText(SpeechStatus.DOWNLOADABLE.title).assertIsDisplayed()
         assertEquals(0, transcriber.installs)
-        compose.onNodeWithTag("install-speech").performClick()
+        compose.onNodeWithTag("install-speech").performScrollTo().performClick()
         waitFor("Installiert", model) { model.speechStatus.value == SpeechStatus.READY }
         assertEquals(1, transcriber.installs)
+    }
+
+    @Test fun offlineReportNeedsAnExplicitDownloadThenRunsOnDevice() {
+        val server = SyntheticModelServer()
+        val runtime = SyntheticRuntime(de.tobwil.vetmed.core.ReportTemplate.TREATMENT_REPORT.sections.first())
+        val seeded = SyntheticCases.seed()
+        val model = launch(seeded.document, AppearanceMode.DARK, AccentTheme.WALD, localModel = syntheticLocalModel(folder.root, server, runtime))
+        // Without the model, Offline fails with a clear message and downloads nothing.
+        val mia = model.document.value.cases.first { it.animalName == "Mia" }
+        val location = de.tobwil.vetmed.core.EncounterLocation(mia.id, mia.encounters.single().id)
+        model.generate(location, de.tobwil.vetmed.core.ReportTemplate.TREATMENT_REPORT, de.tobwil.vetmed.core.ReportLength.MEDIUM, de.tobwil.vetmed.core.ReportExecutionMode.OFFLINE)
+        waitFor("Fehler gemeldet", model) { !model.busy.value && model.error.value != null }
+        assertTrue(model.error.value!!.contains("zuerst in den Einstellungen"))
+        assertTrue(server.requests.isEmpty())
+        model.dismissError()
+
+        compose.onNodeWithContentDescription("Einstellungen").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithTag("install-model").performScrollTo().performClick()
+        waitFor("Modell installiert", model) { model.localModel.installed.value && !model.busy.value }
+        assertEquals(listOf(0L), server.requests)
+        compose.onNodeWithText("Installiert · offline verfügbar").assertIsDisplayed()
+        shot("13-offline-modell-nacht")
+
+        model.generate(location, de.tobwil.vetmed.core.ReportTemplate.TREATMENT_REPORT, de.tobwil.vetmed.core.ReportLength.MEDIUM, de.tobwil.vetmed.core.ReportExecutionMode.OFFLINE)
+        waitFor("Offline-Bericht", model) { !model.busy.value && model.encounter(location)!!.reports.isNotEmpty() }
+        val report = model.encounter(location)!!.reports.single()
+        assertEquals(server.manifest.id, report.modelID)
+        assertEquals(server.manifest.revision, report.modelRevision)
+        assertEquals(null, model.encounter(location)!!.cloudReportRequests)
+        assertTrue(report.content.text.contains("Temperatur nicht gemessen"))
+        assertTrue(runtime.prompts >= 1)
+        // Unloading releases the native model (also done before recording and under memory pressure).
+        model.unloadModel()
+        assertTrue(runtime.closed)
     }
 }
 

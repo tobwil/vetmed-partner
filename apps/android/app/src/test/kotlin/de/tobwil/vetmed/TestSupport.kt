@@ -94,3 +94,45 @@ object SyntheticCases {
         return Seeded(document, bello, belloReport.id)
     }
 }
+
+/**
+ * Stands in for LiteRT-LM, which needs the native library and real weights. It answers the report prompt the way a
+ * careful model would: every source quoted verbatim in the first section. Everything around it is the real code.
+ */
+class SyntheticRuntime(private val section: String) : de.tobwil.vetmed.data.LocalRuntime {
+    override val backendName = "Synthetisch"
+    var prompts = 0
+    var closed = false
+    override suspend fun generate(prompt: String, instructions: String, onText: (String) -> Unit) {
+        prompts += 1
+        val sources = kotlinx.serialization.json.Json.parseToJsonElement(prompt.substringAfter("QUELLEN:\n").substringBefore("\nKorrektur")).let { it as kotlinx.serialization.json.JsonArray }
+        val items = sources.map { source ->
+            val id = (source as kotlinx.serialization.json.JsonObject).getValue("id").toString()
+            val text = source.getValue("text").toString()
+            """{"section":"$section","text":$text,"segmentId":$id,"quote":$text}"""
+        }
+        // Delivered in small chunks like a streaming model.
+        """{"items":[${items.joinToString(",")}]}""".chunked(7).forEach(onText)
+    }
+    override fun close() { closed = true }
+}
+
+/** A tiny "model file" served like Hugging Face would, with a matching pinned manifest. */
+class SyntheticModelServer(val payload: ByteArray = ByteArray(300_000) { (it % 13).toByte() }) : de.tobwil.vetmed.core.ModelTransport {
+    val requests = mutableListOf<Long>()
+    val manifest = de.tobwil.vetmed.core.ModelManifest(
+        id = "synthetic/offline-model", revision = "1".repeat(40), file = "model.litertlm", bytes = payload.size.toLong(),
+        sha256 = java.security.MessageDigest.getInstance("SHA-256").digest(payload).joinToString("") { "%02x".format(it) },
+        title = "Synthetisches Offline-Modell", license = "Test",
+    )
+    override fun open(url: String, offset: Long): de.tobwil.vetmed.core.ModelResponse {
+        requests += offset
+        return de.tobwil.vetmed.core.ModelResponse(if (offset > 0) 206 else 200, offset, java.io.ByteArrayInputStream(payload.copyOfRange(offset.toInt(), payload.size)))
+    }
+}
+
+fun syntheticLocalModel(root: File, server: SyntheticModelServer, runtime: SyntheticRuntime) = de.tobwil.vetmed.data.LocalReportModel(
+    de.tobwil.vetmed.core.ModelStore(File(root, "models"), server.manifest, server, freeSpace = { Long.MAX_VALUE }),
+    File(root, "litertlm-cache"),
+    runtimes = { _, _ -> runtime },
+)

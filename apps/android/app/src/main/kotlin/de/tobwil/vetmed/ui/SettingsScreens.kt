@@ -31,7 +31,9 @@ import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Memory
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -139,12 +141,45 @@ fun SettingsScreen(model: AppViewModel, nav: NavHostController) {
         Group {
             LinkRow("API-Key & Modell") { nav.navigate(OnlineRoute) }
             Caption(if (hasKey) "OpenAI · ${online.modelID.ifEmpty { "kein Modell gewählt" }}" else "Noch kein API-Key hinterlegt")
-            Caption("Mit aktivierter Konfiguration ist Online der Standard. Offline kannst du pro Bericht ausdrücklich auswählen, sobald das lokale Modell verfügbar ist.")
+            Caption("Mit aktivierter Konfiguration ist Online der Standard. Offline kannst du pro Bericht ausdrücklich auswählen.")
         }
         SectionTitle("Optionales Offline-Modell")
         Group {
-            Row(verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Rounded.Memory, null, tint = LocalVetColors.current.primary); Spacer(Modifier.width(8.dp)); Text("Gemma 4 E2B über LiteRT-LM") }
-            Caption("Auf Android noch nicht verfügbar. Geplant ist ein eigener LiteRT-LM-Adapter mit demselben Berichtsvertrag; es gibt keinen stillen Wechsel zwischen Online und Offline.")
+            val local = model.localModel
+            val installed by local.installed.collectAsStateWithLifecycle()
+            val status by local.status.collectAsStateWithLifecycle()
+            val progress by local.progress.collectAsStateWithLifecycle()
+            val busy by model.busy.collectAsStateWithLifecycle()
+            var confirmDelete by remember { mutableStateOf(false) }
+            LaunchedEffect(Unit) { local.refresh() }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Rounded.Memory, null, tint = LocalVetColors.current.primary); Spacer(Modifier.width(8.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(local.store.manifest.title)
+                    Text(status, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.testTag("model-status"))
+                }
+            }
+            progress?.let { LinearProgressIndicator(progress = { it.toFloat() }, modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) }
+            Caption("Einmaliger Download: ca. 2,6 GB über WLAN empfohlen, Apache-2.0. Revision und SHA-256 sind fest hinterlegt; vor jedem Laden wird die Datei geprüft. Danach entstehen Berichte ohne Internet.")
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                if (busy && progress != null) TextButton(onClick = { model.cancel() }, modifier = Modifier.testTag("pause-model")) { Text("Download pausieren") }
+                else TextButton(onClick = { model.installModel() }, enabled = !busy, modifier = Modifier.testTag("install-model")) {
+                    Text(if (installed) "Installation prüfen" else if (local.store.storedBytes() > 0) "Download fortsetzen" else "Modell herunterladen")
+                }
+                if (installed) TextButton(onClick = { model.unloadModel() }, enabled = !busy) { Text("Entladen") }
+            }
+            if (installed || local.store.storedBytes() > 0) {
+                TextButton(onClick = { confirmDelete = true }, enabled = !busy, modifier = Modifier.testTag("delete-model")) {
+                    Text("Modell löschen", color = MaterialTheme.colorScheme.error)
+                }
+            }
+            if (confirmDelete) AlertDialog(
+                onDismissRequest = { confirmDelete = false },
+                title = { Text("Offline-Modell löschen?") },
+                text = { Text("Die Modelldatei wird entfernt. Fälle, Berichte und Chats bleiben erhalten. Für Offline-Berichte ist danach ein neuer Download nötig.") },
+                confirmButton = { TextButton(onClick = { confirmDelete = false; model.deleteModel() }) { Text("Löschen", color = MaterialTheme.colorScheme.error) } },
+                dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Abbrechen") } },
+            )
         }
         SectionTitle("Spracherkennung")
         Group {
@@ -171,8 +206,8 @@ fun SettingsScreen(model: AppViewModel, nav: NavHostController) {
         }
         SectionTitle("Entwicklungsstand")
         Group {
-            Text("Android-Vorschau · 0.1", fontWeight = FontWeight.SemiBold)
-            Caption("Fälle, Texteingabe, Online-Berichte mit Quellenprüfung, Freigabe und Teilen. Aufnahme, Offline-Modell und Chat stehen noch aus. Nicht auf einem Pixel 9 abgenommen.")
+            Text("Android-Vorschau · 0.2", fontWeight = FontWeight.SemiBold)
+            Caption("Aufnahme mit lokaler Spracherkennung, Online- und Offline-Berichte mit Quellenprüfung, Freigabe, PDF und Chat mit Anhängen. In Robolectric getestet; auf einem echten Gerät (z. B. Pixel 9) noch nicht abgenommen.")
         }
     }
 }

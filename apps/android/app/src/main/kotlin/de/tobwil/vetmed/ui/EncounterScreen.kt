@@ -336,7 +336,11 @@ fun EncounterScreen(model: AppViewModel, nav: NavHostController, location: Encou
         }
     }
 
-    if (options) ReportOptionsDialog(template, length, mode, online.isEnabled, { template = it }, { length = it }, { mode = it }, onOpenOnline = { options = false; nav.navigate(OnlineRoute) }) { options = false }
+    val modelInstalled by model.localModel.installed.collectAsStateWithLifecycle()
+    if (options) ReportOptionsDialog(
+        template, length, mode, online.isEnabled, modelInstalled, { template = it }, { length = it }, { mode = it },
+        onOpenSettings = { options = false; nav.navigate(if (mode == ReportExecutionMode.ONLINE) OnlineRoute else SettingsRoute) },
+    ) { options = false }
     if (editingCase) CaseEditorDialog(model, item) { editingCase = false }
 }
 
@@ -515,9 +519,9 @@ private fun PrimaryAction(step: EncounterStep, reportTitle: String?, hasText: Bo
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ReportOptionsDialog(
-    template: ReportTemplate, length: ReportLength, mode: ReportExecutionMode, onlineEnabled: Boolean,
+    template: ReportTemplate, length: ReportLength, mode: ReportExecutionMode, onlineEnabled: Boolean, modelInstalled: Boolean,
     setTemplate: (ReportTemplate) -> Unit, setLength: (ReportLength) -> Unit, setMode: (ReportExecutionMode) -> Unit,
-    onOpenOnline: () -> Unit, onDone: () -> Unit,
+    onOpenSettings: () -> Unit, onDone: () -> Unit,
 ) {
     AlertDialog(
         onDismissRequest = onDone,
@@ -543,13 +547,16 @@ private fun ReportOptionsDialog(
                 Text("Verarbeitung", style = MaterialTheme.typography.labelLarge)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     FilterChip(mode == ReportExecutionMode.ONLINE, { setMode(ReportExecutionMode.ONLINE) }, label = { Text("Online") })
-                    FilterChip(mode == ReportExecutionMode.OFFLINE, { setMode(ReportExecutionMode.OFFLINE) }, label = { Text("Offline") })
+                    FilterChip(mode == ReportExecutionMode.OFFLINE, { setMode(ReportExecutionMode.OFFLINE) }, label = { Text("Offline") }, modifier = Modifier.testTag("mode-offline"))
                 }
                 if (mode == ReportExecutionMode.ONLINE) {
                     Text("Online wird nur der geprüfte Text mit deinen Berichtseinstellungen gesendet.", style = MaterialTheme.typography.bodySmall)
-                    if (!onlineEnabled) TextButton(onClick = onOpenOnline) { Text("Online-Zugang einrichten") }
+                    if (!onlineEnabled) TextButton(onClick = onOpenSettings) { Text("Online-Zugang einrichten") }
+                } else if (modelInstalled) {
+                    Text("Der Bericht entsteht mit Gemma auf diesem Gerät. Es wird nichts gesendet.", style = MaterialTheme.typography.bodySmall)
                 } else {
-                    Text("Das lokale Modell (LiteRT-LM) ist auf Android noch nicht verfügbar.", style = MaterialTheme.typography.bodySmall)
+                    Text("Für Offline-Berichte muss das lokale Modell in den Einstellungen installiert sein.", style = MaterialTheme.typography.bodySmall)
+                    TextButton(onClick = onOpenSettings) { Text("Offline-Modell einrichten") }
                 }
             }
         },

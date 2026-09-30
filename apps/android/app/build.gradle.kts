@@ -69,6 +69,8 @@ dependencies {
     implementation(libs.sqlcipher)
     implementation(libs.sqlite)
     implementation(libs.mlkit.text)
+    // On-device LLM runtime for the optional offline model (Gemma 4 E2B). Weights are downloaded only on request.
+    implementation(libs.litertlm)
     testImplementation(libs.sqlite.framework)
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.androidx.test.ext.junit)

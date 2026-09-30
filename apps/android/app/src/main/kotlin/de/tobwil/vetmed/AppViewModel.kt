@@ -14,7 +14,11 @@ import de.tobwil.vetmed.core.ChatOperations
 import de.tobwil.vetmed.core.SparringDraft
 import de.tobwil.vetmed.core.SparringService
 import de.tobwil.vetmed.core.SparringSnapshot
+import android.content.ComponentCallbacks2
+import de.tobwil.vetmed.core.ModelStore
+import de.tobwil.vetmed.core.ReportTextEngine
 import de.tobwil.vetmed.data.AttachmentImporter
+import de.tobwil.vetmed.data.LocalReportModel
 import de.tobwil.vetmed.data.AudioRecorder
 import de.tobwil.vetmed.data.AudioSourceFactory
 import de.tobwil.vetmed.data.MicrophoneSourceFactory
@@ -62,6 +66,7 @@ class AppViewModel(
     private val repository: VaultRepository,
     audioSources: AudioSourceFactory = MicrophoneSourceFactory,
     transcriber: Transcriber? = null,
+    localModel: LocalReportModel? = null,
 ) : AndroidViewModel(application) {
     /** Used by the default view model factory: SQLCipher case database and sealed secrets under separate Keystore keys, outside backups. */
     constructor(application: Application) : this(
@@ -107,6 +112,20 @@ class AppViewModel(
     private val _speechStatus = MutableStateFlow<SpeechStatus?>(null)
     val speechStatus: StateFlow<SpeechStatus?> = _speechStatus.asStateFlow()
     private var player: android.media.MediaPlayer? = null
+    /** Optional Gemma 4 E2B through LiteRT-LM. Weights live outside backups; nothing downloads without a tap. */
+    val localModel: LocalReportModel = localModel ?: LocalReportModel(
+        ModelStore(File(application.noBackupFilesDir, "models")), File(application.cacheDir, "litertlm"),
+        readiness = LocalReportModel.readiness(application),
+    )
+    private val memory = object : ComponentCallbacks2 {
+        override fun onTrimMemory(level: Int) {
+            // Like iOS MemoryPressurePolicy: release an idle model first, never interrupt saved work silently.
+            if (level >= ComponentCallbacks2.TRIM_MEMORY_BACKGROUND && !_busy.value) this@AppViewModel.localModel.unload()
+        }
+        override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {}
+        @Deprecated("Deprecated in Java") override fun onLowMemory() { if (!_busy.value) this@AppViewModel.localModel.unload() }
+    }
+    init { application.registerComponentCallbacks(memory) }
     private val importer by lazy { AttachmentImporter(application, File(application.noBackupFilesDir, "scratch")) }
 
     init { open() }
@@ -214,7 +233,7 @@ class AppViewModel(
         if (_busy.value || recorder.recording.value || encounter(location) == null) return
         viewModelScope.launch {
             try {
-                stopPlayback()
+                stopPlayback(); localModel.unload()
                 recorder.onSegment = { wav, segment ->
                     repository.storeAudio(location.caseID, location.encounterID, segment.id, wav)
                     persist { document -> document.mapEncounter(location) { if (it.audio.any { a -> a.id == segment.id }) it else it.copy(audio = it.audio + segment) } }
@@ -329,7 +348,35 @@ class AppViewModel(
         scratch.listFiles().orEmpty().filter { it.name.startsWith("transcribe-") || it.name.startsWith("playback-") || it.name.startsWith("pdf-import-") }.forEach { it.delete() }
     }
 
-    override fun onCleared() { stopPlayback(); super.onCleared() }
+    override fun onCleared() {
+        stopPlayback(); localModel.unload()
+        getApplication<Application>().unregisterComponentCallbacks(memory)
+        super.onCleared()
+    }
+
+    // Offline model ------------------------------------------------------------------------------------
+
+    /** Explicit download of the pinned model, resumable and verified. Cancel keeps the partial file. */
+    fun installModel() {
+        if (_busy.value || recorder.recording.value) return
+        _busy.value = true; _error.value = null; _workStatus.value = "Offline-Modell wird geladen"
+        work = viewModelScope.launch {
+            val progress = launch { localModel.progress.collect { value -> value?.let { _workStatus.value = "Offline-Modell: ${(it * 100).toInt()} %" } } }
+            try { localModel.install() }
+            catch (error: CancellationException) { _error.value = "Download pausiert. Er wird beim nächsten Mal an derselben Stelle fortgesetzt." }
+            catch (error: Exception) { _error.value = error.message }
+            finally { progress.cancel(); localModel.refresh(); _busy.value = false; _workStatus.value = ""; work = null }
+        }
+    }
+
+    fun unloadModel() { if (!_busy.value) localModel.unload() }
+
+    fun deleteModel() {
+        if (_busy.value) return
+        viewModelScope.launch {
+            try { localModel.delete() } catch (error: Exception) { _error.value = error.message }
+        }
+    }
 
     // Chat ---------------------------------------------------------------------------------------------
 
@@ -437,20 +484,23 @@ class AppViewModel(
         }
     }
 
-    /** Online generation with the user's own key. There is no silent fallback to another provider or mode. */
+    /** Online with the user's own key or offline with the local model, as chosen. Never a silent switch between them. */
     fun generate(location: EncounterLocation, template: ReportTemplate, length: ReportLength, mode: ReportExecutionMode) {
         if (_busy.value) return
         val transcript = encounter(location)?.transcripts?.lastOrNull() ?: run { _error.value = "Bitte zuerst das Transkript speichern."; return }
         val configuration = _online.value
         run(location) {
-            if (mode == ReportExecutionMode.OFFLINE) {
-                throw AppFailure("Das Offline-Modell (LiteRT-LM) ist auf Android noch nicht verfügbar. Bitte Online wählen; es wird nichts automatisch gesendet.")
-            }
+            val engine: ReportTextEngine = if (mode == ReportExecutionMode.OFFLINE) {
+                _workStatus.value = "Offline-Modell wird geprüft und geladen"
+                localModel.load()
+                localModel
+            } else {
             val key = repository.apiKey()
             if (!configuration.isEnabled || key == null) {
-                throw AppFailure("Bitte Online-Berichte in Einstellungen mit deinem API-Key aktivieren.")
+                throw AppFailure("Bitte Online-Berichte in Einstellungen mit deinem API-Key aktivieren oder ausdrücklich Offline wählen.")
             }
-            val engine = OpenAIReportEngine(
+            localModel.unload()
+            OpenAIReportEngine(
                 configuration, key, template.sections,
                 record = { payload, modelID ->
                     val request = CloudReportRequest(modelID = modelID, transcriptVersionID = transcript.id, payload = Base64.getEncoder().encodeToString(payload))
@@ -467,6 +517,7 @@ class AppViewModel(
                     }
                 },
             )
+            }
             val report = ReportPipeline(engine).run(
                 transcript, template, length, template.audience,
                 checkpoint = { value -> persist { document -> document.mapEncounter(location) { it.copy(reportCheckpoint = value) } } },
