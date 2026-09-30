@@ -11,6 +11,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.printToString
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
@@ -20,6 +21,11 @@ import androidx.test.core.app.ApplicationProvider
 import com.github.takahirom.roborazzi.RoborazziOptions
 import com.github.takahirom.roborazzi.captureRoboImage
 import de.tobwil.vetmed.core.CaseOperations
+import de.tobwil.vetmed.core.TranscriptSegment
+import de.tobwil.vetmed.core.Wav
+import de.tobwil.vetmed.data.AudioSourceFactory
+import de.tobwil.vetmed.data.SpeechStatus
+import de.tobwil.vetmed.data.Transcriber
 import de.tobwil.vetmed.core.VaultDocument
 import de.tobwil.vetmed.ui.AccentTheme
 import de.tobwil.vetmed.ui.AppearanceMode
@@ -52,10 +58,13 @@ class WalkthroughTests {
 
     private fun repository() = testRepository(application, folder.root, keys.first, keys.second)
 
-    private fun launch(document: VaultDocument?, mode: AppearanceMode = AppearanceMode.LIGHT, theme: AccentTheme = AccentTheme.KLINIK): AppViewModel {
+    private fun launch(
+        document: VaultDocument?, mode: AppearanceMode = AppearanceMode.LIGHT, theme: AccentTheme = AccentTheme.KLINIK,
+        microphone: AudioSourceFactory = SyntheticMicrophone(0), transcriber: Transcriber = SyntheticTranscriber(),
+    ): AppViewModel {
         AppearanceStore(application).apply { this.mode = mode; this.theme = theme }
         if (document != null) runBlocking { repository().save(document) }
-        val model = AppViewModel(application, repository())
+        val model = AppViewModel(application, repository(), microphone, transcriber)
         compose.setContent { VetMedApp(model) }
         waitFor("App geöffnet", model) { model.ready.value }
         compose.waitForIdle()
@@ -195,5 +204,67 @@ class WalkthroughTests {
         compose.onNodeWithText("Foto auswählen").assertIsDisplayed()
         compose.onNodeWithText("Datei hinzufügen").assertIsDisplayed()
         shot("10-neuer-chat-anhang")
+    }
+
+    @Test fun dictationRecordsSealsAndTranscribesOnDevice() {
+        shadowOf(application).grantPermissions(android.Manifest.permission.RECORD_AUDIO)
+        val microphone = SyntheticMicrophone(Wav.BYTES_PER_SECOND * 25L)
+        val transcriber = SyntheticTranscriber()
+        val model = launch(null, theme = AccentTheme.KORALLE, microphone = microphone, transcriber = transcriber)
+        compose.onNodeWithText("Diktat aufnehmen").performClick()
+        waitFor("Diktat angelegt", model) { model.document.value.cases.isNotEmpty() }
+        compose.onNodeWithText("Bereit für dein Diktat").assertIsDisplayed()
+        compose.onNodeWithTag("record-audio").performClick()
+        // The first 20-second segment is sealed while the microphone keeps running.
+        waitFor("Erstes Segment gesichert", model) { model.document.value.cases.single().encounters.single().audio.size == 1 }
+        waitFor("Mikrofon geleert", model) { microphone.delivered.get() == Wav.BYTES_PER_SECOND * 25L }
+        compose.waitForIdle()
+        compose.onNodeWithText("Aufnahme läuft").assertIsDisplayed()
+        compose.onNodeWithText("0:25").assertIsDisplayed()
+        shot("11-aufnahme-laeuft-koralle")
+        compose.onNodeWithTag("finish-dictation").performClick()
+        waitFor("Transkript erstellt", model) { model.document.value.cases.single().encounters.single().transcripts.isNotEmpty() }
+        val encounter = model.document.value.cases.single().encounters.single()
+        assertEquals(listOf(20.0, 5.0), encounter.audio.map { it.duration })
+        assertEquals(transcriber.engineName, encounter.transcripts.single().engine)
+        assertTrue(microphone.closed.get())
+        // Every segment is stored sealed; no plaintext stays in the scratch folder.
+        encounter.audio.forEach { segment ->
+            val wav = runBlocking { repository().audio(encounter.let { model.document.value.cases.single().id }, encounter.id, segment.id) }
+            assertEquals(segment.duration, Wav.duration(Wav.pcm(wav).size.toLong()), 0.001)
+        }
+        assertTrue(java.io.File(application.noBackupFilesDir, "scratch").listFiles().orEmpty().none { it.extension == "pcm" })
+        waitFor("Text im Editor", model) { runCatching { compose.onNodeWithText("Hund 12,5 kg.", substring = true).assertIsDisplayed() }.isSuccess }
+        compose.onNodeWithTag("original-recording").performClick()
+        compose.waitForIdle()
+        shot("12-transkript-mit-aufnahme")
+    }
+
+    @Test fun missingGermanSpeechResourcesAreOfferedButNeverDownloadedSilently() {
+        val transcriber = SyntheticTranscriber(SpeechStatus.DOWNLOADABLE)
+        val model = launch(null, transcriber = transcriber)
+        compose.onNodeWithContentDescription("Einstellungen").performClick()
+        waitFor("Status geladen", model) { model.speechStatus.value == SpeechStatus.DOWNLOADABLE }
+        compose.onNodeWithTag("speech-status", useUnmergedTree = true).performScrollTo()
+        compose.onNodeWithText(SpeechStatus.DOWNLOADABLE.title).assertIsDisplayed()
+        assertEquals(0, transcriber.installs)
+        compose.onNodeWithTag("install-speech").performClick()
+        waitFor("Installiert", model) { model.speechStatus.value == SpeechStatus.READY }
+        assertEquals(1, transcriber.installs)
+    }
+}
+
+/** Offline speech recognition stand-in: fixed synthetic sentences per audio segment. */
+class SyntheticTranscriber(var current: SpeechStatus = SpeechStatus.READY) : Transcriber {
+    var installs = 0
+    override val engineName = "Synthetischer Test-Erkenner · offline"
+    override suspend fun status() = current
+    override suspend fun install(progress: (Int) -> Unit) { installs += 1; progress(100); current = SpeechStatus.READY }
+    private var calls = 0
+    override suspend fun transcribe(wav: ByteArray, audioID: String): List<TranscriptSegment> {
+        Wav.pcm(wav) // Rejects anything that is not the recorder's format.
+        calls += 1
+        val text = if (calls == 1) "Hund 12,5 kg. Kein Fieber." else "Kontrolle in 3 Tagen."
+        return listOf(TranscriptSegment(id = "$audioID-0", text = text, audioID = audioID, startSeconds = 0.0))
     }
 }

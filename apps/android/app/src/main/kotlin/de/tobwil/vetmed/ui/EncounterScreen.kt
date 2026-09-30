@@ -41,7 +41,12 @@ import androidx.compose.material.icons.rounded.CloudDone
 import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Keyboard
-import androidx.compose.material.icons.rounded.MicOff
+import androidx.compose.material.icons.rounded.ExpandLess
+import androidx.compose.material.icons.rounded.ExpandMore
+import androidx.compose.material.icons.rounded.Mic
+import androidx.compose.material.icons.rounded.Pause
+import androidx.compose.material.icons.rounded.PlayCircle
+import androidx.compose.material.icons.rounded.FiberManualRecord
 import androidx.compose.material.icons.rounded.Sync
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.Verified
@@ -81,6 +86,8 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
@@ -90,7 +97,24 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.semantics.contentDescription
+import androidx.core.content.ContextCompat
+import de.tobwil.vetmed.core.Encounter
 import androidx.navigation.NavHostController
 import de.tobwil.vetmed.AppViewModel
 import de.tobwil.vetmed.core.EncounterLocation
@@ -112,17 +136,32 @@ fun EncounterScreen(model: AppViewModel, nav: NavHostController, location: Encou
     val vocabulary by model.vocabulary.collectAsStateWithLifecycle()
     val item = document.cases.firstOrNull { it.id == location.caseID }
     val encounter = item?.encounters?.firstOrNull { it.id == location.encounterID }
+    val recordingNow by model.recorder.recording.collectAsStateWithLifecycle()
+    val recordingLocation by model.recordingLocation.collectAsStateWithLifecycle()
+    val recording = recordingNow && recordingLocation == location
     val colors = LocalVetColors.current
     val scope = rememberCoroutineScope()
     val haptics = LocalHapticFeedback.current
+    val context = LocalContext.current
+    val microphone = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) model.record(location)
+        else model.reportError("Ohne Mikrofonzugriff ist keine Aufnahme möglich. Du kannst den Text weiterhin eingeben oder in den Android-Einstellungen den Zugriff erlauben.")
+    }
+    val toggleRecording = {
+        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+        when {
+            recording -> model.pauseRecording()
+            ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED -> model.record(location)
+            else -> microphone.launch(Manifest.permission.RECORD_AUDIO)
+        }
+    }
 
     var step by rememberSaveable { mutableStateOf(encounter?.suggestedStep ?: EncounterStep.RECORDING) }
     var transcript by rememberSaveable { mutableStateOf(encounter?.transcripts?.lastOrNull()?.editedText ?: "") }
     var saved by rememberSaveable { mutableStateOf(transcript) }
     var template by rememberSaveable { mutableStateOf(ReportTemplate.TREATMENT_REPORT) }
     var length by rememberSaveable { mutableStateOf(ReportLength.MEDIUM) }
-    // Offline (LiteRT-LM) does not exist on Android yet, so Online is the only mode that can produce a report.
-    var mode by rememberSaveable { mutableStateOf(ReportExecutionMode.ONLINE) }
+    var mode by rememberSaveable { mutableStateOf(online.preferredMode) }
     var options by remember { mutableStateOf(false) }
     var editingCase by remember { mutableStateOf(false) }
     val reportCount = encounter?.reports?.size ?: 0
@@ -141,8 +180,28 @@ fun EncounterScreen(model: AppViewModel, nav: NavHostController, location: Encou
         if (reportCount > knownReports) encounter?.reports?.lastOrNull()?.let { step = EncounterStep.REPORT; nav.navigate(ReportRoute(location.caseID, location.encounterID, it.id)) }
         knownReports = reportCount
     }
+    // A finished transcription replaces the editor text unless the user has unsaved typing.
+    val latestTranscriptID = encounter?.transcripts?.lastOrNull()?.id
+    LaunchedEffect(latestTranscriptID) {
+        val stored = model.encounter(location)?.transcripts?.lastOrNull()?.editedText ?: ""
+        if (transcript == saved) transcript = stored
+        saved = stored
+    }
     val pendingText by rememberUpdatedState(transcript.takeIf { it != saved })
-    DisposableEffect(Unit) { onDispose { pendingText?.let { model.flushTranscript(it, location) } } }
+    val stillRecording by rememberUpdatedState(recording)
+    DisposableEffect(Unit) {
+        onDispose {
+            pendingText?.let { model.flushTranscript(it, location) }
+            if (stillRecording) model.pauseRecording()
+        }
+    }
+    // Android silences background microphone access without a foreground service, so leaving the app pauses safely.
+    LifecycleEventEffect(Lifecycle.Event.ON_STOP) {
+        pendingText?.let { model.flushTranscript(it, location) }
+        if (stillRecording) model.pauseRecording()
+    }
+    val view = LocalView.current
+    DisposableEffect(recording) { view.keepScreenOn = recording; onDispose { view.keepScreenOn = false } }
     if (item == null || encounter == null) return
 
     Box(Modifier.fillMaxSize()) {
@@ -158,11 +217,17 @@ fun EncounterScreen(model: AppViewModel, nav: NavHostController, location: Encou
                 }
             },
             bottomBar = {
-                AnimatedVisibility(!busy, enter = slideInVertically { it } + fadeIn(), exit = slideOutVertically { it } + fadeOut()) {
+                val showPrimary = !busy && (step != EncounterStep.RECORDING || recording || encounter.audio.isNotEmpty())
+                AnimatedVisibility(showPrimary, enter = slideInVertically { it } + fadeIn(), exit = slideOutVertically { it } + fadeOut()) {
                     Box(Modifier.fillMaxWidth().imePadding().padding(horizontal = 20.dp, vertical = 12.dp)) {
                         PrimaryAction(step, encounter.reports.lastOrNull()?.let { if (it.approvedAt == null) "Bericht prüfen" else "Bericht ansehen und teilen" }, transcript.isNotBlank()) {
                             when (step) {
-                                EncounterStep.RECORDING -> step = EncounterStep.TRANSCRIPT
+                                EncounterStep.RECORDING -> model.pauseRecording {
+                                    if (!model.captureInProgress) {
+                                        step = EncounterStep.TRANSCRIPT
+                                        if (model.encounter(location)?.hasPendingAudio == true) model.transcribe(location)
+                                    }
+                                }
                                 EncounterStep.TRANSCRIPT -> scope.launch {
                                     val value = transcript
                                     if (model.saveTranscript(value, location)) { saved = value; model.generate(location, template, length, mode) }
@@ -199,14 +264,14 @@ fun EncounterScreen(model: AppViewModel, nav: NavHostController, location: Encou
                 ) { current ->
                     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                         when (current) {
-                            EncounterStep.RECORDING -> RecordingUnavailable(encounter.lastError) { step = EncounterStep.TRANSCRIPT }
+                            EncounterStep.RECORDING -> RecordingPanel(model, encounter, recording, recordingLocation == location, enabled = !busy, toggle = toggleRecording) { step = EncounterStep.TRANSCRIPT }
                             EncounterStep.TRANSCRIPT -> {
                                 Column(Modifier.fillMaxWidth().vetCard(colors, RoundedCornerShape(26.dp))) {
                                     Text("Text prüfen und ergänzen", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                                     Spacer(Modifier.size(10.dp))
                                     TextField(
                                         transcript, { transcript = it }, Modifier.fillMaxWidth().heightIn(min = 240.dp).testTag("transcript-editor"),
-                                        enabled = !busy, placeholder = { Text("Diktat eingeben oder einfügen …") },
+                                        enabled = !busy && !recording, placeholder = { Text("Diktat eingeben oder einfügen …") },
                                         shape = RoundedCornerShape(16.dp),
                                         colors = TextFieldDefaults.colors(focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent, disabledIndicatorColor = Color.Transparent),
                                     )
@@ -217,6 +282,9 @@ fun EncounterScreen(model: AppViewModel, nav: NavHostController, location: Encou
                                     if (numbers.isNotEmpty()) Text("Zahlen im Text: " + numbers.joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     vocabulary.filter { it.appears(transcript) }.forEach { entry ->
                                         TextButton(onClick = { transcript = entry.applying(transcript) }, enabled = !busy) { Text("${entry.recognized} → ${entry.preferred}") }
+                                    }
+                                    encounter.transcripts.lastOrNull()?.takeIf { encounter.audio.isNotEmpty() }?.let { version ->
+                                        OriginalAndRecording(version.rawText, encounter.playbackSegments, enabled = !busy && !recording) { model.play(it, location) }
                                     }
                                 }
                                 Row(
@@ -306,25 +374,105 @@ private fun StepSwitcher(step: EncounterStep, suggested: EncounterStep, reportsA
     }
 }
 
-/** Android audio capture and offline ASR are the next milestone (P3.2); nothing here pretends to record. */
+/** Port of the iOS recording section: timer, pulsing record button and an explicit text fallback. */
 @Composable
-private fun RecordingUnavailable(lastError: String?, enterText: () -> Unit) {
+private fun RecordingPanel(
+    model: AppViewModel, encounter: Encounter, recording: Boolean, ownsRecorder: Boolean, enabled: Boolean,
+    toggle: () -> Unit, enterText: () -> Unit,
+) {
     val colors = LocalVetColors.current
+    val elapsed by model.recorder.elapsed.collectAsStateWithLifecycle()
+    val recorderError by model.recorder.error.collectAsStateWithLifecycle()
+    val stored = encounter.audio.sumOf { it.duration }
+    val seconds = (if (ownsRecorder) maxOf(elapsed, stored) else stored).toInt()
+    val red = Color(0xFFFF3B30)
+    val title = when { recording -> "Aufnahme läuft"; encounter.audio.isEmpty() -> "Bereit für dein Diktat"; else -> "Aufnahme pausiert" }
+    val action = when { recording -> "Pause"; encounter.audio.isEmpty() -> "Aufnahme starten"; else -> "Fortsetzen" }
     Column(Modifier.fillMaxWidth().vetCard(colors, RoundedCornerShape(26.dp), 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        Box(Modifier.size(96.dp).clip(CircleShape).background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)), contentAlignment = Alignment.Center) {
-            Icon(Icons.Rounded.MicOff, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(40.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            val blink = rememberInfiniteTransition(label = "blink")
+            val alpha by blink.animateFloat(1f, 0.25f, infiniteRepeatable(tween(700), RepeatMode.Reverse), label = "dot")
+            Icon(Icons.Rounded.FiberManualRecord, null, tint = if (recording) red else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(18.dp).graphicsLayer { this.alpha = if (recording) alpha else 1f })
+            Spacer(Modifier.width(8.dp))
+            AnimatedContent(title, label = "title") { Text(it, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
         }
-        Spacer(Modifier.size(16.dp))
-        Text("Aufnahme folgt auf Android", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
         Spacer(Modifier.size(6.dp))
-        Text(
-            "Mikrofonaufnahme und lokale Spracherkennung sind der nächste Schritt. Bis dahin kannst du den Text eingeben oder einfügen; Berichte, Prüfung und Teilen funktionieren bereits.",
-            textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant,
+        AnimatedContent(seconds, transitionSpec = { (slideInVertically { -it / 2 } + fadeIn()) togetherWith (slideOutVertically { it / 2 } + fadeOut()) }, label = "timer") { value ->
+            Text(
+                "%d:%02d".format(value / 60, value % 60), fontSize = androidx.compose.ui.unit.TextUnit(54f, androidx.compose.ui.unit.TextUnitType.Sp),
+                fontWeight = FontWeight.SemiBold, color = if (recording) red else MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.testTag("recording-timer"),
+            )
+        }
+        Box(Modifier.size(190.dp), contentAlignment = Alignment.Center) {
+            if (recording) PulseRings(red)
+            val scale by androidx.compose.animation.core.animateFloatAsState(if (recording) 1.06f else 1f, spring(dampingRatio = 0.55f, stiffness = 300f), label = "scale")
+            val interaction = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+            Box(
+                Modifier.size(116.dp).graphicsLayer { scaleX = scale; scaleY = scale }.pressable(interaction)
+                    .shadow(18.dp, CircleShape, spotColor = if (recording) red else colors.primary).clip(CircleShape)
+                    .background(if (recording) Brush.linearGradient(listOf(Color(0xFFFF6B5E), red)) else colors.gradient)
+                    .clickable(interaction, indication = null, enabled = enabled, role = Role.Button, onClick = toggle)
+                    .semantics { contentDescription = action }.testTag("record-audio"),
+                contentAlignment = Alignment.Center,
+            ) {
+                AnimatedContent(recording, label = "icon") { active ->
+                    Icon(if (active) Icons.Rounded.Pause else Icons.Rounded.Mic, null, tint = Color.White, modifier = Modifier.size(44.dp))
+                }
+            }
+        }
+        AnimatedContent(action, label = "action") { Text(it, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        Spacer(Modifier.size(6.dp))
+        Text("Lass die App während der Aufnahme geöffnet. Jedes Segment wird sofort verschlüsselt gespeichert.",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+        if (ownsRecorder) recorderError?.let { Spacer(Modifier.size(6.dp)); Text(it, style = MaterialTheme.typography.bodySmall, color = red, textAlign = TextAlign.Center) }
+        encounter.lastError?.let { Spacer(Modifier.size(6.dp)); Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center) }
+        AnimatedVisibility(!recording) {
+            TextButton(onClick = enterText, enabled = enabled, modifier = Modifier.padding(top = 8.dp).testTag("enter-transcript")) {
+                Icon(Icons.Rounded.Keyboard, null); Spacer(Modifier.width(8.dp)); Text("Text stattdessen eingeben")
+            }
+        }
+    }
+}
+
+/** Three expanding rings behind the record button while the microphone is live. */
+@Composable
+private fun PulseRings(color: Color) {
+    val transition = rememberInfiniteTransition(label = "pulse")
+    repeat(3) { index ->
+        val progress by transition.animateFloat(
+            0f, 1f, infiniteRepeatable(tween(2100, delayMillis = index * 700, easing = LinearEasing), RepeatMode.Restart), label = "ring$index",
         )
-        lastError?.let { Spacer(Modifier.size(8.dp)); Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center) }
-        Spacer(Modifier.size(12.dp))
-        TextButton(onClick = enterText, modifier = Modifier.testTag("enter-transcript")) {
-            Icon(Icons.Rounded.Keyboard, null); Spacer(Modifier.width(8.dp)); Text("Text eingeben")
+        Box(
+            Modifier.size(116.dp).graphicsLayer { scaleX = 1f + progress * 0.62f; scaleY = scaleX; alpha = (1f - progress) * 0.45f }
+                .clip(CircleShape).background(color),
+        )
+    }
+}
+
+/** The recognizer's untouched output and playback per sentence, for checking numbers and negations. */
+@Composable
+private fun OriginalAndRecording(raw: String, segments: List<de.tobwil.vetmed.core.TranscriptSegment>, enabled: Boolean, play: (de.tobwil.vetmed.core.TranscriptSegment) -> Unit) {
+    var open by rememberSaveable { mutableStateOf(false) }
+    Column(Modifier.fillMaxWidth().padding(top = 6.dp)) {
+        Row(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable { open = !open }.padding(vertical = 8.dp).testTag("original-recording"),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("Original und Aufnahme", fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+            Icon(if (open) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore, null)
+        }
+        AnimatedVisibility(open) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(raw, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                segments.forEach { segment ->
+                    TextButton(onClick = { play(segment) }, enabled = enabled) {
+                        Icon(Icons.Rounded.PlayCircle, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp))
+                        Text(segment.text, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                    }
+                }
+            }
         }
     }
 }
@@ -344,7 +492,7 @@ private fun SaveStatus(isSaved: Boolean) {
 private fun PrimaryAction(step: EncounterStep, reportTitle: String?, hasText: Boolean, onClick: () -> Unit) {
     val colors = LocalVetColors.current
     val (title, enabled) = when (step) {
-        EncounterStep.RECORDING -> "Text eingeben" to true
+        EncounterStep.RECORDING -> "Fertig · Text prüfen" to true
         EncounterStep.TRANSCRIPT -> "Bericht erstellen" to hasText
         EncounterStep.REPORT -> (reportTitle ?: "Bericht erstellen") to (reportTitle != null)
     }
@@ -354,7 +502,7 @@ private fun PrimaryAction(step: EncounterStep, reportTitle: String?, hasText: Bo
             .shadow(if (enabled) 12.dp else 0.dp, CircleShape, spotColor = colors.primary).clip(CircleShape)
             .background(if (enabled) colors.gradient else androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)))
             .clickable(interaction, indication = null, enabled = enabled, role = androidx.compose.ui.semantics.Role.Button, onClick = onClick)
-            .testTag("generate-report"),
+            .testTag(if (step == EncounterStep.RECORDING) "finish-dictation" else "generate-report"),
         contentAlignment = Alignment.Center,
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {

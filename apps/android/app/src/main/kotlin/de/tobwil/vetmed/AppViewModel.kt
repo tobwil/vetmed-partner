@@ -15,6 +15,12 @@ import de.tobwil.vetmed.core.SparringDraft
 import de.tobwil.vetmed.core.SparringService
 import de.tobwil.vetmed.core.SparringSnapshot
 import de.tobwil.vetmed.data.AttachmentImporter
+import de.tobwil.vetmed.data.AudioRecorder
+import de.tobwil.vetmed.data.AudioSourceFactory
+import de.tobwil.vetmed.data.MicrophoneSourceFactory
+import de.tobwil.vetmed.data.OnDeviceTranscriber
+import de.tobwil.vetmed.data.SpeechStatus
+import de.tobwil.vetmed.data.Transcriber
 import de.tobwil.vetmed.data.ReportExports
 import de.tobwil.vetmed.core.CaseOperations
 import de.tobwil.vetmed.core.CaseOperations.mapEncounter
@@ -51,7 +57,12 @@ import java.io.File
 import java.util.Base64
 
 /** Android counterpart of the iOS `VetAppModel`. Every change is persisted before it is shown as saved. */
-class AppViewModel(application: Application, private val repository: VaultRepository) : AndroidViewModel(application) {
+class AppViewModel(
+    application: Application,
+    private val repository: VaultRepository,
+    audioSources: AudioSourceFactory = MicrophoneSourceFactory,
+    transcriber: Transcriber? = null,
+) : AndroidViewModel(application) {
     /** Used by the default view model factory: SQLCipher case database and sealed secrets under separate Keystore keys, outside backups. */
     constructor(application: Application) : this(
         application,
@@ -88,6 +99,14 @@ class AppViewModel(application: Application, private val repository: VaultReposi
     private val _activeAnalysisID = MutableStateFlow<String?>(null)
     val activeAnalysisID: StateFlow<String?> = _activeAnalysisID.asStateFlow()
     val exports by lazy { ReportExports(File(application.cacheDir, "exports")) }
+    private val scratch = File(application.noBackupFilesDir, "scratch")
+    val recorder = AudioRecorder(scratch, audioSources)
+    private val transcriber: Transcriber = transcriber ?: OnDeviceTranscriber(application, scratch)
+    private val _recordingLocation = MutableStateFlow<EncounterLocation?>(null)
+    val recordingLocation: StateFlow<EncounterLocation?> = _recordingLocation.asStateFlow()
+    private val _speechStatus = MutableStateFlow<SpeechStatus?>(null)
+    val speechStatus: StateFlow<SpeechStatus?> = _speechStatus.asStateFlow()
+    private var player: android.media.MediaPlayer? = null
     private val importer by lazy { AttachmentImporter(application, File(application.noBackupFilesDir, "scratch")) }
 
     init { open() }
@@ -99,6 +118,7 @@ class AppViewModel(application: Application, private val repository: VaultReposi
                 val recovered = ChatOperations.recoverInterrupted(loaded)
                 if (recovered != loaded) repository.save(recovered)
                 _document.value = recovered
+                recoverAudio()
                 _vocabulary.value = repository.vocabulary()
                 _online.value = repository.onlineConfiguration()
                 _hasKey.value = repository.apiKey() != null
@@ -184,6 +204,132 @@ class AppViewModel(application: Application, private val repository: VaultReposi
     }
 
     fun cancel() { work?.cancel() }
+
+    // Recording and transcription --------------------------------------------------------------------
+
+    val captureInProgress: Boolean get() = recorder.recording.value
+
+    /** Starts only after the case is durably stored; every finished segment is sealed before it counts. */
+    fun record(location: EncounterLocation) {
+        if (_busy.value || recorder.recording.value || encounter(location) == null) return
+        viewModelScope.launch {
+            try {
+                stopPlayback()
+                recorder.onSegment = { wav, segment ->
+                    repository.storeAudio(location.caseID, location.encounterID, segment.id, wav)
+                    persist { document -> document.mapEncounter(location) { if (it.audio.any { a -> a.id == segment.id }) it else it.copy(audio = it.audio + segment) } }
+                }
+                recorder.onInterruption = { markInterrupted(location) }
+                _recordingLocation.value = location
+                recorder.start(location.caseID, location.encounterID, viewModelScope)
+                persist { document -> document.mapEncounter(location) { it.copy(state = EncounterState.RECORDING, lastError = null) } }
+            } catch (error: Exception) {
+                if (recorder.recording.value) { recorder.pause(); markInterrupted(location) }
+                _error.value = (error as? AppFailure)?.message ?: "Die Aufnahme konnte nicht gestartet werden: ${error.message}"
+            }
+        }
+    }
+
+    fun pauseRecording(then: () -> Unit = {}) {
+        val location = _recordingLocation.value
+        if (location == null || !recorder.recording.value) return then()
+        viewModelScope.launch {
+            recorder.pause()
+            val problem = recorder.error.value
+            runCatching { persist { document -> document.mapEncounter(location) { it.copy(state = if (problem == null) EncounterState.PAUSED else EncounterState.INTERRUPTED, lastError = problem) } } }
+                .onFailure { _error.value = "Speichern fehlgeschlagen: " + it.message }
+            then()
+        }
+    }
+
+    private suspend fun markInterrupted(location: EncounterLocation) {
+        runCatching { persist { document -> document.mapEncounter(location) { it.copy(state = EncounterState.INTERRUPTED, lastError = recorder.error.value) } } }
+    }
+
+    /** Local speech recognition of all audio that has no transcript yet. Nothing leaves the device. */
+    fun transcribe(location: EncounterLocation) {
+        val current = encounter(location) ?: return
+        if (_busy.value || recorder.recording.value) return
+        val done = current.transcripts.flatMap { it.segments }.mapNotNull { it.audioID }.toSet()
+        val pending = current.audio.filter { it.id !in done }
+        if (pending.isEmpty()) { _error.value = "Keine neuen Audiosegmente vorhanden."; return }
+        run(location, EncounterState.TRANSCRIBING) {
+            val recognized = mutableListOf<de.tobwil.vetmed.core.TranscriptSegment>()
+            for ((index, segment) in pending.withIndex()) {
+                _workStatus.value = "Transkription ${index + 1} von ${pending.size} · auf diesem Gerät"
+                val wav = repository.audio(location.caseID, location.encounterID, segment.id)
+                recognized += TranscriptBuilder.audioSentences(transcriber.transcribe(wav, segment.id))
+            }
+            if (recognized.isEmpty()) throw AppFailure("Kein verständlicher Text erkannt. Die Aufnahme bleibt erhalten.")
+            persist { document ->
+                document.mapEncounter(location) { encounter ->
+                    val previous = encounter.transcripts.lastOrNull()
+                    val segments = previous?.segments.orEmpty() + recognized
+                    val raw = listOf(previous?.rawText.orEmpty(), recognized.joinToString("\n") { it.text }).filter { it.isNotEmpty() }.joinToString("\n")
+                    val version = de.tobwil.vetmed.core.TranscriptVersion(
+                        parentID = previous?.id, rawText = raw, editedText = segments.joinToString("\n") { it.text }, segments = segments, engine = transcriber.engineName,
+                    )
+                    encounter.copy(transcripts = encounter.transcripts + version, state = EncounterState.TRANSCRIPT_READY)
+                }
+            }
+        }
+    }
+
+    fun play(segment: de.tobwil.vetmed.core.TranscriptSegment, location: EncounterLocation) {
+        val id = segment.audioID ?: return
+        if (_busy.value || recorder.recording.value || encounter(location)?.audio?.none { it.id == id } != false) return
+        viewModelScope.launch {
+            try {
+                stopPlayback()
+                val file = File(scratch, "playback-${de.tobwil.vetmed.core.newId()}.wav").apply { parentFile?.mkdirs() }
+                withContext(kotlinx.coroutines.Dispatchers.IO) { file.writeBytes(repository.audio(location.caseID, location.encounterID, id)) }
+                player = android.media.MediaPlayer().apply {
+                    setDataSource(file.absolutePath); prepare(); file.delete()
+                    seekTo(((segment.startSeconds ?: 0.0) * 1000).toInt()); start()
+                    setOnCompletionListener { stopPlayback() }
+                }
+            } catch (error: AppFailure) { _error.value = error.message }
+            catch (error: Exception) { _error.value = "Die Aufnahme konnte nicht abgespielt werden." }
+        }
+    }
+
+    private fun stopPlayback() { player?.runCatching { stop(); release() }; player = null }
+
+    fun refreshSpeechStatus() { viewModelScope.launch { _speechStatus.value = runCatching { transcriber.status() }.getOrDefault(SpeechStatus.UNSUPPORTED) } }
+
+    fun installSpeech() {
+        if (_busy.value) return
+        _busy.value = true; _workStatus.value = "Deutsche Sprachressourcen werden installiert"
+        work = viewModelScope.launch {
+            try {
+                transcriber.install { percent -> _workStatus.value = "Sprachressourcen: $percent %" }
+                _speechStatus.value = transcriber.status()
+            } catch (error: CancellationException) { _error.value = "Installation abgebrochen." }
+            catch (error: Exception) { _error.value = error.message }
+            finally { _busy.value = false; _workStatus.value = ""; work = null }
+        }
+    }
+
+    /** Recording segments left unencrypted by a crash are sealed into their case; foreign leftovers are removed. */
+    private suspend fun recoverAudio() {
+        for (leftover in AudioRecorder.leftovers(scratch)) {
+            val location = EncounterLocation(leftover.caseID, leftover.encounterID)
+            if (encounter(location) == null) { leftover.file.delete(); continue }
+            val pcm = withContext(kotlinx.coroutines.Dispatchers.IO) { leftover.file.readBytes() }
+            val segment = de.tobwil.vetmed.core.AudioSegment(id = leftover.segmentID, duration = de.tobwil.vetmed.core.Wav.duration(pcm.size.toLong()), recovered = true)
+            repository.storeAudio(leftover.caseID, leftover.encounterID, leftover.segmentID, de.tobwil.vetmed.core.Wav.wrap(pcm))
+            persist { document ->
+                document.mapEncounter(location) {
+                    it.copy(audio = if (it.audio.any { a -> a.id == segment.id }) it.audio else it.audio + segment, state = EncounterState.INTERRUPTED,
+                        lastError = "Eine unterbrochene Aufnahme wurde verschlüsselt gesichert.")
+                }
+            }
+            leftover.file.delete()
+        }
+        scratch.listFiles().orEmpty().filter { it.name.startsWith("transcribe-") || it.name.startsWith("playback-") || it.name.startsWith("pdf-import-") }.forEach { it.delete() }
+    }
+
+    override fun onCleared() { stopPlayback(); super.onCleared() }
 
     // Chat ---------------------------------------------------------------------------------------------
 
@@ -338,11 +484,11 @@ class AppViewModel(application: Application, private val repository: VaultReposi
         _document.value = next
     }
 
-    private fun run(location: EncounterLocation, operation: suspend () -> Unit) {
+    private fun run(location: EncounterLocation, state: EncounterState = EncounterState.GENERATING, operation: suspend () -> Unit) {
         _busy.value = true; _error.value = null; _workStatus.value = "Wird vorbereitet"
         work = viewModelScope.launch {
             try {
-                persist { document -> document.mapEncounter(location) { it.copy(state = EncounterState.GENERATING, lastError = null) } }
+                persist { document -> document.mapEncounter(location) { it.copy(state = state, lastError = null) } }
                 operation()
             } catch (error: CancellationException) {
                 withContext(NonCancellable) {

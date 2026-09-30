@@ -28,6 +28,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Memory
 import androidx.compose.material3.Button
@@ -46,6 +47,7 @@ import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -61,6 +63,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -72,6 +75,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import de.tobwil.vetmed.AppViewModel
 import de.tobwil.vetmed.core.VocabularyEntry
+import de.tobwil.vetmed.data.SpeechStatus
 
 @Composable
 private fun SettingsScaffold(title: String, nav: NavHostController, content: @Composable () -> Unit) {
@@ -144,7 +148,20 @@ fun SettingsScreen(model: AppViewModel, nav: NavHostController) {
         }
         SectionTitle("Spracherkennung")
         Group {
-            Caption("Aufnahme und lokale Transkription folgen im nächsten Android-Schritt. Eigene Fachwortkorrekturen gelten bereits für eingegebenen Text.")
+            val speech by model.speechStatus.collectAsStateWithLifecycle()
+            val busy by model.busy.collectAsStateWithLifecycle()
+            LaunchedEffect(Unit) { model.refreshSpeechStatus() }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Rounded.GraphicEq, null, tint = LocalVetColors.current.primary); Spacer(Modifier.width(8.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("Android On-Device · Deutsch")
+                    Text(speech?.title ?: "Wird geprüft …", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.testTag("speech-status"))
+                }
+            }
+            if (speech == SpeechStatus.DOWNLOADABLE) {
+                TextButton(onClick = { model.installSpeech() }, enabled = !busy, modifier = Modifier.testTag("install-speech")) { Text("Deutsche Sprachressourcen installieren") }
+            }
+            Caption("Transkribiert wird ausschließlich mit dem Offline-Erkenner des Systems. Fehlen die deutschen Ressourcen, bleibt die Aufnahme gespeichert; es gibt keinen Cloud-Fallback.")
             LinkRow("Eigene Fachwortkorrekturen") { nav.navigate(VocabularyRoute) }
         }
         SectionTitle("Lokale Daten")

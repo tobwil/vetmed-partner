@@ -4,6 +4,15 @@
 
     <!-- Only for explicitly started online reports with the user's own API key. -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Dictation. Requested at the first recording, never in the background. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
+    <queries>
+        <!-- Needed to reach the system's on-device speech recognizer on Android 11+. -->
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
+    </queries>
 
     <application
         android:name=".VetMedApplication"
