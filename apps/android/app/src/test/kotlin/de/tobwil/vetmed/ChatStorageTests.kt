@@ -132,4 +132,19 @@ class ChatStorageTests {
         val reopened = repository().load()
         assertEquals("Nur hier gespeichert", ChatOperations.context(reopened, chat)!!.sparringDraft!!.question)
     }
+
+    @Test fun orphanedEncryptedFilesAreRemovedAndReferencedOnesStay() = runTest {
+        val repository = repository()
+        val (withCheck, chat) = ChatOperations.newQuickCheck(VaultDocument())
+        val kept = de.tobwil.vetmed.core.ChatAttachment(id = "kept", kind = AttachmentKind.DOCUMENT, originalName = "Befund.txt", originalExtension = "txt", originalByteCount = 6, originalSHA256 = "0".repeat(64))
+        val document = withCheck.copy(quickChecks = withCheck.quickChecks!!.map { it.copy(chatAttachments = listOf(kept)) })
+        repository.save(document)
+        repository.storeAttachment(null, chat.encounterID, "kept", "bleibt".encodeToByteArray(), null)
+        repository.storeAttachment(null, chat.encounterID, "orphan", "weg".encodeToByteArray(), "weg".encodeToByteArray())
+        repository.storeAudio("gone-case", "gone-enc", "seg", ByteArray(64))
+        assertEquals(3, repository.cleanUnreferencedFiles(document))
+        assertArrayEquals("bleibt".encodeToByteArray(), repository.attachmentData(null, chat.encounterID, "kept", false))
+        assertFails("nicht verfügbar") { repository.attachmentData(null, chat.encounterID, "orphan", false) }
+        assertFails("nicht verfügbar") { repository.audio("gone-case", "gone-enc", "seg") }
+    }
 }

@@ -27,6 +27,16 @@ object CaseOperations {
         return document.mapCase(caseID) { it.copy(label = label.trim(), species = species.trim(), animalName = animalName.trim()) }
     }
 
+    /**
+     * Like iOS `unlock()`: work that was running when the process ended cannot still be running. It is marked
+     * interrupted, so no case shows "Bericht entsteht" forever; saved content stays untouched.
+     */
+    fun recoverInterruptedWork(document: VaultDocument): VaultDocument = document.copy(cases = document.cases.map { item ->
+        item.copy(encounters = item.encounters.map {
+            if (it.state in setOf(EncounterState.RECORDING, EncounterState.TRANSCRIBING, EncounterState.GENERATING)) it.copy(state = EncounterState.INTERRUPTED) else it
+        })
+    })
+
     fun deleteCase(document: VaultDocument, caseID: String): VaultDocument = document.copy(cases = document.cases.filter { it.id != caseID })
 
     /** Appends a new transcript version only when the text changed. The original stays in `rawText`. */

@@ -134,16 +134,22 @@ class AppViewModel(
         viewModelScope.launch {
             try {
                 val loaded = repository.load()
-                val recovered = ChatOperations.recoverInterrupted(loaded)
+                val recovered = CaseOperations.recoverInterruptedWork(ChatOperations.recoverInterrupted(loaded))
                 if (recovered != loaded) repository.save(recovered)
                 _document.value = recovered
                 recoverAudio()
+                // Housekeeping like iOS at unlock: orphaned encrypted files and expired plaintext PDF exports.
+                runCatching { repository.cleanUnreferencedFiles(_document.value) }
+                withContext(kotlinx.coroutines.Dispatchers.IO) { runCatching { exports.cleanExpired() } }
                 _vocabulary.value = repository.vocabulary()
                 _online.value = repository.onlineConfiguration()
                 _hasKey.value = repository.apiKey() != null
                 _ready.value = true
-            } catch (error: AppFailure) {
-                _error.value = "Lokale Daten konnten nicht geöffnet werden: " + error.message
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                // Any failure, not only expected ones, ends on the privacy cover with a retry instead of a crash.
+                _error.value = "Lokale Daten konnten nicht geöffnet werden: " + (error.message ?: error::class.simpleName)
             }
         }
     }
@@ -348,7 +354,12 @@ class AppViewModel(
         scratch.listFiles().orEmpty().filter { it.name.startsWith("transcribe-") || it.name.startsWith("playback-") || it.name.startsWith("pdf-import-") }.forEach { it.delete() }
     }
 
-    fun background() {
+    /**
+     * The app left the screen. A rotation, split-screen or dark-mode switch only rebuilds the activity: recording,
+     * playback and the loaded model continue.
+     */
+    fun background(changingConfigurations: Boolean = false) {
+        if (changingConfigurations) return
         stopPlayback()
         if (recorder.recording.value) pauseRecording()
         if (!_busy.value) localModel.unload()

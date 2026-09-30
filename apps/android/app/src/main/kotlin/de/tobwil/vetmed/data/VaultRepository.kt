@@ -121,12 +121,12 @@ class VaultRepository(
     // encounter and purpose, so ciphertext cannot be moved to another case or reused as another file.
 
     private fun scope(caseID: String?) = caseID ?: "quick"
+    private fun attachmentPath(caseID: String?, encounterID: String, id: String, upload: Boolean) =
+        File(root, "attachments/${scope(caseID)}/$encounterID/$id-${if (upload) "upload" else "original"}.sealed")
+
     private fun attachmentFile(caseID: String?, encounterID: String, id: String, upload: Boolean): SealedFile {
         val purpose = if (upload) "upload" else "original"
-        return SealedFile(
-            File(root, "attachments/${scope(caseID)}/$encounterID/$id-$purpose.sealed"), dataKeys,
-            "chat-attachment-v1/${scope(caseID)}/$encounterID/$id/$purpose",
-        )
+        return SealedFile(attachmentPath(caseID, encounterID, id, upload), dataKeys, "chat-attachment-v1/${scope(caseID)}/$encounterID/$id/$purpose")
     }
 
     suspend fun storeAttachment(caseID: String?, encounterID: String, id: String, original: ByteArray, upload: ByteArray?) = io {
@@ -145,8 +145,10 @@ class VaultRepository(
         attachmentFile(caseID, encounterID, id, false).delete(); attachmentFile(caseID, encounterID, id, true).delete()
     }
 
+    private fun audioPath(caseID: String, encounterID: String, segmentID: String) = File(root, "audio/$caseID/$encounterID/$segmentID.sealed")
+
     private fun audioFile(caseID: String, encounterID: String, segmentID: String) =
-        SealedFile(File(root, "audio/$caseID/$encounterID/$segmentID.sealed"), dataKeys, "audio-v1/$caseID/$encounterID/$segmentID")
+        SealedFile(audioPath(caseID, encounterID, segmentID), dataKeys, "audio-v1/$caseID/$encounterID/$segmentID")
 
     suspend fun storeAudio(caseID: String, encounterID: String, segmentID: String, wav: ByteArray) = io { audioFile(caseID, encounterID, segmentID).write(wav) }
 
@@ -160,6 +162,30 @@ class VaultRepository(
     }
 
     suspend fun removeQuickCheckFiles(id: String) = io { File(root, "attachments/quick/$id").deleteRecursively(); Unit }
+
+    /**
+     * Port of iOS `cleanUnreferencedAttachments`, extended to recordings: encrypted files left behind by a crash
+     * between writing the file and saving the case are removed. Only called at start, before any new recording.
+     */
+    suspend fun cleanUnreferencedFiles(document: VaultDocument) = io {
+        val keep = mutableSetOf<File>()
+        fun retain(caseID: String?, encounter: Encounter) {
+            encounter.chatAttachments.orEmpty().forEach {
+                keep += attachmentPath(caseID, encounter.id, it.id, false)
+                if (it.uploadSHA256 != null) keep += attachmentPath(caseID, encounter.id, it.id, true)
+            }
+            if (caseID != null) encounter.audio.forEach { keep += audioPath(caseID, encounter.id, it.id) }
+        }
+        document.cases.forEach { item -> item.encounters.forEach { retain(item.id, it) } }
+        document.quickChecks.orEmpty().forEach { retain(null, it.analysisContext) }
+        var removed = 0
+        for (directory in listOf(File(root, "attachments"), File(root, "audio"))) {
+            directory.walkTopDown().onEnter { !java.nio.file.Files.isSymbolicLink(it.toPath()) }
+                .filter { it.isFile && it.extension == "sealed" && it !in keep }
+                .forEach { if (it.delete()) removed += 1 }
+        }
+        removed
+    }
 
     // Opening ---------------------------------------------------------------------------------------
 

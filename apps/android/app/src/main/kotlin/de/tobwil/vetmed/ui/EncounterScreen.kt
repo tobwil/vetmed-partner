@@ -189,16 +189,18 @@ fun EncounterScreen(model: AppViewModel, nav: NavHostController, location: Encou
     }
     val pendingText by rememberUpdatedState(transcript.takeIf { it != saved })
     val stillRecording by rememberUpdatedState(recording)
+    // Rotation, split-screen and dark-mode switches rebuild the activity; the recording must continue through them.
+    val activity = androidx.activity.compose.LocalActivity.current
     DisposableEffect(Unit) {
         onDispose {
             pendingText?.let { model.flushTranscript(it, location) }
-            if (stillRecording) model.pauseRecording()
+            if (stillRecording && activity?.isChangingConfigurations != true) model.pauseRecording()
         }
     }
     // Android silences background microphone access without a foreground service, so leaving the app pauses safely.
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) {
         pendingText?.let { model.flushTranscript(it, location) }
-        if (stillRecording) model.pauseRecording()
+        if (stillRecording && activity?.isChangingConfigurations != true) model.pauseRecording()
     }
     val view = LocalView.current
     DisposableEffect(recording) { view.keepScreenOn = recording; onDispose { view.keepScreenOn = false } }

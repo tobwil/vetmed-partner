@@ -241,6 +241,34 @@ class WalkthroughTests {
         shot("12-transkript-mit-aufnahme")
     }
 
+    @Test fun rotationKeepsRecordingButLeavingTheAppPausesIt() {
+        shadowOf(application).grantPermissions(android.Manifest.permission.RECORD_AUDIO)
+        val model = launch(null, microphone = SyntheticMicrophone(Wav.BYTES_PER_SECOND * 2L))
+        compose.onNodeWithText("Diktat aufnehmen").performClick()
+        waitFor("Diktat angelegt", model) { model.document.value.cases.isNotEmpty() }
+        compose.onNodeWithTag("record-audio").performClick()
+        waitFor("Aufnahme läuft", model) { model.recorder.recording.value && model.recorder.elapsed.value >= 2.0 }
+        model.background(changingConfigurations = true)
+        compose.waitForIdle()
+        assertTrue("Drehen darf die Aufnahme nicht beenden", model.recorder.recording.value)
+        model.background(changingConfigurations = false)
+        waitFor("Aufnahme pausiert und gesichert", model) {
+            val encounter = model.document.value.cases.single().encounters.single()
+            !model.recorder.recording.value && encounter.audio.isNotEmpty() && encounter.state == de.tobwil.vetmed.core.EncounterState.PAUSED
+        }
+        assertEquals(2.0, model.document.value.cases.single().encounters.single().audio.sumOf { it.duration }, 0.001)
+    }
+
+    @Test fun reportsStuckAfterAProcessKillAreMarkedInterruptedOnStart() {
+        val seeded = SyntheticCases.seed()
+        val stuck = seeded.document.let { document ->
+            CaseOperations.run { document.mapEncounter(seeded.withReport) { it.copy(state = de.tobwil.vetmed.core.EncounterState.GENERATING) } }
+        }
+        val model = launch(stuck)
+        assertEquals(de.tobwil.vetmed.core.EncounterState.INTERRUPTED, model.encounter(seeded.withReport)!!.state)
+        assertEquals(de.tobwil.vetmed.core.EncounterState.INTERRUPTED, CaseOperations.encounter(runBlocking { repository().load() }, seeded.withReport)!!.state)
+    }
+
     @Test fun missingGermanSpeechResourcesAreOfferedButNeverDownloadedSilently() {
         val transcriber = SyntheticTranscriber(SpeechStatus.DOWNLOADABLE)
         val model = launch(null, transcriber = transcriber)

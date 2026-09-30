@@ -103,7 +103,8 @@ fun VetMedApp(model: AppViewModel = viewModel()) {
     val overlay = remember { Animatable(0f) }
     var reveal by remember { mutableStateOf<Pair<Offset, Color>?>(null) }
     // Like iOS `background()`: leaving the app stops playback, pauses a recording safely and frees an idle model.
-    androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_STOP) { model.background() }
+    val activity = androidx.activity.compose.LocalActivity.current
+    androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_STOP) { model.background(activity?.isChangingConfigurations == true) }
 
     VetMedTheme(mode, theme) {
         val reduceMotion = LocalReduceMotion.current

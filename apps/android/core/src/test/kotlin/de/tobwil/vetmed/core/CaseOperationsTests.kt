@@ -1,5 +1,6 @@
 package de.tobwil.vetmed.core
 
+import de.tobwil.vetmed.core.CaseOperations.mapEncounter
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
@@ -68,5 +69,20 @@ class CaseOperationsTests {
         try { CaseOperations.updateCase(two, a.caseID, "  ", "Hund", ""); throw AssertionError("blank label") } catch (_: AppFailure) {}
         val renamed = CaseOperations.updateCase(two, a.caseID, " Bello-1 ", "Hund", "Bello")
         assertEquals("Bello · Bello-1", renamed.cases.first { it.id == a.caseID }.displayName)
+    }
+
+    @Test fun workRunningAtProcessEndIsMarkedInterruptedAndNothingElseChanges() {
+        var document = VaultDocument()
+        val locations = EncounterState.entries.map { state ->
+            val (next, location) = CaseOperations.newEncounter(document)!!
+            document = next.mapEncounter(location) { it.copy(state = state) }
+            state to location
+        }
+        val recovered = CaseOperations.recoverInterruptedWork(document)
+        for ((state, location) in locations) {
+            val expected = if (state in setOf(EncounterState.RECORDING, EncounterState.TRANSCRIBING, EncounterState.GENERATING)) EncounterState.INTERRUPTED else state
+            assertEquals(state.name, expected, CaseOperations.encounter(recovered, location)!!.state)
+        }
+        assertEquals(recovered, CaseOperations.recoverInterruptedWork(recovered))
     }
 }
