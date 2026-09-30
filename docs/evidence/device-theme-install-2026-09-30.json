@@ -1,0 +1,21 @@
+{
+  "verifiedAt": "2026-09-30T05:04:52.633500+00:00",
+  "bundleID": "de.tobwil.vetmed",
+  "binarySHA256": "bc420feee524253d122efe84dc5e084cc1dc327be9478620d3c5c2566a8c6541",
+  "device": "iPhone 17 Pro / iOS 26.6.1",
+  "designBranch": "claude/optimized-ui-themes-animations-4a60zm",
+  "designCommit": "02793da08e32aab5f8ad65af2aff070e0843b563",
+  "signedDeviceBuildSucceeded": true,
+  "installSucceeded": true,
+  "normalLaunchSucceeded": false,
+  "launchBlockReason": "iPhone locked; CoreDevice 10002 / FBSOpenApplicationErrorDomain 7",
+  "installationNotes": "Initial network connection reset; reconnection and second installation succeeded.",
+  "sourceSHA256": {
+    "apps/ios/VetMed/Views/Theme.swift": "c3c4c2a78cd76bd11e38e88b00855f6c00719c59f79a1e4fe195880f61bb097f",
+    "apps/ios/VetMed/Views/VetMedApp.swift": "99ca811621cdfbeedd7bcd40abb22eef6eed67d532817b72d2ab6665bcf3536d",
+    "apps/ios/VetMed/Views/NavigationViews.swift": "dfecaa8371b2fa120ccb0c08b77f124ac6001b8d075035b954dac2b71c340ced",
+    "apps/ios/VetMed/Views/EncounterWorkflowView.swift": "00fd72f60a104495dadffe7fa17a496e5a7a50963bc646d786721490f24e688c",
+    "apps/ios/VetMed/Views/SparringView.swift": "4ccbb8b1a14980a27718177a078ed637b0d9b31cd5d6ad1e85377e9ef330ebbe",
+    "apps/ios/VetMed/Views/ChatMarkdownView.swift": "519879d8da21b652458cabea0d177b9bc91bd07b04c89341cee29ec1527892b1"
+  }
+}

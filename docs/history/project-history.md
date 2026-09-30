@@ -117,3 +117,11 @@ Die vollständigen Belege, älteren Prüfstände und ihre Grenzen stehen in [tes
 - Vollständiger Fachkorpus, Lizenz-/Datenschutz-/TestFlight-/Store- und Releaseprüfung.
 
 Der GitHub-Auftrag veröffentlicht den Entwicklungsstand und seine Historie. Er stellt keine Fertigmeldung für den Gesamtplan dar.
+
+## Fortsetzung am 30.09.2026: Design-Branch übernehmen
+
+Neuer Nutzerauftrag: „bitte das besssere design/ui vom anderen branch übernehmen und aufs smartphone installieren und dann auch main updaten“.
+
+Als einziger anderer GitHub-Branch wurde `claude/optimized-ui-themes-animations-4a60zm` mit Commit `02793da08e32aab5f8ad65af2aff070e0843b563` gefunden. Er baut auf dem ersten veröffentlichten Stand auf und ergänzt Kartenlayouts, Tag/Nacht, sechs Farbthemen, Hintergrund-/Aufnahmeanimationen und überarbeitete Chatansichten. Der ursprüngliche Design-Commit bleibt durch Fast-forward erhalten.
+
+Der Branch hatte bisher keinen Xcode-Build. Bei der Integration wurde das Projekt mit XcodeGen erzeugt, der vollständige bisherige Simulator-Testlauf mit 95 Tests erfolgreich durchgeführt und ein weiterer UI-Test für Darstellung/Farbwahl über einen Neustart ergänzt; auch dieser besteht. Start in Tag/Nacht, Einstellungen, Diktat und Markdown-Chat wurden anhand synthetischer Simulator-Screenshots geprüft. Der signierte iPhone-Build ist erfolgreich. Geräteinstallation und Veröffentlichung werden mit dem zugehörigen Nachweis im aktuellen Prüfstand dokumentiert.

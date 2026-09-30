@@ -2,7 +2,7 @@
 
 ## Stand und verbindliche Nutzerentscheidungen
 
-Die native iOS-App ist implementiert und auf dem iPhone 17 Pro installiert. Der letzte auf dem Gerät gestartete Code ist Commit `076b034`; die anschließende Archivierung ändert die App nicht. Die App heißt VetMed, Bundle `de.tobwil.vetmed`. Der gesamte Zielumfang bleibt im [Plan](../implementation-plan.md) und der [Nachverfolgung](../requirements-trace.md) erhalten.
+Die native iOS-App ist implementiert und auf dem iPhone 17 Pro installiert. Der neue Designstand aus `02793da` wurde am 30.09.2026 erfolgreich installiert; automatischer Start ist wegen der Bildschirmsperre noch nicht bestätigt. Der letzte zuvor nachweislich gestartete Stand ist `076b034`. Die App heißt VetMed, Bundle `de.tobwil.vetmed`. Der gesamte Zielumfang bleibt im [Plan](../implementation-plan.md) und der [Nachverfolgung](../requirements-trace.md) erhalten.
 
 Aktuelle Nutzerentscheidungen:
 
@@ -69,7 +69,7 @@ Build-/Testprozesse mit demselben DerivedData-Verzeichnis sequenziell ausführen
 
 ## Grenzen, die nicht übergangen werden dürfen
 
-Der Prüfstand enthält auch gescheiterte Tests und korrigierte Selektoren. 95 unterschiedliche Tests sind über mehrere Läufe nachgewiesen, nicht durch einen einzigen grünen Gesamtlauf. Die System-Textübergabe ersetzt keine WhatsApp-Abnahme. Kurze Gemma-Lasttests ersetzen keinen langen Offlinebericht, und synthetische Audiodateien ersetzen keine Langaufnahme am Mikrofon.
+Der Prüfstand enthält auch gescheiterte Tests und korrigierte Selektoren. Der Designstand vom 30.09.2026 besteht den vollständigen bisherigen Lauf mit 95 Tests sowie einen separaten zusätzlichen UI-Test für Darstellungseinstellungen (insgesamt 96 unterschiedliche Tests). Die älteren Nachweise vom 29.09.2026 bleiben historisch erhalten. Die System-Textübergabe ersetzt keine WhatsApp-Abnahme. Kurze Gemma-Lasttests ersetzen keinen langen Offlinebericht, und synthetische Audiodateien ersetzen keine Langaufnahme am Mikrofon.
 
 Aktive Audiosegmente sind während der Aufnahme noch nicht durchgehend auf App-Ebene verschlüsselt; iOS-Dateischutz und Verschlüsselung abgeschlossener Segmente sind davon getrennt. Größen- und RAM-Grenzen gelten für die dokumentierten Pfade und sind keine allgemeine Garantie gegen Speicherfehler.
 

@@ -1,6 +1,30 @@
 import XCTest
 final class WorkflowTests: XCTestCase {
     @MainActor
+    func testAppearanceAndThemePersistAfterRelaunch() throws {
+        let app = XCUIApplication(); app.launchArguments = ["--ui-testing"]; app.launch()
+        XCTAssertTrue(app.buttons["open-settings"].waitForExistence(timeout: 15)); app.buttons["open-settings"].tap()
+        let mode = app.segmentedControls["appearance-mode"]
+        XCTAssertTrue(mode.waitForExistence(timeout: 5)); mode.buttons["Tag"].tap()
+        app.buttons["Farbthema Ozean"].tap()
+        XCTAssertTrue(app.buttons["Farbthema Ozean"].isSelected)
+        let settings = XCTAttachment(screenshot: app.screenshot()); settings.name = "theme-settings-day"; settings.lifetime = .keepAlways; add(settings)
+        app.navigationBars.buttons["Fertig"].tap()
+        XCTAssertTrue(app.buttons["toggle-appearance"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.buttons["toggle-appearance"].label, "Nachtmodus")
+        let day = XCTAttachment(screenshot: app.screenshot()); day.name = "theme-start-day"; day.lifetime = .keepAlways; add(day)
+        app.buttons["toggle-appearance"].tap()
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "identifier == 'toggle-appearance' AND label == 'Tagmodus'")).firstMatch.waitForExistence(timeout: 5))
+        let night = XCTAttachment(screenshot: app.screenshot()); night.name = "theme-start-night"; night.lifetime = .keepAlways; add(night)
+        app.terminate(); app.launch()
+        XCTAssertTrue(app.buttons["toggle-appearance"].waitForExistence(timeout: 15)); XCTAssertEqual(app.buttons["toggle-appearance"].label, "Tagmodus")
+        app.buttons["open-settings"].tap()
+        XCTAssertTrue(app.buttons["Farbthema Ozean"].waitForExistence(timeout: 5)); XCTAssertTrue(app.buttons["Farbthema Ozean"].isSelected)
+        XCTAssertTrue(mode.buttons["Nacht"].isSelected)
+        app.buttons["Farbthema Klinik"].tap(); mode.buttons["Automatisch"].tap()
+        app.navigationBars.buttons["Fertig"].tap()
+    }
+    @MainActor
     func testManualTranscriptPersistsAfterRelaunch() throws {
         let app = XCUIApplication(); app.launchArguments = ["--ui-testing"]; app.launch()
         let new = app.buttons["new-dictation"]

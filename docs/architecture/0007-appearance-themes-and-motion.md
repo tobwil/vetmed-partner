@@ -15,10 +15,14 @@ Der Nutzer wünscht eine deutlich modernere Oberfläche mit Tag/Nacht-Schalter, 
 - **Oberfläche:** ruhig wandernder Mesh-Verlauf als Hintergrund, Karten auf Start mit Kennzahlen (Fälle, zu prüfende Berichte, Chats), Tierarten-Symbole, Verlaufs-Aufnahmetaste mit pulsierenden Ringen, animierter Schrittwechsler, Chatblasen im Themenverlauf mit Tippindikator sowie Liquid-Glass-Bedienelemente von iOS 26.
 - **Rückmeldung:** Haptik bei Aufnahme, Schrittwechsel, Freigabe, Kopieren und Themenwahl.
 
-Mit „Bewegung reduzieren“ entfallen Hintergrunddrift, Pulsringe, Einblendungen und der Kreis-Übergang.
+Mit „Bewegung reduzieren“ entfallen Hintergrunddrift, Pulsringe und der Kreis-Übergang. Die Einblendungen verzichten auf den vertikalen Versatz. Eine vollständige Barrierefreiheitsabnahme aller Animationen steht noch aus.
 
 ## Prüfung und Grenzen
 
 Alle Barrierefreiheitskennungen und sichtbaren Texte, auf die die UI-Tests zugreifen, bleiben unverändert. Dekorative Symbole sind für VoiceOver ausgeblendet, damit Knopfbezeichnungen weiterhin mit der Fallkennung beginnen.
 
-Dieser Stand wurde ohne macOS/Xcode erstellt. Die Swift-Syntax ist geprüft, ein Build, die UI-Tests und die Sichtprüfung auf dem Gerät stehen aus.
+Der ursprüngliche Branch wurde ohne macOS/Xcode erstellt. Build und UI-Abnahme werden bei der Integration vom 30.09.2026 nachgeholt; Ergebnisse stehen im [Prüfstand](../test-status.md).
+
+## Übernahme am 30.09.2026
+
+Auf ausdrücklichen Nutzerwunsch wird `claude/optimized-ui-themes-animations-4a60zm` bei Commit `02793da08e32aab5f8ad65af2aff070e0843b563` übernommen, für das iPhone gebaut und anschließend auf `main` veröffentlicht. Die Designänderungen bleiben in ihrem ursprünglichen Commit erhalten. Das Xcode-Projekt wird aus `project.yml` reproduzierbar neu erzeugt. Ein zusätzlicher UI-Test prüft Tag/Nacht, die Farbthemenauswahl und ihren Fortbestand nach Neustart.

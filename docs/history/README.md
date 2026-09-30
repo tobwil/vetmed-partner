@@ -13,7 +13,7 @@ Dieses Verzeichnis verbindet das Projektgespräch mit dem tatsächlich implement
 | [Originalplan](../implementation-plan.md) | Vollständig übernommener Umsetzungsplan vom 26.09.2026, Version 1.3 |
 | [Anforderungsnachverfolgung](../requirements-trace.md) | Voller Zielumfang und ausdrücklich noch offene Gates |
 | [Prüfstand](../test-status.md) | Was geprüft wurde, was fehlgeschlagen ist und was noch nicht nachgewiesen ist |
-| [Architekturentscheidungen](../architecture/) | Sechs Entscheidungen zu Pipeline, Online-Modus, Aufnahme, Chat und Navigation/Teilen |
+| [Architekturentscheidungen](../architecture/) | Entscheidungen zu Pipeline, Online-Modus, Aufnahme, Chat, Navigation/Teilen und Darstellung |
 | [Nachweise](../evidence/) | Synthetische Testergebnisse, Geräteprotokolle und Bildschirmfotos |
 
 ## Umfang und Herkunft

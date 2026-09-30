@@ -1,6 +1,6 @@
 # Prüfstand
 
-Stand: 29.09.2026. Entwicklungsstand; kein vollständiges Meilenstein-Gate abgenommen.
+Stand: 30.09.2026. Entwicklungsstand; kein vollständiges Meilenstein-Gate abgenommen.
 
 ## Belegte Ergebnisse
 
@@ -49,6 +49,17 @@ Beide endgültigen Teilen-Tests bestehen separat (`evidence/ios-chat-share-ui-te
 Visuell geprüft: `evidence/start-two-primary-actions.png`, `evidence/focused-dictation-step.png`, `evidence/formatted-chat-answer.png`. Fett/Kursiv, Überschrift und Listen erscheinen formatiert. Die Teilenansicht übersteht den Appwechsel; aktuelle Exportdateien werden beim Zurückkehren nicht mehr sofort gelöscht. **Die tatsächliche WhatsApp-Übergabe auf dem Nutzergerät ist noch nicht bestätigt.** Ein ItemSource-Vertragstest mit dem WhatsApp-Aktivitätstyp ersetzt keine reale Share Extension.
 
 Signierter Gerätebuild installiert und regulär ohne Testflags gestartet: `evidence/device-navigation-sharing-install-2026-09-29.json`. Die Nutzerprüfung von Teilen → WhatsApp ist angefragt.
+
+
+## Design-Branch integriert am 30.09.2026
+
+Auf Nutzerwunsch wurde `claude/optimized-ui-themes-animations-4a60zm` bei `02793da` vollständig übernommen: Kartenlayouts, Tierartensymbole, sechs Farbthemen, Tag/Nacht, animierte Hintergründe, Aufnahmetaste und Chatoberfläche. Die fachlichen Daten-/Providerpfade wurden dabei nicht verändert. Das Xcode-Projekt wurde mit XcodeGen neu erzeugt.
+
+Der vollständige vorhandene Testlauf besteht jetzt mit **95 Tests, null Fehlern**, einschließlich der zuvor korrigierten Navigation und System-Teilenansicht (`evidence/ios-theme-integration-tests-2026-09-30.json`). Ein zusätzlicher UI-Test bestätigt den Wechsel zwischen Tag und Nacht, Auswahl von Ozean sowie Fortbestand beider Einstellungen nach Neustart (`evidence/ios-theme-persistence-test-2026-09-30.json`, ein Test, null Fehler). Anschließend stellt der Test seine Simulator-Einstellungen auf Automatisch/Klinik zurück. Zusammen: 96 unterschiedliche erfolgreiche Tests in zwei Läufen.
+
+Visuell im Simulator geprüft: `evidence/theme-start-day-2026-09-30.png`, `evidence/theme-start-night-2026-09-30.png`, `evidence/theme-settings-2026-09-30.png`, `evidence/theme-dictation-2026-09-30.png` und `evidence/theme-chat-2026-09-30.png`. Die zugehörigen Bildschirmfotos enthalten ausschließlich synthetische Testdaten. Dies ersetzt weder eine vollständige Barrierefreiheitsabnahme noch den weiterhin offenen echten WhatsApp-Test.
+
+Signierter Build auf dem iPhone 17 Pro erfolgreich installiert (`evidence/device-theme-install-2026-09-30.json`). Nach einem anfänglichen Verbindungsreset gelang die Installation beim zweiten Versuch. Der normale Appstart wurde vom gesperrten iPhone abgewiesen; Start/Sichtprüfung auf dem echten Gerät sind deshalb noch nicht bestätigt.
 
 ## Noch offen
 
