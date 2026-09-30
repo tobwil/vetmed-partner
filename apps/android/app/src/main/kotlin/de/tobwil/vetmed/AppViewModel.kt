@@ -348,6 +348,12 @@ class AppViewModel(
         scratch.listFiles().orEmpty().filter { it.name.startsWith("transcribe-") || it.name.startsWith("playback-") || it.name.startsWith("pdf-import-") }.forEach { it.delete() }
     }
 
+    fun background() {
+        stopPlayback()
+        if (recorder.recording.value) pauseRecording()
+        if (!_busy.value) localModel.unload()
+    }
+
     override fun onCleared() {
         stopPlayback(); localModel.unload()
         getApplication<Application>().unregisterComponentCallbacks(memory)

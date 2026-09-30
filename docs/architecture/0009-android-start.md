@@ -21,7 +21,7 @@ Der allererste Android-Stand speicherte ein versiegeltes Gesamtdokument. Solche 
 
 **Offene Entscheidung:** Der Keystore-Schlüssel verlangt derzeit kein entsperrtes Gerät, damit ein laufender Bericht bei Displaysperre nicht an der Speicherung scheitert. Das ist schwächer als die iOS-Dateischutzklasse `complete` und vor einem Pilot zu entscheiden.
 
-**Noch nicht vorhanden und so gekennzeichnet:** Mikrofonaufnahme und lokale Spracherkennung (P3.2), das Offline-Modell über LiteRT-LM, Chat mit Anhängen, PDF-Export, Brave-Recherche. Die App zeigt an diesen Stellen deutlich „folgt“ und bietet nichts als funktionsfähig an. Online ist auf Android der Berichtsstandard, weil Offline noch keinen Bericht erzeugen kann; es gibt keinen stillen Wechsel.
+**Noch nicht vorhanden und so gekennzeichnet** (inzwischen umgesetzt, siehe [0010](0010-android-parity.md)): Mikrofonaufnahme und lokale Spracherkennung (P3.2), das Offline-Modell über LiteRT-LM, Chat mit Anhängen, PDF-Export, Brave-Recherche. Die App zeigt an diesen Stellen deutlich „folgt“ und bietet nichts als funktionsfähig an. Online ist auf Android der Berichtsstandard, weil Offline noch keinen Bericht erzeugen kann; es gibt keinen stillen Wechsel.
 
 ## Prüfung und Grenzen
 

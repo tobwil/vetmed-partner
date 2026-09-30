@@ -46,7 +46,17 @@ Gerendert aus den Compose-UI-Tests (Robolectric, Bildschirmgröße wie Pixel 9),
     <td align="center"><img src="docs/evidence/android/05-diktat-text-nacht.png" width="180" alt="Android: Diktat, Text prüfen"><br><sub>Diktat · Text prüfen</sub></td>
     <td align="center"><img src="docs/evidence/android/06-bericht-pruefen-nacht.png" width="180" alt="Android: Bericht prüfen"><br><sub>Bericht prüfen</sub></td>
     <td align="center"><img src="docs/evidence/android/07-einstellungen-koralle.png" width="180" alt="Android: Einstellungen mit Farbthemen"><br><sub>Einstellungen · Koralle</sub></td>
-    <td></td>
+    <td align="center"><img src="docs/evidence/android/08-chats-lavendel.png" width="180" alt="Android: Chatliste"><br><sub>Chats · Lavendel</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/evidence/android/09-chat-antwort-nacht.png" width="180" alt="Android: Fallchat mit formatierter Antwort"><br><sub>Fallchat · Nacht</sub></td>
+    <td align="center"><img src="docs/evidence/android/10-neuer-chat-anhang.png" width="180" alt="Android: neuer Chat mit Anhangmenü"><br><sub>Neuer Chat · Anhang</sub></td>
+    <td align="center"><img src="docs/evidence/android/11-aufnahme-laeuft-koralle.png" width="180" alt="Android: laufende Aufnahme"><br><sub>Aufnahme läuft</sub></td>
+    <td align="center"><img src="docs/evidence/android/12-transkript-mit-aufnahme.png" width="180" alt="Android: Transkript mit Original und Wiedergabe"><br><sub>Transkript · Original</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/evidence/android/13-offline-modell-nacht.png" width="180" alt="Android: Offline-Modell in den Einstellungen"><br><sub>Offline-Modell · Wald</sub></td>
+    <td></td><td></td><td></td>
   </tr>
 </table>
 
@@ -71,7 +81,7 @@ Die drei Bereiche heißen Start, Fälle und Chat. Der Sonne/Mond-Knopf auf Start
 
 Im Chat startet der sichtbare Neuer-Chat-Knopf ein Gespräch ohne Fall. Eine Frage eingeben, über + bei Bedarf ein Bild oder einen Befund hinzufügen und senden. PDF-/Textbefunde werden vor dem Versand lokal geprüft. Frühere vollständige Nachrichten desselben Chats werden automatisch berücksichtigt. Der Fallbezug bleibt über den Nachrichten sichtbar. Formatierte Antworten lassen sich als lesbarer Text kopieren oder teilen. Fälle lassen sich in der Fallliste von rechts nach links aufwischen oder unten in der Fallansicht löschen.
 
-## Android (Beginn)
+## Android
 
 Voraussetzungen: JDK 21 und Android SDK mit Plattform 37.2 (`sdk.dir` in `apps/android/local.properties` oder `ANDROID_HOME`).
 
@@ -80,7 +90,16 @@ Voraussetzungen: JDK 21 und Android SDK mit Plattform 37.2 (`sdk.dir` in `apps/a
 cd apps/android && ./gradlew :app:installDebug
 ```
 
-Der Android-Stand umfasst Fälle, Texteingabe, Online-Berichte mit Quellenprüfung, Freigabe, Teilen, Tag/Nacht und Farbthemen. Aufnahme, Offline-Modell und Chat folgen. Details und Grenzen: [Entscheidung 0009](docs/architecture/0009-android-start.md).
+Android hat denselben Funktionsumfang wie das iPhone:
+
+- Fälle und Diktat mit Aufnahme und lokaler Spracherkennung
+- Online-Berichte mit Quellenprüfung
+- optionales Offline-Modell (Gemma 4 E2B über LiteRT-LM)
+- Freigabe sowie Teilen als Text oder PDF
+- Chat mit Bildern und Befunden
+- Tag/Nacht und Farbthemen
+
+Die deutschen Sprachressourcen und das Offline-Modell werden nur auf Knopfdruck in den Einstellungen geladen. Geprüft ist das in Tests auf Robolectric, noch nicht auf einem echten Gerät. Details und Grenzen: [Entscheidung 0009](docs/architecture/0009-android-start.md) und [Entscheidung 0010](docs/architecture/0010-android-parity.md).
 
 ## FAQ
 
@@ -88,16 +107,16 @@ Der Android-Stand umfasst Fälle, Texteingabe, Online-Berichte mit Quellenprüfu
 Eine Arbeitshilfe für Tierärztinnen und Tierärzte: Behandlung diktieren, Text prüfen, daraus einen strukturierten Bericht erstellen lassen und fachliche Fragen im Chat besprechen, mit und ohne Fall. Die App heißt VetMed, das Repository `vetmed-partner`.
 
 **Gibt es VetMed für iPhone und Android?**
-Das iPhone ist die Hauptplattform und deutlich weiter. Android wurde am 30.09.2026 begonnen.
+Ja. Das iPhone ist die Hauptplattform und bereits auf einem echten Gerät installiert. Android hat seit dem 30.09.2026 denselben Funktionsumfang, ist aber bisher nur in automatisierten Tests ohne echtes Gerät geprüft.
 
 | Funktion | iPhone | Android |
 | --- | --- | --- |
 | Fälle, Diktat-Ablauf, Tag/Nacht, Farbthemen | ja | ja |
-| Aufnahme und lokale Spracherkennung | ja | folgt |
+| Aufnahme und lokale Spracherkennung | ja (SpeechAnalyzer) | ja (On-Device-Erkenner des Systems) |
 | Online-Bericht mit Quellenprüfung, Freigabe | ja | ja |
-| Offline-Bericht auf dem Gerät | Gemma über MLX (optional) | folgt (LiteRT-LM) |
-| Chat mit Bildern und Befunden | ja | folgt |
-| Teilen | Text und PDF | Text |
+| Offline-Bericht auf dem Gerät | Gemma über MLX (optional) | Gemma über LiteRT-LM (optional) |
+| Chat mit Bildern und Befunden | ja | ja |
+| Teilen | Text und PDF | Text und PDF |
 | Auf echtem Gerät installiert | iPhone 17 Pro | noch nicht |
 
 **Landen meine Fälle in der Cloud?**
@@ -110,7 +129,10 @@ Auf dem iPhone mit SQLCipher und der Dateischutzklasse von iOS; der Schlüssel l
 Für Online-Berichte und den Chat brauchst du einen eigenen OpenAI-API-Key. Die Kosten laufen über dein OpenAI-Konto. Der Modelltest in den Einstellungen sendet nur einen festen synthetischen Satz. Anfragen werden mit `store=false` gestellt; was OpenAI darüber hinaus aufbewahrt, regelt dein API-Vertrag.
 
 **Geht es auch ohne Internet?**
-Auf dem iPhone optional: Das lokale Modell (Gemma 4 E2B, einmalig ca. 3,6 GB) braucht ein iPhone mit mindestens 8 GB RAM. Es wird nie still als Ersatz genutzt; du wählst Offline ausdrücklich. Ein vollständiger Offline-Lauf mit langem Diktat ist noch nicht erfolgreich abgenommen, siehe [Prüfstand](docs/test-status.md). Auf Android gibt es Offline noch nicht.
+Auf dem iPhone optional: Das lokale Modell (Gemma 4 E2B, einmalig ca. 3,6 GB) braucht ein iPhone mit mindestens 8 GB RAM. Es wird nie still als Ersatz genutzt; du wählst Offline ausdrücklich. Ein vollständiger Offline-Lauf mit langem Diktat ist noch nicht erfolgreich abgenommen, siehe [Prüfstand](docs/test-status.md). Auf Android genauso, mit Gemma 4 E2B im LiteRT-LM-Format (einmalig ca. 2,6 GB, mindestens 8 GB RAM). Revision und Prüfsumme sind fest hinterlegt; vor jedem Laden wird die Datei geprüft. Mit echten Gewichten auf einem Android-Gerät ist das noch nicht erprobt.
+
+**Was passiert, wenn die Spracherkennung auf meinem Android-Gerät fehlt?**
+VetMed nutzt nur den Offline-Erkenner, den Android selbst mitbringt (auf Pixel-Geräten vorhanden, bei anderen Herstellern nicht immer). Fehlen die deutschen Sprachdaten, bietet die App unter Einstellungen → Spracherkennung die Installation an. Ohne sie bleibt die Aufnahme verschlüsselt gespeichert, und du kannst den Text selbst eingeben. Einen Cloud-Erkenner als Ausweichweg gibt es nicht.
 
 **Kann ich einen Bericht direkt verwenden?**
 Nein. Jeder Bericht ist ein Entwurf. Die App prüft, dass jede Aussage auf eine Stelle im Diktat verweist und dass Zahlen, Einheiten, Vergleichszeichen und Verneinungen übereinstimmen. Erfundene Werte werden abgewiesen, Abweichungen als Warnung angezeigt. Erst wenn du eine konkrete Version am Original geprüft und freigegeben hast, verschwindet die Entwurfskennzeichnung beim Export.

@@ -82,6 +82,17 @@ Branch `claude/android-app`, Details in `architecture/0009-android-start.md`. Ge
 
 Nicht geprüft: SQLCipher und Android-Keystore auf echter Hardware, Emulator, Pixel 9, echter OpenAI-Aufruf, Android-Teilen-Menü, Release-Build zur Laufzeit. Aufnahme/ASR, LiteRT-LM, Chat, PDF und Brave fehlen auf Android noch.
 
+## Android-Parität am 30.09.2026
+
+Branch `claude/android-parity`, Details in `architecture/0010-android-parity.md`. Neu auf Android: Chat mit Anhängen und Schnellchecks, PDF-Export, Aufnahme mit versiegelten Segmenten und Android-On-Device-Spracherkennung, optionales Offline-Modell Gemma 4 E2B über LiteRT-LM 0.17.1.
+
+- `./gradlew :core:test`: 81 Tests ohne Fehler (zusätzlich Chat-Vertrag, Markdown, WAV, Modell-Manifest, fortsetzbarer und geprüfter Modelldownload, Wiederholungsschutz, Geräteprüfung).
+- `./gradlew :app:testDebugUnitTest`: 36 Tests ohne Fehler (zusätzlich Aufnahme, Chat-Speicher mit Migration, Anhänge, PDF-Umbruch und UI-Tests für Aufnahme→Transkript, Sprachressourcen und Offline-Bericht).
+- `./gradlew :app:lintDebug`: keine Befunde. `assembleDebug`, `assembleRelease` (R8, unsigniert, etwa 103 MB universal) und `assembleDebugAndroidTest` bauen. Alle nativen Bibliotheken sind auf 16-KB-Seiten ausgerichtet.
+- Screenshots `evidence/android/01–13` aus Robolectric.
+
+Nicht geprüft: Mikrofon, `SpeechRecognizer`, LiteRT-LM mit echten Gewichten, der 2,6-GB-Download, ML-Kit-OCR, `PdfDocument`, Teilen-Menü, SQLCipher/Keystore auf Hardware und echte OpenAI-Aufrufe. Die Gerätetests `SqlCipherDeviceTests`, `ReportPdfDeviceTests` und `LocalModelDeviceTests` sind gebaut, aber nicht ausgeführt.
+
 ## Noch offen
 
 | Phase | Stand | Fehlende Abnahme |
@@ -89,7 +100,7 @@ Nicht geprüft: SQLCipher und Android-Keystore auf echter Hardware, Emulator, Pi
 | P0 | Kurzer Modellpfad, Dateitranskription, Wiederholungen und Abbruch belegt | Vollständiger langer Offlinebericht, reale Aufnahme, weiterer Mischbetrieb |
 | P1 | Lokaler Ablauf, Review/Export, Versionierung, Zwischenstände und Fachwortvorschläge verbunden | Durchgehende Audioverschlüsselung, Aufnahme-/Unterbrechungs-/Wiederherstellungstests, vollständiger Fachkorpus |
 | P2 | OpenAI-Berichtspfad und Chat mit Bild-/PDF-/Textanhängen und Schnellchecks, Keychain-Konfiguration, dynamische Modellliste, explizite Auswahl und verschlüsselte Requestsnapshots implementiert; synthetische Tests bestanden | OpenAI-/Streaming-Liveprüfung mit eigenem Key; weitere Provider, strukturierte Labordaten/Redaktion, Audioanhänge, Brave/Quellen |
-| P3 | Noch nicht implementiert | Native Android-App, LiteRT-LM/ASR, Sicherheit/Parität, Emulator und Pixel-9-Abnahme |
+| P3 | Android-App mit Funktionsparität implementiert und auf Robolectric getestet (siehe ADR 0010) | Emulator und Pixel-9-Abnahme, Mikrofon/ASR und LiteRT-LM auf Hardware, Sicherheitsprüfung auf Gerät |
 | P4 | Offen | Rückmeldungen, TestFlight, Lizenzen/Datenschutz/Releaseprüfung |
 
 30 synthetische Textfälle unter `shared/fixtures/report-corpus-de.json` vorbereitet; noch kein vollständiger Modelllauf und keine tierärztliche Abnahme. API-Keys wurden nicht aus anderen Apps übernommen. Ohne eigene Liveprüfung keine Providerfreigabe behaupten.
