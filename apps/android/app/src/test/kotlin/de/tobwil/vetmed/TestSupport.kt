@@ -12,7 +12,15 @@ import de.tobwil.vetmed.core.ReportTemplate
 import de.tobwil.vetmed.core.ReportValidator
 import de.tobwil.vetmed.core.ReportVersion
 import de.tobwil.vetmed.core.VaultDocument
+import android.content.Context
+import androidx.room.Room
+import androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory
+import de.tobwil.vetmed.data.CaseDatabase
+import de.tobwil.vetmed.data.DatabaseOpener
 import de.tobwil.vetmed.data.KeySource
+import de.tobwil.vetmed.data.SecureDeleteCallback
+import de.tobwil.vetmed.data.VaultRepository
+import java.io.File
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 
@@ -22,6 +30,20 @@ class MemoryKeys(var key: SecretKey? = null) : KeySource {
     override fun existing() = key
     override fun create(): SecretKey = KeyGenerator.getInstance("AES").apply { init(256) }.generateKey().also { key = it; created += 1 }
 }
+
+/**
+ * Same Room schema on Robolectric's plain SQLite. SQLCipher is an Android native library and cannot load
+ * on the JVM; its encryption is covered by the instrumented test in androidTest.
+ */
+val PlainSqliteOpener = DatabaseOpener { context, file, _ ->
+    Room.databaseBuilder(context, CaseDatabase::class.java, file.absolutePath)
+        .openHelperFactory(FrameworkSQLiteOpenHelperFactory())
+        .addCallback(SecureDeleteCallback)
+        .build()
+}
+
+fun testRepository(context: Context, root: File, data: KeySource, secrets: KeySource) =
+    VaultRepository(context, root, data, secrets, PlainSqliteOpener, requireCipher = false)
 
 /** Synthetic cases only. No real animals, owners or findings. */
 object SyntheticCases {

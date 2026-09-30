@@ -2,6 +2,7 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.ksp)
 }
 
 android {
@@ -45,6 +46,9 @@ android {
 
 kotlin { jvmToolchain(21) }
 
+// Versioned Room schemas document every migration of the encrypted case database.
+ksp { arg("room.schemaLocation", "$projectDir/schemas") }
+
 dependencies {
     implementation(project(":core"))
     implementation(platform(libs.compose.bom))
@@ -60,6 +64,14 @@ dependencies {
     implementation(libs.navigation.compose)
     implementation(libs.core.ktx)
     implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.room.runtime)
+    ksp(libs.room.compiler)
+    implementation(libs.sqlcipher)
+    implementation(libs.sqlite)
+    testImplementation(libs.sqlite.framework)
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.robolectric)

@@ -21,7 +21,6 @@ import com.github.takahirom.roborazzi.RoborazziOptions
 import com.github.takahirom.roborazzi.captureRoboImage
 import de.tobwil.vetmed.core.CaseOperations
 import de.tobwil.vetmed.core.VaultDocument
-import de.tobwil.vetmed.data.VaultRepository
 import de.tobwil.vetmed.ui.AccentTheme
 import de.tobwil.vetmed.ui.AppearanceMode
 import de.tobwil.vetmed.ui.AppearanceStore
@@ -51,7 +50,7 @@ class WalkthroughTests {
     private val application: Application = ApplicationProvider.getApplicationContext()
     private val keys = MemoryKeys() to MemoryKeys()
 
-    private fun repository() = VaultRepository(folder.root, keys.first, keys.second)
+    private fun repository() = testRepository(application, folder.root, keys.first, keys.second)
 
     private fun launch(document: VaultDocument?, mode: AppearanceMode = AppearanceMode.LIGHT, theme: AccentTheme = AccentTheme.KLINIK): AppViewModel {
         AppearanceStore(application).apply { this.mode = mode; this.theme = theme }

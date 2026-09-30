@@ -75,11 +75,12 @@ Der signierte Build mit der neuen Persona wurde erfolgreich auf dem iPhone insta
 Branch `claude/android-app`, Details in `architecture/0009-android-start.md`. Gebaut und getestet unter Linux mit JDK 21, Android SDK 37.2 und Gradle 9.8:
 
 - `./gradlew :core:test`: 46 Tests ohne Fehler (portierte iOS-Kern- und Online-Vertragstests, gemeinsames Korpus, Schema, Prompt, iOS-kompatibles JSON).
-- `./gradlew :app:testDebugUnitTest`: 12 Tests ohne Fehler (versiegelter Speicher; sieben Compose-UI-Tests auf Robolectric mit synthetischen Fällen). Zweimal wiederholt, stabil.
+- `./gradlew :app:testDebugUnitTest`: 18 Tests ohne Fehler (versiegelte Dateien; Room-Datenbank mit Transaktionen, Schlüsselschutz und Migration; Compose-UI-Tests auf Robolectric mit synthetischen Fällen). Zweimal wiederholt, stabil.
+- Fallspeicher: Room mit SQLCipher 4.19.1, Passwort per Keystore-Schlüssel versiegelt. Native Bibliotheken aller ABIs sind auf 16-KB-Seiten ausgerichtet (`zipalign -P 16` und ELF-Prüfung). Der Gerätetest `SqlCipherDeviceTests` ist gebaut, aber nicht ausgeführt.
 - `./gradlew :app:lintDebug`: keine Befunde. `assembleDebug` und `assembleRelease` (R8, unsigniert) bauen.
 - Screenshots der UI-Tests: `evidence/android/`. Sie stammen aus Robolectric, nicht von einem Gerät.
 
-Nicht geprüft: Android-Keystore auf echter Hardware, Emulator, Pixel 9, echter OpenAI-Aufruf, Android-Teilen-Menü, Release-Build zur Laufzeit. Aufnahme/ASR, LiteRT-LM, Chat, PDF und Brave fehlen auf Android noch.
+Nicht geprüft: SQLCipher und Android-Keystore auf echter Hardware, Emulator, Pixel 9, echter OpenAI-Aufruf, Android-Teilen-Menü, Release-Build zur Laufzeit. Aufnahme/ASR, LiteRT-LM, Chat, PDF und Brave fehlen auf Android noch.
 
 ## Noch offen
 

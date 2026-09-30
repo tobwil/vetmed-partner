@@ -40,10 +40,11 @@ import java.util.Base64
 
 /** Android counterpart of the iOS `VetAppModel`. Every change is persisted before it is shown as saved. */
 class AppViewModel(application: Application, private val repository: VaultRepository) : AndroidViewModel(application) {
-    /** Used by the default view model factory: cases and secrets sealed with separate Keystore keys, outside backups. */
+    /** Used by the default view model factory: SQLCipher case database and sealed secrets under separate Keystore keys, outside backups. */
     constructor(application: Application) : this(
         application,
         VaultRepository(
+            context = application,
             root = File(application.noBackupFilesDir, "vault"),
             dataKeys = AndroidKeystoreKeySource("de.tobwil.vetmed.vault.v1"),
             secretKeys = AndroidKeystoreKeySource("de.tobwil.vetmed.secrets.v1"),

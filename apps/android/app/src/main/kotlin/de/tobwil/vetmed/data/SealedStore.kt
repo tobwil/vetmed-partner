@@ -3,15 +3,6 @@ package de.tobwil.vetmed.data
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import de.tobwil.vetmed.core.AppFailure
-import de.tobwil.vetmed.core.VaultDocument
-import de.tobwil.vetmed.core.VetJson
-import de.tobwil.vetmed.core.VocabularyEntry
-import de.tobwil.vetmed.core.OnlineReportConfiguration
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.withContext
-import kotlinx.serialization.builtins.ListSerializer
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
@@ -106,42 +97,4 @@ class SealedFile(private val file: File, private val keys: KeySource, private va
     }
 
     fun delete() { file.delete() }
-}
-
-/** Cases, vocabulary and online secrets, each sealed separately. Only ever accessed off the main thread. */
-class VaultRepository(root: File, dataKeys: KeySource, secretKeys: KeySource) {
-    private val cases = SealedFile(File(root, "cases.v1.sealed"), dataKeys, "vetmed/cases/v1")
-    private val vocabulary = SealedFile(File(root, "vocabulary.v1.sealed"), dataKeys, "vetmed/vocabulary/v1")
-    private val apiKey = SealedFile(File(root, "secrets/provider.openai.api-key.sealed"), secretKeys, "vetmed/provider.openai.api-key")
-    private val onlineConfiguration = SealedFile(File(root, "secrets/online-report-configuration.v1.sealed"), secretKeys, "vetmed/online-report-configuration/v1")
-    private val mutex = Mutex()
-
-    suspend fun load(): VaultDocument = io {
-        val document = cases.read()?.let { VetJson.decodeFromString(VaultDocument.serializer(), it.decodeToString()) } ?: VaultDocument()
-        if (document.schemaVersion != 1) throw AppFailure("Unbekannte Speicherversion.")
-        document
-    }
-    suspend fun save(document: VaultDocument) = io { cases.write(VetJson.encodeToString(VaultDocument.serializer(), document).encodeToByteArray()) }
-
-    suspend fun vocabulary(): List<VocabularyEntry> = io {
-        vocabulary.read()?.let { VetJson.decodeFromString(ListSerializer(VocabularyEntry.serializer()), it.decodeToString()) }.orEmpty()
-    }
-    suspend fun saveVocabulary(entries: List<VocabularyEntry>) = io {
-        vocabulary.write(VetJson.encodeToString(ListSerializer(VocabularyEntry.serializer()), entries).encodeToByteArray())
-    }
-
-    suspend fun onlineConfiguration(): OnlineReportConfiguration = io {
-        onlineConfiguration.read()?.let { VetJson.decodeFromString(OnlineReportConfiguration.serializer(), it.decodeToString()) } ?: OnlineReportConfiguration()
-    }
-    suspend fun saveOnline(configuration: OnlineReportConfiguration, key: String? = null) = io {
-        key?.let { de.tobwil.vetmed.core.validateApiKey(it); apiKey.write(it.encodeToByteArray()) }
-        onlineConfiguration.write(VetJson.encodeToString(OnlineReportConfiguration.serializer(), configuration).encodeToByteArray())
-    }
-    suspend fun apiKey(): String? = io { apiKey.read()?.decodeToString() }
-    suspend fun removeApiKey(configuration: OnlineReportConfiguration) = io {
-        onlineConfiguration.write(VetJson.encodeToString(OnlineReportConfiguration.serializer(), configuration).encodeToByteArray())
-        apiKey.delete()
-    }
-
-    private suspend fun <T> io(block: () -> T): T = mutex.withLock { withContext(Dispatchers.IO) { block() } }
 }

@@ -1,22 +1,15 @@
 package de.tobwil.vetmed
 
 import de.tobwil.vetmed.core.AppFailure
-import de.tobwil.vetmed.core.CaseOperations
-import de.tobwil.vetmed.core.OnlineReportConfiguration
-import de.tobwil.vetmed.core.VaultDocument
 import de.tobwil.vetmed.data.SealedFile
-import de.tobwil.vetmed.data.VaultRepository
-import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
-import java.time.Instant
 
 /** Same guarantees as the iOS encrypted round-trip tests, with a software key in place of the Keystore. */
 class SealedStoreTests {
@@ -54,30 +47,5 @@ class SealedStoreTests {
         assertFails("Schlüssel") { SealedFile(file, lost, "test/v1").write("neu".encodeToByteArray()) }
         assertEquals(0, lost.created)
         assertArrayEquals(before, file.readBytes())
-    }
-
-    @Test fun repositoryKeepsCasesSecretsAndVocabularySeparate() = runTest {
-        val data = MemoryKeys(); val secrets = MemoryKeys()
-        val repository = VaultRepository(folder.root, data, secrets)
-        assertEquals(VaultDocument(), repository.load())
-        val (document, _) = CaseOperations.newEncounter(VaultDocument())!!
-        repository.save(document)
-        repository.saveOnline(OnlineReportConfiguration("synthetic-model", Instant.parse("2026-09-30T08:00:00Z")), "synthetic-api-key-for-contract-tests")
-        val reopened = VaultRepository(folder.root, data, secrets)
-        assertEquals(document, reopened.load())
-        assertEquals("synthetic-api-key-for-contract-tests", reopened.apiKey())
-        assertTrue(reopened.onlineConfiguration().isEnabled)
-        reopened.removeApiKey(OnlineReportConfiguration("synthetic-model"))
-        assertNull(reopened.apiKey())
-        assertFalse(reopened.onlineConfiguration().isEnabled)
-        assertEquals(document, reopened.load())
-        // Case data never lands in the secret store and vice versa.
-        assertFails("nicht geprüft") { VaultRepository(folder.root, secrets, data).load() }
-    }
-
-    @Test fun invalidApiKeyIsNotStored() = runTest {
-        val repository = VaultRepository(folder.root, MemoryKeys(), MemoryKeys())
-        assertFails("gültigen API-Key") { repository.saveOnline(OnlineReportConfiguration("m"), "kurz") }
-        assertNull(repository.apiKey())
     }
 }
