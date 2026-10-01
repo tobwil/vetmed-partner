@@ -5,7 +5,7 @@
 ![Android 14+](https://img.shields.io/badge/Android-14%2B-3DDC84?logo=android&logoColor=white)
 ![Status: Entwicklungsstand](https://img.shields.io/badge/Status-Entwicklungsstand-orange)
 
-Native App für Tierärztinnen und Tierärzte auf iPhone und Android. Du diktierst die Behandlung, prüfst den Text, lässt einen strukturierten Bericht mit Quellenprüfung erstellen und besprichst Fachfragen im Chat. Fälle bleiben verschlüsselt auf dem Gerät.
+Native App für Tierärztinnen und Tierärzte auf iPhone und Android. Du diktierst die Behandlung, prüfst den Text, lässt einen strukturierten Bericht mit Quellenprüfung erstellen und besprichst Fälle mit einem klinischen KI-Sparringspartner. Fälle bleiben verschlüsselt auf dem Gerät.
 
 > **Kein Medizinprodukt.** VetMed ist ein quelloffener Entwicklungsstand ohne klinische Freigabe. Jeder Bericht ist ein Entwurf und muss fachlich geprüft werden.
 
@@ -15,7 +15,7 @@ Native App für Tierärztinnen und Tierärzte auf iPhone und Android. Du diktier
 
 - **Dictation:** record a consultation and transcribe it on the device.
 - **Reports:** turn the transcript into a structured report in which every statement is checked against its source sentence.
-- **Chat:** discuss cases or general questions, including images and lab PDFs.
+- **Clinical sparring partner:** discuss a case as you would with an experienced colleague. It gives weighted differentials (most likely, must-not-miss, which finding would change the decision), suggests next steps and asks critical follow-up questions. Images, lab PDFs and your own case reports can serve as context; quick checks also work without a case.
 
 **Privacy:** Clinical data stays encrypted on the device (SQLCipher, Keychain or Android Keystore). There is no cloud sync. Data leaves the device only when you explicitly start an online report or chat with your own OpenAI API key. Alternatively, reports run fully offline with Gemma 4 E2B (MLX on iOS, LiteRT-LM on Android).
 
@@ -32,7 +32,7 @@ Native App für Tierärztinnen und Tierärzte auf iPhone und Android. Du diktier
 | Bericht online mit eigenem OpenAI-Key | ja | ja |
 | Bericht offline auf dem Gerät (optional) | Gemma 4 E2B über MLX | Gemma 4 E2B über LiteRT-LM |
 | Quellenprüfung (Zahlen, Einheiten, Verneinungen) | ja | ja |
-| Chat mit Bildern und Befunden, mit oder ohne Fall | ja | ja |
+| Klinischer Sparringspartner (online): Differenzialdiagnosen und nächste Schritte, mit Bildern, Labor-PDFs und eigenen Berichten, auch ohne Fall | ja | ja |
 | Freigabe, Teilen als Text oder PDF | ja | ja |
 | Tag/Nacht und sechs Farbthemen | ja | ja |
 
@@ -222,6 +222,22 @@ Eine Arbeitshilfe für Tierärztinnen und Tierärzte: Behandlung diktieren, Text
 
 **Gibt es VetMed für iPhone und Android?**
 Ja, mit gleichem Funktionsumfang. Beide Apps laufen auf echten Geräten: Das iPhone 17 Pro ist ausführlich geprüft, ein Pixel 9a mit einem ersten Gerätetest. Was genau geprüft ist, steht im [Prüfstand](docs/test-status.md). Die Funktionsübersicht steht oben unter [Was VetMed kann](#was-vetmed-kann).
+
+**Was kann der Sparringspartner, und was nicht?**
+Du besprichst einen Fall wie mit einer erfahrenen Kollegin, die fachübergreifend denkt (Innere Medizin, Chirurgie, Bildgebung, Labor usw.):
+- **Differenzialdiagnosen, gewichtet:** Was passt am ehesten, was ist gefährlich und darf nicht übersehen werden, und welcher Befund würde die Entscheidung ändern?
+- **Kritische Nachfragen:** Er hinterfragt Annahmen, statt nur zuzustimmen, und stellt gezielte Rückfragen.
+- **Nächste Schritte:** Er schlägt praktikable Untersuchungen und Maßnahmen vor.
+- **Kontext:** Fotos, Laborbefunde als PDF (Text wird vorher auf dem Gerät gelesen und von dir bestätigt) und die eigenen Berichte des Falls kannst du einbeziehen. Für einen kurzen Check geht es auch ohne Fall.
+
+Die Grenzen:
+- Er stellt keine endgültige Diagnose und ersetzt keine Untersuchung.
+- Er erfindet keine Quellen und keine Prozent-Wahrscheinlichkeiten.
+- Er behauptet keine eigene Approbation.
+- Er läuft nur online mit deinem eigenen OpenAI-Key (`store=false`).
+- Jede Antwort ist fachlich zu prüfen.
+
+Die Anweisungen an das Modell sind offen einsehbar: [`shared/prompts/sparring-v1.txt`](shared/prompts/sparring-v1.txt).
 
 **Landen meine Fälle in der Cloud?**
 Nein. Fälle, Aufnahmen und Berichte liegen verschlüsselt nur auf dem Gerät. Es gibt keine Synchronisation und kein Backup. Etwas verlässt das Gerät nur, wenn du es ausdrücklich startest: „Bericht online erstellen“ sendet das geprüfte Transkript, „Senden“ im Chat die Frage, die angehängten Inhalte und den Verlauf dieses Chats. Aufnahme und Transkription bleiben lokal.
