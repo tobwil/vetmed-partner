@@ -26,6 +26,13 @@ enum class ReportExecutionMode(val title: String) {
     @kotlinx.serialization.SerialName("offline") OFFLINE("Offline · optional"),
 }
 
+/** Online provider for reports and chat. Gemini shares its key with the optional online transcription. */
+@Serializable
+enum class OnlineProvider(val title: String, val defaultModel: String) {
+    @kotlinx.serialization.SerialName("openai") OPENAI("OpenAI", ""),
+    @kotlinx.serialization.SerialName("gemini") GEMINI("Gemini", GeminiTranscriptionConfiguration.DEFAULT_MODEL),
+}
+
 @Serializable
 data class OnlineReportConfiguration(
     val modelID: String = "",
@@ -33,6 +40,7 @@ data class OnlineReportConfiguration(
     val preferredMode: ReportExecutionMode = ReportExecutionMode.OFFLINE,
     val verifiedModelID: String? = null,
     val verifiedAt: AppleDate? = null,
+    val provider: OnlineProvider = OnlineProvider.OPENAI,
 ) {
     val isEnabled: Boolean get() = consentDate != null && modelID.isNotEmpty()
 }

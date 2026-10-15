@@ -118,13 +118,7 @@ object SparringRequestBuilder {
             if (references.size > 8 || !references.all { it.byteCount in 1..AttachmentLimits.MAXIMUM_IMAGE_BYTES } || references.sumOf { it.byteCount.toLong() } > 16L * 1_048_576) {
                 throw AppFailure("Zu viele Bilddaten für eine Anfrage.")
             }
-            val urls = references.associate { reference ->
-                val data = imageData[reference.attachmentID]
-                if (data == null || data.size != reference.byteCount || AttachmentLimits.sha256(data) != reference.sha256) {
-                    throw AppFailure("Ein Bild fehlt oder wurde verändert. Es wird nichts gesendet.")
-                }
-                reference.placeholder to "data:image/jpeg;base64," + Base64.getEncoder().encodeToString(data)
-            }
+            val urls = verifiedImages(references, imageData).mapValues { (_, data) -> "data:image/jpeg;base64," + Base64.getEncoder().encodeToString(data) }
             var count = 0
             val replaced = JsonArray(input.map { message ->
                 val content = message.jsonObject["content"] as? JsonArray ?: return@map message
@@ -145,6 +139,20 @@ object SparringRequestBuilder {
             OpenAIReportApi.RESPONSES_URL, "POST",
             mapOf("Authorization" to "Bearer $key", "Content-Type" to "application/json", "Accept" to "text/event-stream"), body,
         )
+    }
+}
+
+/** Placeholder → verified JPEG bytes. Any missing or changed image stops the request; shared by both providers. */
+internal fun verifiedImages(references: List<ChatImageReference>, imageData: Map<String, ByteArray>): Map<String, ByteArray> {
+    if (references.size > 8 || !references.all { it.byteCount in 1..AttachmentLimits.MAXIMUM_IMAGE_BYTES } || references.sumOf { it.byteCount.toLong() } > 16L * 1_048_576) {
+        throw AppFailure("Zu viele Bilddaten für eine Anfrage.")
+    }
+    return references.associate { reference ->
+        val data = imageData[reference.attachmentID]
+        if (data == null || data.size != reference.byteCount || AttachmentLimits.sha256(data) != reference.sha256) {
+            throw AppFailure("Ein Bild fehlt oder wurde verändert. Es wird nichts gesendet.")
+        }
+        reference.placeholder to data
     }
 }
 
@@ -181,16 +189,22 @@ sealed interface AnalysisStreamUpdate {
     data class Terminal(val status: AnalysisStatus, val text: String, val model: String?, val usage: AnalysisUsage?, val notice: String?) : AnalysisStreamUpdate
 }
 
+/** Turns one provider's SSE events into stream updates; [terminal] is set only by the provider's final event. */
+interface AnalysisDecoder {
+    val terminal: Boolean
+    fun consume(data: ByteArray): AnalysisStreamUpdate?
+}
+
 /** Only the provider's terminal event can mark a response complete. End of stream never implies completion. */
-class OpenAIAnalysisDecoder {
+class OpenAIAnalysisDecoder : AnalysisDecoder {
     var text = ""; private set
-    var terminal = false; private set
+    override var terminal = false; private set
     private var lastSequence: Int? = null
     private var sawRefusal = false
     private var activePart: String? = null
     private val partIDs = mutableSetOf<String>()
 
-    fun consume(data: ByteArray): AnalysisStreamUpdate? {
+    override fun consume(data: ByteArray): AnalysisStreamUpdate? {
         if (terminal) throw AppFailure("Unerwartete Daten nach Ende der Antwort.")
         val raw = data.decodeToString()
         if (raw == "[DONE]") return null
@@ -294,8 +308,11 @@ object OpenAIStreamingTransport : StreamingTransport {
     }
 }
 
-class SparringService(private val transport: StreamingTransport = OpenAIStreamingTransport) {
-    private val decoder = OpenAIAnalysisDecoder()
+class SparringService(
+    private val transport: StreamingTransport = OpenAIStreamingTransport,
+    private val provider: OnlineProvider = OnlineProvider.OPENAI,
+) {
+    private val decoder: AnalysisDecoder = if (provider == OnlineProvider.GEMINI) GeminiAnalysisDecoder() else OpenAIAnalysisDecoder()
 
     suspend fun run(
         snapshot: SparringSnapshot,
@@ -305,7 +322,8 @@ class SparringService(private val transport: StreamingTransport = OpenAIStreamin
         receive: suspend (AnalysisStreamUpdate) -> Unit,
     ) {
         currentCoroutineContext().ensureActive()
-        val request = SparringRequestBuilder.request(snapshot, key, imageData)
+        val request = if (provider == OnlineProvider.GEMINI) GeminiOnlineApi.sparringRequest(snapshot, key, imageData)
+            else SparringRequestBuilder.request(snapshot, key, imageData)
         beforeSending()
         currentCoroutineContext().ensureActive()
         transport.stream(request) { event ->

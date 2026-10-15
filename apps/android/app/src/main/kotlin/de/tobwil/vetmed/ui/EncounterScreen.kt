@@ -143,16 +143,21 @@ fun EncounterScreen(model: AppViewModel, nav: NavHostController, location: Encou
     val scope = rememberCoroutineScope()
     val haptics = LocalHapticFeedback.current
     val context = LocalContext.current
-    val microphone = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) model.record(location)
+    // The notification permission only makes the ongoing-recording notice visible; recording works without it.
+    val microphone = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { granted ->
+        if (granted[Manifest.permission.RECORD_AUDIO] == true || ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) model.record(location)
         else model.reportError("Ohne Mikrofonzugriff ist keine Aufnahme möglich. Du kannst den Text weiterhin eingeben oder in den Android-Einstellungen den Zugriff erlauben.")
     }
+    val notifications = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
     val toggleRecording = {
         haptics.performHapticFeedback(HapticFeedbackType.LongPress)
         when {
             recording -> model.pauseRecording()
-            ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED -> model.record(location)
-            else -> microphone.launch(Manifest.permission.RECORD_AUDIO)
+            ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED -> {
+                model.record(location)
+                if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) notifications.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+            else -> microphone.launch(arrayOf(Manifest.permission.RECORD_AUDIO, Manifest.permission.POST_NOTIFICATIONS))
         }
     }
 
@@ -197,13 +202,11 @@ fun EncounterScreen(model: AppViewModel, nav: NavHostController, location: Encou
             if (stillRecording && activity?.isChangingConfigurations != true) model.pauseRecording()
         }
     }
-    // Android silences background microphone access without a foreground service, so leaving the app pauses safely.
-    LifecycleEventEffect(Lifecycle.Event.ON_STOP) {
-        pendingText?.let { model.flushTranscript(it, location) }
-        if (stillRecording && activity?.isChangingConfigurations != true) model.pauseRecording()
-    }
+    // Leaving the app keeps recording: the microphone foreground service (started with the recording) allows it.
+    LifecycleEventEffect(Lifecycle.Event.ON_STOP) { pendingText?.let { model.flushTranscript(it, location) } }
     val view = LocalView.current
-    DisposableEffect(recording) { view.keepScreenOn = recording; onDispose { view.keepScreenOn = false } }
+    // Long transcriptions run for minutes; the screen must not lock and send the app to the background meanwhile.
+    DisposableEffect(recording, busy) { view.keepScreenOn = recording || busy; onDispose { view.keepScreenOn = false } }
     if (item == null || encounter == null) return
 
     Box(Modifier.fillMaxSize()) {
@@ -430,7 +433,7 @@ private fun RecordingPanel(
         }
         AnimatedContent(action, label = "action") { Text(it, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         Spacer(Modifier.size(6.dp))
-        Text("Lass die App während der Aufnahme geöffnet. Jedes Segment wird sofort verschlüsselt gespeichert.",
+        Text("Die Aufnahme läuft auch weiter, wenn du die App verlässt. Jedes Segment wird sofort verschlüsselt gespeichert.",
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
         if (ownsRecorder) recorderError?.let { Spacer(Modifier.size(6.dp)); Text(it, style = MaterialTheme.typography.bodySmall, color = red, textAlign = TextAlign.Center) }
         encounter.lastError?.let { Spacer(Modifier.size(6.dp)); Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center) }

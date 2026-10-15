@@ -19,6 +19,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -108,7 +109,9 @@ class OnDeviceTranscriber(private val context: Context, private val scratch: Fil
                 }
                 val recognizer = SpeechRecognizer.createOnDeviceSpeechRecognizer(context)
                 try {
-                    withTimeout((duration * 3 * 1000).toLong() + 60_000) { recognize(recognizer, descriptor, audioID) }
+                    // A timeout is a recognizer failure, not a user cancel: withTimeout would surface as "Abgebrochen".
+                    withTimeoutOrNull((duration * 3 * 1000).toLong() + 60_000) { recognize(recognizer, descriptor, audioID) }
+                        ?: throw AppFailure("Die Spracherkennung des Geräts antwortet nicht. Die Aufnahme bleibt erhalten. Alternativ in den Einstellungen die Online-Transkription mit Gemini aktivieren.")
                 } finally {
                     recognizer.destroy()
                 }

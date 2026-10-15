@@ -4,8 +4,13 @@
 
     <!-- Only for explicitly started online reports with the user's own API key. -->
     <uses-permission android:name="android.permission.INTERNET" />
-    <!-- Dictation. Requested at the first recording, never in the background. -->
+    <!-- Dictation. Requested at the first recording; continues in the background only through the visible
+         microphone foreground service while a recording the user started is running. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <!-- Shows the ongoing-recording notification; recording also works if it is declined. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <queries>
         <!-- Needed to reach the system's on-device speech recognizer on Android 11+. -->
@@ -39,6 +44,10 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <service
+            android:name=".data.RecordingService"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.exports"

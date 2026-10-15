@@ -241,7 +241,7 @@ class WalkthroughTests {
         shot("12-transkript-mit-aufnahme")
     }
 
-    @Test fun rotationKeepsRecordingButLeavingTheAppPausesIt() {
+    @Test fun rotationAndLeavingTheAppKeepRecording() {
         shadowOf(application).grantPermissions(android.Manifest.permission.RECORD_AUDIO)
         val model = launch(null, microphone = SyntheticMicrophone(Wav.BYTES_PER_SECOND * 2L))
         compose.onNodeWithText("Diktat aufnehmen").performClick()
@@ -252,6 +252,11 @@ class WalkthroughTests {
         compose.waitForIdle()
         assertTrue("Drehen darf die Aufnahme nicht beenden", model.recorder.recording.value)
         model.background(changingConfigurations = false)
+        compose.waitForIdle()
+        assertTrue("Verlassen der App darf die Aufnahme nicht beenden", model.recorder.recording.value)
+        val service = shadowOf(application).nextStartedService
+        assertEquals(de.tobwil.vetmed.data.RecordingService::class.java.name, service?.component?.className)
+        model.pauseRecording()
         waitFor("Aufnahme pausiert und gesichert", model) {
             val encounter = model.document.value.cases.single().encounters.single()
             !model.recorder.recording.value && encounter.audio.isNotEmpty() && encounter.state == de.tobwil.vetmed.core.EncounterState.PAUSED

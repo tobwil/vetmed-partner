@@ -201,3 +201,14 @@ Der erste native Lauf vor der Korrektur bestand drei Speicher-/PDF-Tests; der op
 Physisch geprüft: Nach explizitem Fortsetzen läuft die Mikrofonaufnahme bei 0:43 im Hochformat und 1:01 im Querformat weiter; nach Home/App-Rückkehr ist sie bei **1:14 pausiert gespeichert**. Eine zu Beginn beobachtete Pause bei 0:05 wurde nicht ursächlich geklärt. Die gespeicherte Aufnahme überstand die reproduzierten Textprüfungsabstürze und das Update. Danach öffnete sich „Text prüfen“ fehlerfrei; der synthetische Text samt Zahlenvorschau blieb nach Drehung und vollständigem Prozessneustart erhalten. Der einzige synthetische Fall wurde über die untere Löschaktion mit Bestätigung entfernt, die leere Fallliste geprüft und die App normal auf Start belassen. Bildschirmdrehung steht wieder auf der ursprünglichen Einstellung `free`.
 
 Offen bleiben Hör-/ASR-Prüfung der Mikrofonaufnahme, Live-Chat/Onlineberichte mit eigenem API-Key, physischer Fotoimport/OCR, Android-WhatsApp-Übergabe sowie vollständiger Offlinebericht. Kein Key wurde übernommen, kein Modell heruntergeladen und keine Nachricht versandt. Dieser erste Hardwaretest ist keine vollständige Android-Produktabnahme.
+
+
+## Pixel 9a: Transkription, Gemini und Hintergrundaufnahme am 15.10.2026
+
+Eine 38:30 min lange Aufnahme (116 Segmente) blieb bei „Transkription 1 von 116“ stehen und endete mit „Abgebrochen“. Eine separate Probe-App auf dem Pixel zeigte, dass der On-Device-Erkenner des Systems in keiner Variante antwortet, nicht einmal mit Mikrofon-Eingabe. Details und Entscheidung: [0012](architecture/0012-android-gemini-and-background-recording.md).
+
+Umgesetzt: optionale Online-Transkription mit Gemini, Gemini als Anbieter für Berichte und Chat (ein Key), Speicherung von Teilergebnissen, echte Timeout-Meldung und Aufnahme im Hintergrund per Mikrofon-Foreground-Service. Neue Kern-Tests: `GeminiTranscriptionTests` und `GeminiOnlineTests`. Der Walkthrough-Test prüft jetzt, dass das Verlassen der App die Aufnahme nicht beendet und der Service startet. Alle Kern- und App-Tests bestanden; der Build ist in-place auf dem Pixel installiert.
+
+Auf dem Gerät bestätigt: Die Transkription der 38-min-Aufnahme mit Gemini lief durch. Noch nicht auf dem Gerät abgenommen: Hintergrundaufnahme sowie Bericht und Chat mit Gemini.
+
+Offener Befund: Ein Online-Bericht aus diesem 38-min-Gesprächstranskript scheitert schon im ersten von 27 Abschnitten an der lokalen Quellenprüfung („Diese Quellen fehlen oder sind unvollständig: q1, q4, …“). Die Pipeline verlangt, dass jeder fachlich gewertete Satz belegt im Bericht erscheint; lange Gespräche mit vielen Füllsätzen erfüllen das nicht. Das ist kein Anbieterfehler und wird gesondert entschieden.

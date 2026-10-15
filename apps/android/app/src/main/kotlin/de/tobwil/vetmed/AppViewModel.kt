@@ -35,12 +35,17 @@ import de.tobwil.vetmed.core.EncounterState
 import de.tobwil.vetmed.core.OnlineModelCheck
 import de.tobwil.vetmed.core.OnlineReportConfiguration
 import de.tobwil.vetmed.core.OpenAIReportApi
-import de.tobwil.vetmed.core.OpenAIReportEngine
 import de.tobwil.vetmed.core.ReportExecutionMode
 import de.tobwil.vetmed.core.ReportLength
 import de.tobwil.vetmed.core.ReportPipeline
 import de.tobwil.vetmed.core.ReportTemplate
 import de.tobwil.vetmed.core.TranscriptBuilder
+import de.tobwil.vetmed.core.GeminiTranscriptionApi
+import de.tobwil.vetmed.core.GeminiTranscriptionConfiguration
+import de.tobwil.vetmed.core.GeminiOnlineApi
+import de.tobwil.vetmed.core.OnlineProvider
+import de.tobwil.vetmed.core.onlineReportEngine
+import de.tobwil.vetmed.data.RecordingService
 import de.tobwil.vetmed.core.VaultDocument
 import de.tobwil.vetmed.core.VocabularyEntry
 import de.tobwil.vetmed.core.now
@@ -51,6 +56,9 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -67,6 +75,7 @@ class AppViewModel(
     audioSources: AudioSourceFactory = MicrophoneSourceFactory,
     transcriber: Transcriber? = null,
     localModel: LocalReportModel? = null,
+    private val gemini: GeminiTranscriptionApi = GeminiTranscriptionApi(),
 ) : AndroidViewModel(application) {
     /** Used by the default view model factory: SQLCipher case database and sealed secrets under separate Keystore keys, outside backups. */
     constructor(application: Application) : this(
@@ -93,12 +102,20 @@ class AppViewModel(
     val error: StateFlow<String?> = _error.asStateFlow()
     private val _online = MutableStateFlow(OnlineReportConfiguration())
     val online: StateFlow<OnlineReportConfiguration> = _online.asStateFlow()
-    private val _hasKey = MutableStateFlow(false)
-    val hasKey: StateFlow<Boolean> = _hasKey.asStateFlow()
+    private val _hasOpenAIKey = MutableStateFlow(false)
+    val hasOpenAIKey: StateFlow<Boolean> = _hasOpenAIKey.asStateFlow()
     private val _onlineModels = MutableStateFlow<List<String>>(emptyList())
     val onlineModels: StateFlow<List<String>> = _onlineModels.asStateFlow()
     private val _onlineStatus = MutableStateFlow<String?>(null)
     val onlineStatus: StateFlow<String?> = _onlineStatus.asStateFlow()
+    private val _geminiConfiguration = MutableStateFlow(GeminiTranscriptionConfiguration())
+    val geminiConfiguration: StateFlow<GeminiTranscriptionConfiguration> = _geminiConfiguration.asStateFlow()
+    private val _hasGeminiKey = MutableStateFlow(false)
+    val hasGeminiKey: StateFlow<Boolean> = _hasGeminiKey.asStateFlow()
+    /** A key exists for the provider chosen for reports and chat. Gemini's key is shared with transcription. */
+    val hasKey: StateFlow<Boolean> = combine(_online, _hasOpenAIKey, _hasGeminiKey) { online, openAI, gemini ->
+        if (online.provider == OnlineProvider.GEMINI) gemini else openAI
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
     private val _vocabulary = MutableStateFlow<List<VocabularyEntry>>(emptyList())
     val vocabulary: StateFlow<List<VocabularyEntry>> = _vocabulary.asStateFlow()
     private val _activeAnalysisID = MutableStateFlow<String?>(null)
@@ -130,6 +147,18 @@ class AppViewModel(
 
     init { open() }
 
+    // The foreground service keeps the microphone open while the app is in the background; it lives exactly as
+    // long as a recording runs. Started from here only while the user starts a recording on screen.
+    init {
+        viewModelScope.launch {
+            recorder.recording.collect { running ->
+                if (running) runCatching { RecordingService.start(application) }.onFailure { _error.value = "Hintergrundaufnahme nicht möglich: ${it.message}. Bitte App geöffnet lassen." }
+                else RecordingService.stop(application)
+            }
+        }
+    }
+
+
     fun open() {
         viewModelScope.launch {
             try {
@@ -143,7 +172,9 @@ class AppViewModel(
                 withContext(kotlinx.coroutines.Dispatchers.IO) { runCatching { exports.cleanExpired() } }
                 _vocabulary.value = repository.vocabulary()
                 _online.value = repository.onlineConfiguration()
-                _hasKey.value = repository.apiKey() != null
+                _hasOpenAIKey.value = repository.apiKey() != null
+                _geminiConfiguration.value = repository.geminiConfiguration()
+                _hasGeminiKey.value = repository.geminiKey() != null
                 _ready.value = true
             } catch (error: CancellationException) {
                 throw error
@@ -271,7 +302,11 @@ class AppViewModel(
         runCatching { persist { document -> document.mapEncounter(location) { it.copy(state = EncounterState.INTERRUPTED, lastError = recorder.error.value) } } }
     }
 
-    /** Local speech recognition of all audio that has no transcript yet. Nothing leaves the device. */
+    /**
+     * Speech recognition of all audio that has no transcript yet: on the device, or with Gemini when the user has
+     * switched that on with their own key. Recognized text is saved even when a later segment fails or the run is
+     * cancelled, so a retry continues with the remaining segments instead of starting over.
+     */
     fun transcribe(location: EncounterLocation) {
         val current = encounter(location) ?: return
         if (_busy.value || recorder.recording.value) return
@@ -279,23 +314,42 @@ class AppViewModel(
         val pending = current.audio.filter { it.id !in done }
         if (pending.isEmpty()) { _error.value = "Keine neuen Audiosegmente vorhanden."; return }
         run(location, EncounterState.TRANSCRIBING) {
+            val online = _geminiConfiguration.value.takeIf { it.enabled }
+            val key = online?.let { repository.geminiKey() ?: throw AppFailure("Der Gemini-API-Key fehlt. Bitte in den Einstellungen hinterlegen.") }
+            val engine = if (online != null) "Gemini ${online.modelID} · online" else transcriber.engineName
+            val vocabulary = _vocabulary.value.map { it.preferred }.distinct()
             val recognized = mutableListOf<de.tobwil.vetmed.core.TranscriptSegment>()
-            for ((index, segment) in pending.withIndex()) {
-                _workStatus.value = "Transkription ${index + 1} von ${pending.size} · auf diesem Gerät"
-                val wav = repository.audio(location.caseID, location.encounterID, segment.id)
-                recognized += TranscriptBuilder.audioSentences(transcriber.transcribe(wav, segment.id))
+            try {
+                var finished = 0
+                for (batch in pending.chunked(if (online != null) GeminiTranscriptionApi.BATCH_SIZE else 1)) {
+                    _workStatus.value = if (online != null) "Transkription ${finished + 1}–${finished + batch.size} von ${pending.size} · online mit Gemini"
+                        else "Transkription ${finished + 1} von ${pending.size} · auf diesem Gerät"
+                    val wavs = batch.map { repository.audio(location.caseID, location.encounterID, it.id) }
+                    val segments = if (online != null && key != null) {
+                        gemini.transcribe(key, online.modelID, wavs, vocabulary).zip(batch)
+                            .filter { (text, _) -> text.isNotBlank() }
+                            .map { (text, audio) -> de.tobwil.vetmed.core.TranscriptSegment(id = "${audio.id}-0", text = text, audioID = audio.id) }
+                    } else transcriber.transcribe(wavs.single(), batch.single().id)
+                    recognized += TranscriptBuilder.audioSentences(segments)
+                    finished += batch.size
+                }
+            } finally {
+                if (recognized.isNotEmpty()) withContext(NonCancellable) { saveRecognized(location, recognized, engine) }
             }
             if (recognized.isEmpty()) throw AppFailure("Kein verständlicher Text erkannt. Die Aufnahme bleibt erhalten.")
-            persist { document ->
-                document.mapEncounter(location) { encounter ->
-                    val previous = encounter.transcripts.lastOrNull()
-                    val segments = previous?.segments.orEmpty() + recognized
-                    val raw = listOf(previous?.rawText.orEmpty(), recognized.joinToString("\n") { it.text }).filter { it.isNotEmpty() }.joinToString("\n")
-                    val version = de.tobwil.vetmed.core.TranscriptVersion(
-                        parentID = previous?.id, rawText = raw, editedText = segments.joinToString("\n") { it.text }, segments = segments, engine = transcriber.engineName,
-                    )
-                    encounter.copy(transcripts = encounter.transcripts + version, state = EncounterState.TRANSCRIPT_READY)
-                }
+        }
+    }
+
+    private suspend fun saveRecognized(location: EncounterLocation, recognized: List<de.tobwil.vetmed.core.TranscriptSegment>, engine: String) {
+        persist { document ->
+            document.mapEncounter(location) { encounter ->
+                val previous = encounter.transcripts.lastOrNull()
+                val segments = previous?.segments.orEmpty() + recognized
+                val raw = listOf(previous?.rawText.orEmpty(), recognized.joinToString("\n") { it.text }).filter { it.isNotEmpty() }.joinToString("\n")
+                val version = de.tobwil.vetmed.core.TranscriptVersion(
+                    parentID = previous?.id, rawText = raw, editedText = segments.joinToString("\n") { it.text }, segments = segments, engine = engine,
+                )
+                encounter.copy(transcripts = encounter.transcripts + version, state = EncounterState.TRANSCRIPT_READY)
             }
         }
     }
@@ -356,16 +410,18 @@ class AppViewModel(
 
     /**
      * The app left the screen. A rotation, split-screen or dark-mode switch only rebuilds the activity: recording,
-     * playback and the loaded model continue.
+     * playback and the loaded model continue. A running recording also continues in the background through the
+     * microphone foreground service.
      */
     fun background(changingConfigurations: Boolean = false) {
         if (changingConfigurations) return
         stopPlayback()
-        if (recorder.recording.value) pauseRecording()
-        if (!_busy.value) localModel.unload()
+        if (!_busy.value && !recorder.recording.value) localModel.unload()
     }
 
+    /** The activity is finishing for good (not a rotation): the loop ends and its unsaved segment is recovered at next start. */
     override fun onCleared() {
+        RecordingService.stop(getApplication())
         stopPlayback(); localModel.unload()
         getApplication<Application>().unregisterComponentCallbacks(memory)
         super.onCleared()
@@ -454,21 +510,21 @@ class AppViewModel(
         if (_busy.value) return
         val location = ChatLocation(snapshot.caseID, snapshot.encounterID)
         val configuration = _online.value
-        if (!configuration.isEnabled || !_hasKey.value || configuration.modelID != snapshot.modelID) {
+        if (!configuration.isEnabled || !hasKey.value || configuration.modelID != snapshot.modelID) {
             _error.value = "Bitte zuerst den API-Zugang in den Chat-Details einrichten."; return
         }
         try { ChatOperations.checkAnalysisBudget(_document.value, location) } catch (error: AppFailure) { _error.value = error.message; return }
         val analysis = AnalysisRun(snapshot = snapshot)
-        _busy.value = true; _error.value = null; _workStatus.value = "Chat · OpenAI · Antwort wird angefordert"
+        _busy.value = true; _error.value = null; _workStatus.value = "Chat · ${configuration.provider.title} · Antwort wird angefordert"
         work = viewModelScope.launch {
             _activeAnalysisID.value = analysis.id
             var checkpoint = 0L; var checkpointBytes = 0
             try {
-                val key = repository.apiKey() ?: throw AppFailure("Der API-Key fehlt.")
+                val key = onlineKey(configuration.provider) ?: throw AppFailure("Der API-Key fehlt.")
                 val images = snapshot.requestImages.orEmpty().associate { reference ->
                     reference.attachmentID to repository.attachmentData(location.caseID, location.encounterID, reference.attachmentID, true)
                 }
-                SparringService().run(
+                SparringService(provider = configuration.provider).run(
                     snapshot, key, images,
                     beforeSending = { persist { ChatOperations.mapChat(it, location) { chat -> chat.copy(analysisRuns = chat.analysisRuns.orEmpty() + analysis) } } },
                     receive = { update ->
@@ -512,12 +568,12 @@ class AppViewModel(
                 localModel.load()
                 localModel
             } else {
-            val key = repository.apiKey()
+            val key = onlineKey(configuration.provider)
             if (!configuration.isEnabled || key == null) {
                 throw AppFailure("Bitte Online-Berichte in Einstellungen mit deinem API-Key aktivieren oder ausdrücklich Offline wählen.")
             }
             localModel.unload()
-            OpenAIReportEngine(
+            onlineReportEngine(
                 configuration, key, template.sections,
                 record = { payload, modelID ->
                     val request = CloudReportRequest(modelID = modelID, transcriptVersionID = transcript.id, payload = Base64.getEncoder().encodeToString(payload))
@@ -565,6 +621,8 @@ class AppViewModel(
                 _error.value = "Abgebrochen. Gesicherte Inhalte bleiben erhalten."
             } catch (error: Exception) {
                 val message = error.message ?: "Unbekannter Fehler"
+                // Only the app's own error text (no transcript or report content), so device problems can be diagnosed via adb.
+                android.util.Log.w("VetMed", "Vorgang fehlgeschlagen (${state.name}): ${error::class.simpleName}: $message")
                 runCatching { persist { d -> d.mapEncounter(location) { it.copy(state = EncounterState.FAILED, lastError = message) } } }
                 _error.value = message
             } finally {
@@ -575,55 +633,105 @@ class AppViewModel(
 
     // Online access ------------------------------------------------------------------------------
 
-    fun loadOnlineModels(keyDraft: String) {
+    private suspend fun onlineKey(provider: OnlineProvider): String? =
+        if (provider == OnlineProvider.GEMINI) repository.geminiKey() else repository.apiKey()
+
+    private suspend fun keyFor(provider: OnlineProvider, keyDraft: String): String =
+        keyDraft.ifEmpty { onlineKey(provider) ?: throw AppFailure("Bitte zuerst einen API-Key eingeben.") }
+
+    fun loadOnlineModels(provider: OnlineProvider, keyDraft: String) {
         launchOnline("Modelle werden geladen") {
-            val key = keyDraft.ifEmpty { repository.apiKey() ?: throw AppFailure("Bitte zuerst einen API-Key eingeben.") }
-            _onlineModels.value = OpenAIReportApi.models(key)
+            val key = keyFor(provider, keyDraft)
+            _onlineModels.value = if (provider == OnlineProvider.GEMINI) GeminiOnlineApi.models(key) else OpenAIReportApi.models(key)
             _onlineStatus.value = "${_onlineModels.value.size} Modelle verfügbar."
         }
     }
 
     /** Sends only a fixed synthetic sentence, never case data. */
-    fun testOnlineModel(modelID: String, keyDraft: String) {
+    fun testOnlineModel(provider: OnlineProvider, modelID: String, keyDraft: String) {
         launchOnline("Modell wird getestet") {
-            val key = keyDraft.ifEmpty { repository.apiKey() ?: throw AppFailure("Bitte zuerst einen API-Key eingeben.") }
-            val trial = OnlineReportConfiguration(modelID = modelID.trim(), consentDate = now(), preferredMode = ReportExecutionMode.ONLINE)
-            val engine = OpenAIReportEngine(trial, key, ReportTemplate.TREATMENT_REPORT.sections)
+            val key = keyFor(provider, keyDraft)
+            val trial = OnlineReportConfiguration(modelID = modelID.trim(), consentDate = now(), preferredMode = ReportExecutionMode.ONLINE, provider = provider)
+            val engine = onlineReportEngine(trial, key, ReportTemplate.TREATMENT_REPORT.sections)
             ReportPipeline(engine).run(TranscriptBuilder.edited(OnlineModelCheck.SYNTHETIC_TEXT, null), ReportTemplate.TREATMENT_REPORT, ReportLength.SHORT, ReportTemplate.TREATMENT_REPORT.audience)
-            _online.value = OnlineModelCheck.verified(_online.value, modelID.trim())
-            repository.saveOnline(_online.value)
-            _onlineStatus.value = "Modelltest erfolgreich: ${modelID.trim()} liefert einen prüfbaren Bericht."
+            if (_online.value.provider == provider) {
+                _online.value = OnlineModelCheck.verified(_online.value, modelID.trim())
+                repository.saveOnline(_online.value)
+            }
+            _onlineStatus.value = "Modelltest erfolgreich: ${provider.title} ${modelID.trim()} liefert einen prüfbaren Bericht."
         }
     }
 
-    fun saveOnlineConfiguration(modelID: String, keyDraft: String): Boolean {
+    fun saveOnlineConfiguration(provider: OnlineProvider, modelID: String, keyDraft: String): Boolean {
         val model = modelID.trim()
+        val stored = if (provider == OnlineProvider.GEMINI) _hasGeminiKey.value else _hasOpenAIKey.value
         return try {
             if (model.isEmpty()) throw AppFailure("Bitte eine Modell-ID auswählen.")
             if (keyDraft.isNotEmpty()) validateApiKey(keyDraft)
-            if (keyDraft.isEmpty() && !_hasKey.value) throw AppFailure("Bitte einen API-Key eingeben.")
-            val next = _online.value.copy(modelID = model, consentDate = now(), preferredMode = ReportExecutionMode.ONLINE)
+            if (keyDraft.isEmpty() && !stored) throw AppFailure("Bitte einen API-Key eingeben.")
+            val previous = _online.value
+            val verified = previous.provider == provider && previous.verifiedModelID == model
+            val next = previous.copy(
+                modelID = model, consentDate = now(), preferredMode = ReportExecutionMode.ONLINE, provider = provider,
+                verifiedModelID = if (verified) previous.verifiedModelID else null, verifiedAt = if (verified) previous.verifiedAt else null,
+            )
             viewModelScope.launch {
                 try {
-                    repository.saveOnline(next, keyDraft.ifEmpty { null })
-                    _online.value = next; _hasKey.value = true
-                    _onlineStatus.value = "Online ist aktiviert und Standard für neue Berichte."
+                    if (provider == OnlineProvider.GEMINI) {
+                        // One Gemini key for reports, chat and transcription.
+                        if (keyDraft.isNotEmpty()) repository.saveGemini(_geminiConfiguration.value, keyDraft)
+                        repository.saveOnline(next)
+                        if (keyDraft.isNotEmpty()) _hasGeminiKey.value = true
+                    } else {
+                        repository.saveOnline(next, keyDraft.ifEmpty { null })
+                        if (keyDraft.isNotEmpty()) _hasOpenAIKey.value = true
+                    }
+                    _online.value = next
+                    _onlineStatus.value = "Online mit ${provider.title} ist aktiviert und Standard für neue Berichte und den Chat."
                 } catch (error: AppFailure) { _error.value = error.message }
             }
             true
         } catch (error: AppFailure) { _error.value = error.message; false }
     }
 
-    fun removeOnlineKey() {
+    /** Removes the key of [provider]. Removing the Gemini key also ends online transcription with Gemini. */
+    fun removeOnlineKey(provider: OnlineProvider) {
         viewModelScope.launch {
             try {
-                val next = _online.value.copy(consentDate = null, preferredMode = ReportExecutionMode.OFFLINE)
-                repository.removeApiKey(next)
-                _online.value = next; _hasKey.value = false; _onlineModels.value = emptyList()
-                _onlineStatus.value = "API-Key entfernt. Online ist deaktiviert."
+                val active = _online.value.provider == provider
+                val next = if (active) _online.value.copy(consentDate = null, preferredMode = ReportExecutionMode.OFFLINE) else _online.value
+                if (provider == OnlineProvider.GEMINI) {
+                    repository.removeGeminiKey(); repository.saveOnline(next)
+                    _geminiConfiguration.value = GeminiTranscriptionConfiguration(); _hasGeminiKey.value = false
+                } else {
+                    repository.removeApiKey(next); _hasOpenAIKey.value = false
+                }
+                _online.value = next; _onlineModels.value = emptyList()
+                _onlineStatus.value = "${provider.title}-API-Key entfernt." + if (active) " Online ist deaktiviert." else ""
             } catch (error: AppFailure) { _error.value = error.message }
         }
     }
+
+    fun saveGeminiConfiguration(enabled: Boolean, modelID: String, keyDraft: String): Boolean {
+        val model = modelID.trim()
+        return try {
+            if (model.isEmpty()) throw AppFailure("Bitte eine Gemini-Modell-ID eingeben.")
+            if (keyDraft.isNotEmpty()) validateApiKey(keyDraft)
+            if (enabled && keyDraft.isEmpty() && !_hasGeminiKey.value) throw AppFailure("Bitte einen Gemini-API-Key eingeben.")
+            val next = GeminiTranscriptionConfiguration(enabled = enabled, modelID = model)
+            viewModelScope.launch {
+                try {
+                    repository.saveGemini(next, keyDraft.ifEmpty { null })
+                    _geminiConfiguration.value = next
+                    if (keyDraft.isNotEmpty()) _hasGeminiKey.value = true
+                    _onlineStatus.value = if (enabled) "Online-Transkription mit Gemini ist aktiv." else "Gemini gespeichert; transkribiert wird auf dem Gerät."
+                } catch (error: AppFailure) { _error.value = error.message }
+            }
+            true
+        } catch (error: AppFailure) { _error.value = error.message; false }
+    }
+
+    fun removeGeminiKey() = removeOnlineKey(OnlineProvider.GEMINI)
 
     private fun launchOnline(status: String, block: suspend () -> Unit) {
         if (_busy.value) return

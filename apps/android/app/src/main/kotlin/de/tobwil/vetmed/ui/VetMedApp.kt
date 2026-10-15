@@ -83,6 +83,7 @@ import kotlinx.serialization.Serializable
 @Serializable object SettingsRoute
 @Serializable object OnlineRoute
 @Serializable object VocabularyRoute
+@Serializable object GeminiRoute
 
 /** Day/night and theme actions shared by the toggle on Start and the settings screen. */
 class AppearanceController(
@@ -102,7 +103,7 @@ fun VetMedApp(model: AppViewModel = viewModel()) {
     val radius = remember { Animatable(0f) }
     val overlay = remember { Animatable(0f) }
     var reveal by remember { mutableStateOf<Pair<Offset, Color>?>(null) }
-    // Like iOS `background()`: leaving the app stops playback, pauses a recording safely and frees an idle model.
+    // Like iOS `background()`: leaving the app stops playback and frees an idle model; a recording keeps running.
     val activity = androidx.activity.compose.LocalActivity.current
     androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_STOP) { model.background(activity?.isChangingConfigurations == true) }
 
@@ -168,6 +169,7 @@ private fun AppContent(model: AppViewModel) {
                     composable<SettingsRoute> { SettingsScreen(model, navController) }
                     composable<OnlineRoute> { OnlineSettingsScreen(model, navController) }
                     composable<VocabularyRoute> { VocabularyScreen(model, navController) }
+                    composable<GeminiRoute> { GeminiSettingsScreen(model, navController) }
                 }
                 androidx.compose.animation.AnimatedVisibility(
                     busy, Modifier.align(Alignment.BottomCenter),

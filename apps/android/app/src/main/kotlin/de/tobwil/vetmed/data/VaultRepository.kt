@@ -8,6 +8,7 @@ import androidx.room.RoomDatabase
 import androidx.sqlite.db.SupportSQLiteDatabase
 import de.tobwil.vetmed.core.AppFailure
 import de.tobwil.vetmed.core.Encounter
+import de.tobwil.vetmed.core.GeminiTranscriptionConfiguration
 import de.tobwil.vetmed.core.OnlineReportConfiguration
 import de.tobwil.vetmed.core.QuickCheck
 import de.tobwil.vetmed.core.ReportVersion
@@ -68,6 +69,8 @@ class VaultRepository(
     private val legacyCases = SealedFile(File(root, "cases.v1.sealed"), dataKeys, "vetmed/cases/v1")
     private val legacyVocabulary = SealedFile(File(root, "vocabulary.v1.sealed"), dataKeys, "vetmed/vocabulary/v1")
     private val apiKey = SealedFile(File(root, "secrets/provider.openai.api-key.sealed"), secretKeys, "vetmed/provider.openai.api-key")
+    private val geminiKey = SealedFile(File(root, "secrets/provider.gemini.api-key.sealed"), secretKeys, "vetmed/provider.gemini.api-key")
+    private val geminiConfiguration = SealedFile(File(root, "secrets/gemini-transcription-configuration.v1.sealed"), secretKeys, "vetmed/gemini-transcription-configuration/v1")
     private val onlineConfiguration = SealedFile(File(root, "secrets/online-report-configuration.v1.sealed"), secretKeys, "vetmed/online-report-configuration/v1")
     private val mutex = Mutex()
     private var database: CaseDatabase? = null
@@ -122,6 +125,22 @@ class VaultRepository(
     suspend fun removeApiKey(configuration: OnlineReportConfiguration) = io {
         onlineConfiguration.write(encode(OnlineReportConfiguration.serializer(), configuration))
         apiKey.delete()
+    }
+
+    suspend fun geminiConfiguration(): GeminiTranscriptionConfiguration = io {
+        geminiConfiguration.read()?.let { decode(GeminiTranscriptionConfiguration.serializer(), it) } ?: GeminiTranscriptionConfiguration()
+    }
+
+    suspend fun saveGemini(configuration: GeminiTranscriptionConfiguration, key: String? = null) = io {
+        key?.let { validateApiKey(it); geminiKey.write(it.encodeToByteArray()) }
+        geminiConfiguration.write(encode(GeminiTranscriptionConfiguration.serializer(), configuration))
+    }
+
+    suspend fun geminiKey(): String? = io { geminiKey.read()?.decodeToString() }
+
+    suspend fun removeGeminiKey() = io {
+        geminiConfiguration.write(encode(GeminiTranscriptionConfiguration.serializer(), GeminiTranscriptionConfiguration()))
+        geminiKey.delete()
     }
 
     suspend fun close() = io { database?.close(); database = null; written = null; writtenDataVersion = null }

@@ -46,6 +46,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -77,6 +78,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import de.tobwil.vetmed.AppViewModel
 import de.tobwil.vetmed.core.VocabularyEntry
+import de.tobwil.vetmed.core.OnlineProvider
 import de.tobwil.vetmed.data.SpeechStatus
 
 @Composable
@@ -140,7 +142,7 @@ fun SettingsScreen(model: AppViewModel, nav: NavHostController) {
         SectionTitle("Online-Zugang")
         Group {
             LinkRow("API-Key & Modell") { nav.navigate(OnlineRoute) }
-            Caption(if (hasKey) "OpenAI · ${online.modelID.ifEmpty { "kein Modell gewählt" }}" else "Noch kein API-Key hinterlegt")
+            Caption(if (hasKey) "${online.provider.title} · ${online.modelID.ifEmpty { "kein Modell gewählt" }}" else "Noch kein API-Key hinterlegt")
             Caption("Mit aktivierter Konfiguration ist Online der Standard. Offline kannst du pro Bericht ausdrücklich auswählen.")
         }
         SectionTitle("Optionales Offline-Modell")
@@ -196,7 +198,11 @@ fun SettingsScreen(model: AppViewModel, nav: NavHostController) {
             if (speech == SpeechStatus.DOWNLOADABLE) {
                 TextButton(onClick = { model.installSpeech() }, enabled = !busy, modifier = Modifier.testTag("install-speech")) { Text("Deutsche Sprachressourcen installieren") }
             }
-            Caption("Transkribiert wird ausschließlich mit dem Offline-Erkenner des Systems. Fehlen die deutschen Ressourcen, bleibt die Aufnahme gespeichert; es gibt keinen Cloud-Fallback.")
+            val gemini by model.geminiConfiguration.collectAsStateWithLifecycle()
+            val hasGeminiKey by model.hasGeminiKey.collectAsStateWithLifecycle()
+            Caption(if (gemini.enabled && hasGeminiKey) "Aktiv: Online-Transkription mit Gemini (${gemini.modelID}). Die Aufnahme wird dafür an Google gesendet."
+                else "Transkribiert wird mit dem Offline-Erkenner des Systems. Online-Transkription mit Gemini ist nur nach ausdrücklicher Aktivierung möglich.")
+            LinkRow("Online-Transkription (Gemini)") { nav.navigate(GeminiRoute) }
             LinkRow("Eigene Fachwortkorrekturen") { nav.navigate(VocabularyRoute) }
         }
         SectionTitle("Lokale Daten")
@@ -235,20 +241,44 @@ private fun ThemeSwatch(theme: AccentTheme, selected: Boolean, modifier: Modifie
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun OnlineSettingsScreen(model: AppViewModel, nav: NavHostController) {
     val online by model.online.collectAsStateWithLifecycle()
-    val hasKey by model.hasKey.collectAsStateWithLifecycle()
+    val hasOpenAIKey by model.hasOpenAIKey.collectAsStateWithLifecycle()
+    val hasGeminiKey by model.hasGeminiKey.collectAsStateWithLifecycle()
     val busy by model.busy.collectAsStateWithLifecycle()
     val models by model.onlineModels.collectAsStateWithLifecycle()
     val status by model.onlineStatus.collectAsStateWithLifecycle()
     val colors = LocalVetColors.current
     val uri = LocalUriHandler.current
+    var provider by rememberSaveable { mutableStateOf(online.provider) }
     var keyDraft by remember { mutableStateOf("") }
     var modelID by rememberSaveable { mutableStateOf(online.modelID) }
     var menu by remember { mutableStateOf(false) }
+    val hasKey = if (provider == OnlineProvider.GEMINI) hasGeminiKey else hasOpenAIKey
     SettingsScaffold("Online-Zugang", nav) {
-        SectionTitle("OpenAI")
+        SectionTitle("Anbieter")
+        Group {
+            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                OnlineProvider.entries.forEachIndexed { index, value ->
+                    SegmentedButton(
+                        selected = provider == value, enabled = !busy,
+                        onClick = {
+                            if (provider != value) {
+                                provider = value; keyDraft = ""
+                                modelID = if (online.provider == value) online.modelID else value.defaultModel
+                            }
+                        },
+                        shape = SegmentedButtonDefaults.itemShape(index, OnlineProvider.entries.size),
+                        modifier = Modifier.testTag("provider-${value.name.lowercase()}"),
+                    ) { Text(value.title) }
+                }
+            }
+            Caption(if (provider == OnlineProvider.GEMINI) "Der Gemini-Key gilt auch für die Online-Transkription."
+                else "OpenAI wird nur für Berichte und Chat verwendet.")
+        }
+        SectionTitle(provider.title)
         Group {
             OutlinedTextField(
                 keyDraft, { keyDraft = it.trim() }, Modifier.fillMaxWidth(), singleLine = true, enabled = !busy,
@@ -261,25 +291,74 @@ fun OnlineSettingsScreen(model: AppViewModel, nav: NavHostController) {
                 DropdownMenu(menu, { menu = false }) { models.forEach { id -> DropdownMenuItem(text = { Text(id) }, onClick = { modelID = id; menu = false }) } }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(onClick = { model.loadOnlineModels(keyDraft) }, enabled = !busy) { Text("Modelle laden") }
+                TextButton(onClick = { model.loadOnlineModels(provider, keyDraft) }, enabled = !busy) { Text("Modelle laden") }
                 if (models.isNotEmpty()) TextButton(onClick = { menu = true }, enabled = !busy) { Text("Aus Konto wählen") }
             }
-            TextButton(onClick = { model.testOnlineModel(modelID, keyDraft) }, enabled = !busy && modelID.isNotBlank()) { Text("Modell mit synthetischem Text testen") }
+            TextButton(onClick = { model.testOnlineModel(provider, modelID, keyDraft) }, enabled = !busy && modelID.isNotBlank()) { Text("Modell mit synthetischem Text testen") }
             Caption("Modelltest und Berichte verwenden deinen API-Zugang und können Kosten verursachen. Der Modelltest überträgt ausschließlich einen festen synthetischen Text.")
             status?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = colors.primary) }
         }
         SectionTitle("Online als Standard aktivieren")
         Group {
-            Text("Mit Online aktivieren richtest du deinen OpenAI-Zugang ein. Bericht online erstellen sendet das geprüfte Transkript. Eingabe und Speicherung bleiben lokal.", style = MaterialTheme.typography.bodyMedium)
-            Caption("Der API-Key wird mit einem Android-Keystore-Schlüssel verschlüsselt gespeichert. Die abrufbare Antwortspeicherung ist deaktiviert (store=false); weitere Aufbewahrung beim Anbieter richtet sich nach deinem API-Vertrag.")
-            TextButton(onClick = { uri.openUri("https://developers.openai.com/api/docs/guides/your-data") }) { Text("OpenAI-Datenkontrollen") }
+            Text("Mit Online aktivieren richtest du deinen ${provider.title}-Zugang für Berichte und Chat ein. Bericht online erstellen sendet das geprüfte Transkript. Eingabe und Speicherung bleiben lokal.", style = MaterialTheme.typography.bodyMedium)
+            if (provider == OnlineProvider.GEMINI) {
+                Caption("Der API-Key wird mit einem Android-Keystore-Schlüssel verschlüsselt gespeichert. Für Patientendaten nur einen Key mit aktivierter Abrechnung verwenden: Im kostenlosen Kontingent darf Google Eingaben zur Produktverbesserung nutzen.")
+                TextButton(onClick = { uri.openUri("https://ai.google.dev/gemini-api/terms") }) { Text("Gemini-API-Nutzungsbedingungen") }
+            } else {
+                Caption("Der API-Key wird mit einem Android-Keystore-Schlüssel verschlüsselt gespeichert. Die abrufbare Antwortspeicherung ist deaktiviert (store=false); weitere Aufbewahrung beim Anbieter richtet sich nach deinem API-Vertrag.")
+                TextButton(onClick = { uri.openUri("https://developers.openai.com/api/docs/guides/your-data") }) { Text("OpenAI-Datenkontrollen") }
+            }
             Button(
-                onClick = { if (model.saveOnlineConfiguration(modelID, keyDraft)) keyDraft = "" },
-                enabled = !busy && modelID.isNotBlank() && (hasKey || keyDraft.isNotEmpty()), shape = CircleShape, modifier = Modifier.fillMaxWidth(),
+                onClick = { if (model.saveOnlineConfiguration(provider, modelID, keyDraft)) keyDraft = "" },
+                enabled = !busy && modelID.isNotBlank() && (hasKey || keyDraft.isNotEmpty()), shape = CircleShape, modifier = Modifier.fillMaxWidth().testTag("save-online"),
                 colors = ButtonDefaults.buttonColors(containerColor = colors.primary),
-            ) { Text(if (online.isEnabled) "Konfiguration speichern" else "Online aktivieren") }
-            if (hasKey) TextButton(onClick = { model.removeOnlineKey(); keyDraft = "" }, enabled = !busy) { Text("API-Key entfernen", color = Color(0xFFFF3B30)) }
+            ) { Text(if (online.isEnabled && online.provider == provider) "Konfiguration speichern" else "Online mit ${provider.title} aktivieren") }
+            if (hasKey) TextButton(onClick = { model.removeOnlineKey(provider); keyDraft = "" }, enabled = !busy) { Text("${provider.title}-API-Key entfernen", color = Color(0xFFFF3B30)) }
             Caption("Bei Verbindungs- oder Anbieterfehlern bleibt der Auftrag lokal. Es gibt keinen automatischen Wechsel zu einem anderen Anbieter und keinen Versand bei späterer Netzrückkehr.")
+        }
+    }
+}
+
+@Composable
+fun GeminiSettingsScreen(model: AppViewModel, nav: NavHostController) {
+    val configuration by model.geminiConfiguration.collectAsStateWithLifecycle()
+    val hasKey by model.hasGeminiKey.collectAsStateWithLifecycle()
+    val busy by model.busy.collectAsStateWithLifecycle()
+    val status by model.onlineStatus.collectAsStateWithLifecycle()
+    val colors = LocalVetColors.current
+    val uri = LocalUriHandler.current
+    var keyDraft by remember { mutableStateOf("") }
+    var modelID by rememberSaveable(configuration.modelID) { mutableStateOf(configuration.modelID) }
+    var enabled by rememberSaveable(configuration.enabled) { mutableStateOf(configuration.enabled) }
+    SettingsScaffold("Online-Transkription", nav) {
+        SectionTitle("Gemini")
+        Group {
+            OutlinedTextField(
+                keyDraft, { keyDraft = it.trim() }, Modifier.fillMaxWidth().testTag("gemini-key"), singleLine = true, enabled = !busy,
+                label = { Text(if (hasKey) "Gemini-API-Key ersetzen (optional)" else "Gemini-API-Key eingeben") },
+                visualTransformation = PasswordVisualTransformation(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrectEnabled = false),
+            )
+            OutlinedTextField(modelID, { modelID = it.trim() }, Modifier.fillMaxWidth(), singleLine = true, enabled = !busy, label = { Text("Modell-ID") })
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Für Transkription verwenden", Modifier.weight(1f))
+                Switch(enabled, { enabled = it }, enabled = !busy, modifier = Modifier.testTag("gemini-enabled"))
+            }
+            Caption("Den Key erstellst du in Google AI Studio. Er wird mit einem Android-Keystore-Schlüssel verschlüsselt gespeichert und gilt auch für Berichte und Chat, wenn dort Gemini gewählt ist.")
+            TextButton(onClick = { uri.openUri("https://aistudio.google.com/apikey") }) { Text("Google AI Studio öffnen") }
+        }
+        SectionTitle("Datenschutz")
+        Group {
+            Text("Bei aktivierter Online-Transkription werden die Audiosegmente der Aufnahme an Google gesendet. Fälle, Transkripte und Berichte bleiben verschlüsselt auf diesem Gerät.", style = MaterialTheme.typography.bodyMedium)
+            Caption("Für Patienten- und Halterdaten nur einen Key mit aktivierter Abrechnung verwenden: Im kostenlosen Kontingent darf Google Eingaben zur Produktverbesserung nutzen und von Menschen prüfen lassen.")
+            TextButton(onClick = { uri.openUri("https://ai.google.dev/gemini-api/terms") }) { Text("Gemini-API-Nutzungsbedingungen") }
+            Button(
+                onClick = { if (model.saveGeminiConfiguration(enabled, modelID, keyDraft)) keyDraft = "" },
+                enabled = !busy && modelID.isNotBlank() && (!enabled || hasKey || keyDraft.isNotEmpty()), shape = CircleShape, modifier = Modifier.fillMaxWidth().testTag("save-gemini"),
+                colors = ButtonDefaults.buttonColors(containerColor = colors.primary),
+            ) { Text("Speichern") }
+            if (hasKey) TextButton(onClick = { model.removeGeminiKey(); keyDraft = "" }, enabled = !busy) { Text("Gemini-API-Key entfernen", color = Color(0xFFFF3B30)) }
+            status?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = colors.primary) }
         }
     }
 }

@@ -152,7 +152,11 @@ fun ReportReviewScreen(model: AppViewModel, nav: NavHostController, location: En
                         )
                     }
                     Text(
-                        if (report.modelID.startsWith("openai/")) "Online erstellt · OpenAI · ${report.modelRevision}" else "Lokal erstellt · ${report.modelID}",
+                        when {
+                            report.modelID.startsWith("openai/") -> "Online erstellt · OpenAI · ${report.modelRevision}"
+                            report.modelID.startsWith("gemini/") -> "Online erstellt · Gemini · ${report.modelRevision}"
+                            else -> "Lokal erstellt · ${report.modelID}"
+                        },
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp, bottom = 12.dp),
                     )
                     OutlinedTextField(edited, { edited = it }, Modifier.fillMaxWidth().heightIn(min = 280.dp).testTag("report-editor"), shape = RoundedCornerShape(16.dp))

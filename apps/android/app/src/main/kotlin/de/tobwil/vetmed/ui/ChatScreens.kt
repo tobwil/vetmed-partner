@@ -416,7 +416,7 @@ fun ChatConversationScreen(model: AppViewModel, nav: NavHostController, location
         }
     }
     if (reportsSheet && caseItem != null) ReportSelectionSheet(caseItem, draft.reportIDs.orEmpty(), onDismiss = { reportsSheet = false }) { draft = draft.copy(reportIDs = it) }
-    if (details) ChatDetailsSheet(snapshot, runs, online.modelID.ifEmpty { "Noch nicht eingerichtet" }, encounter.transcripts.isNotEmpty(),
+    if (details) ChatDetailsSheet(snapshot, runs, online.modelID.takeIf { it.isNotEmpty() }?.let { "${online.provider.title} · $it" } ?: "Noch nicht eingerichtet", encounter.transcripts.isNotEmpty(),
         onTranscript = { encounter.transcripts.lastOrNull()?.let { t -> draft = draft.copy(context = t.editedText, transcriptVersionID = t.id) }; details = false },
         onSettings = { details = false; nav.navigate(OnlineRoute) }, onDismiss = { details = false })
     if (deleting) AlertDialog(
@@ -642,14 +642,14 @@ private fun ReportSelectionSheet(item: de.tobwil.vetmed.core.VetCase, selected: 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ChatDetailsSheet(
-    snapshot: Result<SparringSnapshot>, runs: List<AnalysisRun>, modelID: String, hasTranscript: Boolean,
+    snapshot: Result<SparringSnapshot>, runs: List<AnalysisRun>, connection: String, hasTranscript: Boolean,
     onTranscript: () -> Unit, onSettings: () -> Unit, onDismiss: () -> Unit,
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("Chat-Details", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             SectionTitle("Verbindung")
-            Text("OpenAI · $modelID")
+            Text(connection)
             TextButton(onClick = onSettings) { Text("API-Key & Modell") }
             Text("Nur beim Senden wird dein Chat übertragen. Kein automatischer Neuversand. Webrecherche ist derzeit aus.", style = MaterialTheme.typography.bodySmall)
             if (hasTranscript) TextButton(onClick = onTranscript) { Text("Falltranskript hinzufügen") }

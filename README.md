@@ -17,7 +17,7 @@ Native App für Tierärztinnen und Tierärzte auf iPhone und Android. Du diktier
 - **Reports:** turn the transcript into a structured report in which every statement is checked against its source sentence.
 - **Clinical sparring partner:** discuss a case as you would with an experienced colleague. It gives weighted differentials (most likely, must-not-miss, which finding would change the decision), suggests next steps and asks critical follow-up questions. Images, lab PDFs and your own case reports can serve as context; quick checks also work without a case.
 
-**Privacy:** Clinical data stays encrypted on the device (SQLCipher, Keychain or Android Keystore). There is no cloud sync. Data leaves the device only when you explicitly start an online report or chat with your own OpenAI API key. Alternatively, reports run fully offline with Gemma 4 E2B (MLX on iOS, LiteRT-LM on Android).
+**Privacy:** Clinical data stays encrypted on the device (SQLCipher, Keychain or Android Keystore). There is no cloud sync. Data leaves the device only when you explicitly start an online report or chat with your own OpenAI API key (on Android alternatively Gemini), or when you switch on online transcription with your own Gemini key on Android. Alternatively, reports run fully offline with Gemma 4 E2B (MLX on iOS, LiteRT-LM on Android).
 
 **Quickstart:** iOS needs macOS, Xcode 27 and XcodeGen. Android needs JDK 21 and Android SDK 37.2. Then follow the [step-by-step guide](#schritt-für-schritt-vetmed-selbst-bauen-und-nutzen) below; it is in German, but the shell commands are the same in any language. On iOS, first set your own `DEVELOPMENT_TEAM` and `PRODUCT_BUNDLE_IDENTIFIER` in `apps/ios/project.yml`. The user interface is in German.
 
@@ -29,7 +29,9 @@ Native App für Tierärztinnen und Tierärzte auf iPhone und Android. Du diktier
 | --- | --- | --- |
 | Fälle und Diktat: Aufnehmen, Text prüfen, Bericht | ja | ja |
 | Spracherkennung auf dem Gerät (Deutsch) | Apple SpeechAnalyzer | Android On-Device-Erkenner |
-| Bericht online mit eigenem OpenAI-Key | ja | ja |
+| Online-Transkription mit eigenem Gemini-Key (optional) | – | ja |
+| Aufnahme läuft im Hintergrund weiter | – | ja (Hinweis in der Statusleiste) |
+| Bericht online mit eigenem Key | OpenAI | OpenAI oder Gemini |
 | Bericht offline auf dem Gerät (optional) | Gemma 4 E2B über MLX | Gemma 4 E2B über LiteRT-LM |
 | Quellenprüfung (Zahlen, Einheiten, Verneinungen) | ja | ja |
 | Klinischer Sparringspartner (online): Differenzialdiagnosen und nächste Schritte, mit Bildern, Labor-PDFs und eigenen Berichten, auch ohne Fall | ja | ja |
@@ -101,7 +103,7 @@ Es gibt keine fertige App im App Store oder Play Store. Du baust VetMed selbst u
 | Gerät | iPhone mit **iOS 26** oder neuer | Android-Gerät mit **Android 14** oder neuer |
 | Konto | kostenloses Apple-Konto reicht, siehe FAQ | keines |
 | Für Offline-Berichte | mindestens 8 GB RAM, ca. 3,6 GB frei | mindestens 8 GB RAM, ca. 2,6 GB frei, 64 Bit |
-| Für Online-Berichte und Chat | eigener [OpenAI-API-Key](https://platform.openai.com/api-keys) mit Guthaben | ebenso |
+| Für Online-Berichte und Chat | eigener [OpenAI-API-Key](https://platform.openai.com/api-keys) mit Guthaben | ebenso, alternativ eigener [Gemini-API-Key](https://aistudio.google.com/apikey) |
 
 Für den ersten Versuch brauchst du weder Key noch Modell. Diktat, Spracherkennung und Texteingabe funktionieren ohne beides.
 
