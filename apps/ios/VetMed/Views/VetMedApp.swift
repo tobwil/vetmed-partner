@@ -260,6 +260,12 @@ struct OnlineReportSettingsView: View {
                 if app.hasOnlineKey { Button("API-Key entfernen", role: .destructive) { app.removeOnlineKey(); keyDraft = "" }.disabled(app.busy) }
                 Text("Bei Verbindungs- oder Anbieterfehlern bleibt der Auftrag lokal. Es gibt keinen automatischen Wechsel zu einem anderen Anbieter und keinen Versand bei späterer Netzrückkehr.").font(.caption).foregroundStyle(.secondary)
             }
+            Section("Arzneimittelangaben im Chat") {
+                Toggle("Mit amtlichen Quellen belegen", isOn: Binding(get: { app.onlineConfiguration.sourceSearch == true }, set: { app.setSourceSearch($0) }))
+                    .disabled(app.busy).accessibilityIdentifier("source-search")
+                Text("OpenAI sucht nur in EU-Tierarzneimitteldatenbank, EMA, PharmNet.Bund, BVL und BASG. Jede Suche kostet extra.").font(.caption).foregroundStyle(.secondary)
+                Text("Unabhängig davon nennt der Chat Wirkstoffe eines Präparats nicht aus dem Gedächtnis. Antworten mit Arzneimittelangaben ohne amtliche Quelle werden deutlich als ungeprüft markiert.").font(.caption).foregroundStyle(.secondary)
+            }
         }.themedBackground().navigationTitle("Online-Zugang")
             .onAppear { modelID = app.onlineConfiguration.modelID }
             .onChange(of: modelID) { _, _ in app.resetOnlineModelVerification() }

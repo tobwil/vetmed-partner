@@ -3,7 +3,7 @@ import Foundation
 enum SparringRequestBuilder {
     static let maximumPayloadBytes = 98_304
     static let maximumOutputBytes = 262_144
-    static func prepare(caseID: UUID?, encounter: Encounter, draft: SparringDraft, modelID: String, caseContext: VetCase? = nil) throws -> SparringSnapshot {
+    static func prepare(caseID: UUID?, encounter: Encounter, draft: SparringDraft, modelID: String, caseContext: VetCase? = nil, sourceSearch: Bool = false) throws -> SparringSnapshot {
         try draft.validate()
         guard !draft.question.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw AppFailure("Bitte eine Frage eingeben.") }
         guard !modelID.isEmpty, modelID.utf8.count < 256, !modelID.contains(where: \.isWhitespace) else { throw AppFailure("Bitte eine gültige Modell-ID in Einstellungen auswählen.") }
@@ -52,11 +52,15 @@ enum SparringRequestBuilder {
         guard allImages.count <= 8, allImages.allSatisfy({ $0.byteCount > 0 && $0.byteCount <= ChatAttachmentImporter.maximumImageBytes && $0.width > 0 && $0.height > 0 }), allImages.reduce(0, { $0 + $1.byteCount }) <= 16 * 1_048_576 else {
             throw AppFailure("Dieser Chat enthält mehr Bilder als in eine Anfrage passen. Bitte für weitere Bilder einen neuen Chat starten; es wird nichts unbemerkt weggelassen.")
         }
-        let body: [String: Any] = ["model": modelID, "store": false, "stream": true, "background": false,
-                                   "max_output_tokens": 8192, "instructions": instructions, "input": messages]
+        var body: [String: Any] = ["model": modelID, "store": false, "stream": true, "background": false, "max_output_tokens": 8192,
+                                   "instructions": MedicationSafety.instructions(instructions, sourceSearch: sourceSearch), "input": messages]
+        if sourceSearch {
+            body["tools"] = [MedicationSafety.openAITool]
+            body["include"] = ["web_search_call.action.sources"]
+        }
         let data = try JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])
         guard data.count <= maximumPayloadBytes else { throw AppFailure("Die Anfrage ist zu groß. Bitte weniger Berichte auswählen oder für einen kürzeren Verlauf einen neuen Chat starten. Es wird nichts unbemerkt weggelassen.") }
-        current = SparringSnapshot(caseID: caseID, encounterID: encounter.id, modelID: modelID, draft: draft, payload: data, images: images, documents: documents, requestImages: allImages, reports: reports)
+        current = SparringSnapshot(caseID: caseID, encounterID: encounter.id, modelID: modelID, draft: draft, payload: data, images: images, documents: documents, requestImages: allImages, reports: reports, sourceSearch: sourceSearch ? true : nil)
         return current
     }
     static func request(snapshot: SparringSnapshot, key: String, imageData: [UUID: Data] = [:]) throws -> URLRequest {
@@ -127,7 +131,7 @@ struct BoundedSSEDecoder {
 
 enum AnalysisStreamUpdate: Sendable {
     case text(String)
-    case terminal(AnalysisStatus, String, String?, AnalysisUsage?, String?)
+    case terminal(AnalysisStatus, String, String?, AnalysisUsage?, String?, [AnswerSource])
 }
 
 /// Only the provider's terminal event can mark a response complete. EOF never implies completion.
@@ -177,14 +181,14 @@ struct OpenAIAnalysisDecoder {
             let finalText = content.filter { $0["type"] as? String == "output_text" }.compactMap { $0["text"] as? String }.joined(separator: "\n\n")
             guard finalText.utf8.count <= SparringRequestBuilder.maximumOutputBytes else { throw AppFailure("Die Antwort ist zu lang.") }
             terminal = true
-            if sawRefusal { return .terminal(.refused, text, model, usage, "Der Anbieter hat die Anfrage abgelehnt. Eine etwaige Teilantwort ist nicht vollständig.") }
+            if sawRefusal { return .terminal(.refused, text, model, usage, "Der Anbieter hat die Anfrage abgelehnt. Eine etwaige Teilantwort ist nicht vollständig.", []) }
             if type == "response.completed", status == "completed", !finalText.isEmpty {
                 // Check the stream against the final object; never silently replace a differing partial answer.
                 guard text.isEmpty || text == finalText else { throw AppFailure("Stream und Abschlussantwort stimmen nicht überein. Bitte den unvollständigen Zwischenstand prüfen.") }
-                return .terminal(.completed, finalText, model, usage, nil)
+                return .terminal(.completed, finalText, model, usage, nil, MedicationSafety.citations(in: content))
             }
             return .terminal(status == "failed" ? .failed : .incomplete, text.isEmpty ? finalText : text, model, usage,
-                             "Der Anbieter hat die Analyse nicht vollständig abgeschlossen. Ein neuer Versuch kann erneut Kosten verursachen.")
+                             "Der Anbieter hat die Analyse nicht vollständig abgeschlossen. Ein neuer Versuch kann erneut Kosten verursachen.", [])
         case "error":
             throw AppFailure("Der Anbieter hat die Analyse abgebrochen. Der Zwischenstand bleibt unvollständig; kein automatischer Neuversand.")
         default: return nil

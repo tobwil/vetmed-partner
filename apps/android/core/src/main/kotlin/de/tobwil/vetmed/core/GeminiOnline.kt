@@ -133,6 +133,8 @@ object GeminiOnlineApi {
         validateApiKey(key)
         checkModel(snapshot.modelID)
         if (snapshot.payload.size > SparringRequestBuilder.MAXIMUM_PAYLOAD_BYTES) throw AppFailure("Die Anfrage ist zu groß.")
+        // Source search is OpenAI-only (domain-limited). A request prepared with it is never silently sent without it.
+        if (snapshot.sourceSearch == true) throw AppFailure("Diese Anfrage wurde mit Quellensuche vorbereitet, die es nur mit OpenAI gibt. Bitte erneut senden.")
         val root = runCatching { Json.parseToJsonElement(snapshot.payload.decodeToString()).jsonObject }.getOrNull()
             ?: throw AppFailure("Die vorbereitete Anfrage ist ungültig.")
         val input = root["input"] as? JsonArray ?: throw AppFailure("Die vorbereitete Anfrage ist ungültig.")

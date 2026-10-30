@@ -115,6 +115,8 @@ data class SparringSnapshot(
     val documents: List<ChatDocumentReference>? = null,
     val requestImages: List<ChatImageReference>? = null,
     val reports: List<ChatReportContext>? = null,
+    /** True when the request asked the provider to search official medicine sources. */
+    val sourceSearch: Boolean? = null,
 ) {
     val conversationText: String get() =
         draft.message + documents.orEmpty().mapIndexed { index, document -> "\n\nAnhang ${index + 1} · geprüfter Text:\n${document.text}" }.joinToString("")
@@ -123,7 +125,7 @@ data class SparringSnapshot(
 
     override fun equals(other: Any?) = other is SparringSnapshot && caseID == other.caseID && encounterID == other.encounterID &&
         modelID == other.modelID && draft == other.draft && payload.contentEquals(other.payload) && images == other.images &&
-        documents == other.documents && requestImages == other.requestImages && reports == other.reports
+        documents == other.documents && requestImages == other.requestImages && reports == other.reports && sourceSearch == other.sourceSearch
     override fun hashCode() = encounterID.hashCode() * 31 + payload.contentHashCode()
 }
 
@@ -151,6 +153,8 @@ data class AnalysisRun(
     val actualModelID: String? = null,
     val usage: AnalysisUsage? = null,
     val notice: String? = null,
+    /** Web sources the provider cited (only with source search). */
+    val sources: List<AnswerSource>? = null,
 )
 
 /** Standalone conversations without a clinical case. */

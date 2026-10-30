@@ -12,6 +12,8 @@ struct OnlineReportConfiguration: Codable, Equatable, Sendable {
     var preferredMode: ReportExecutionMode = .offline
     var verifiedModelID: String?
     var verifiedAt: Date?
+    /// Chat: let OpenAI search official medicine sources for medication statements (costs per search).
+    var sourceSearch: Bool?
     var isEnabled: Bool { consentDate != nil && !modelID.isEmpty }
 }
 

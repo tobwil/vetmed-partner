@@ -41,6 +41,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import de.tobwil.vetmed.core.MedicationSafety
+import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.ArrowUpward
@@ -274,8 +276,13 @@ fun ChatConversationScreen(model: AppViewModel, nav: NavHostController, location
         historyIDs = runs.filter { it.status == AnalysisStatus.COMPLETED }.map { it.id }, mode = SparringMode.QUESTION,
         question = draft.question.ifBlank { if (draft.attachmentIDs.isNullOrEmpty()) draft.question else "Bitte diese Anhänge fachlich einordnen." },
     )
-    val snapshot: Result<SparringSnapshot> = remember(prepared, encounter, online.modelID, caseItem) {
-        runCatching { SparringRequestBuilder.prepare(location.caseID, encounter ?: throw AppFailure("Dieser Chat ist nicht mehr vorhanden."), prepared, online.modelID, caseItem) }
+    val snapshot: Result<SparringSnapshot> = remember(prepared, encounter, online.modelID, caseItem, online.usesSourceSearch) {
+        runCatching {
+            SparringRequestBuilder.prepare(
+                location.caseID, encounter ?: throw AppFailure("Dieser Chat ist nicht mehr vorhanden."), prepared, online.modelID, caseItem,
+                sourceSearch = online.usesSourceSearch,
+            )
+        }
     }
     // A sent message clears the composer only when the stored run matches what was typed.
     val lastRunID = runs.lastOrNull()?.id
@@ -375,6 +382,7 @@ fun ChatConversationScreen(model: AppViewModel, nav: NavHostController, location
                         }
                         if (run.text.isNotEmpty()) {
                             MarkdownText(run.text, Modifier.fillMaxWidth().vetCard(colors, RoundedCornerShape(20.dp)))
+                            if (!run.status.isActive) MedicationNotice(run)
                             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                 AssistChip(
                                     enabled = !run.status.isActive, modifier = Modifier.testTag("copy-answer-" + run.id),
@@ -651,7 +659,12 @@ private fun ChatDetailsSheet(
             SectionTitle("Verbindung")
             Text(connection)
             TextButton(onClick = onSettings) { Text("API-Key & Modell") }
-            Text("Nur beim Senden wird dein Chat übertragen. Kein automatischer Neuversand. Webrecherche ist derzeit aus.", style = MaterialTheme.typography.bodySmall)
+            Text("Nur beim Senden wird dein Chat übertragen. Kein automatischer Neuversand.", style = MaterialTheme.typography.bodySmall)
+            Text(
+                if (snapshot.getOrNull()?.sourceSearch == true) "Quellensuche: an, nur amtliche Arzneimittelquellen (EU, EMA, PharmNet.Bund, BVL, BASG)."
+                else "Quellensuche: aus. Präparatangaben sind dann nur aus deiner Frage oder Anhängen belegbar.",
+                style = MaterialTheme.typography.bodySmall,
+            )
             if (hasTranscript) TextButton(onClick = onTranscript) { Text("Falltranskript hinzufügen") }
             SectionTitle("Nächste Anfrage")
             snapshot.fold(onSuccess = { PayloadPreview(it) }, onFailure = { Text(it.message.orEmpty(), style = MaterialTheme.typography.bodySmall) })
@@ -677,5 +690,37 @@ private fun PayloadPreview(snapshot: SparringSnapshot) {
         AnimatedVisibility(open, enter = fadeIn() + slideInVertically()) {
             SelectionContainer { Text(snapshot.payload.decodeToString(), fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.labelSmall) }
         }
+    }
+}
+
+/**
+ * Medication guard under an answer: official sources when the provider cited some, otherwise a clearly visible
+ * warning with a link to the EU database. Shown for every answer that talks about medication or doses.
+ */
+@Composable
+private fun MedicationNotice(run: AnalysisRun) {
+    val official = remember(run.sources) { MedicationSafety.officialSources(run) }
+    val warn = remember(run.text, run.sources) { MedicationSafety.needsWarning(run) }
+    val uri = androidx.compose.ui.platform.LocalUriHandler.current
+    if (official.isNotEmpty()) Column(Modifier.fillMaxWidth().testTag("answer-sources-" + run.id), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text("Amtliche Quellen", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+        official.forEach { source ->
+            TextButton(onClick = { runCatching { uri.openUri(source.url) } }) {
+                Text(source.title ?: source.url, style = MaterialTheme.typography.bodySmall, maxLines = 2)
+            }
+        }
+        Text("Angaben in der verlinkten Quelle prüfen.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+    if (warn) Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Color(0xFFFF9F0A).copy(alpha = 0.16f)).padding(12.dp).testTag("medication-warning-" + run.id),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Rounded.Warning, null, tint = Color(0xFFE08600), modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(6.dp))
+            Text("Arzneimittelangaben ungeprüft", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.labelLarge)
+        }
+        Text(MedicationSafety.WARNING, style = MaterialTheme.typography.bodySmall)
+        TextButton(onClick = { runCatching { uri.openUri(MedicationSafety.DATABASE_URL) } }) { Text("EU-Tierarzneimitteldatenbank öffnen") }
     }
 }

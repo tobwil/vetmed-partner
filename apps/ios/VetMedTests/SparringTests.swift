@@ -200,7 +200,7 @@ final class SparringTests: XCTestCase {
         _ = try decoder.consume(delta("Kein "))
         _ = try decoder.consume(delta("Fieber.", sequence: 2))
         XCTAssertFalse(decoder.terminal)
-        guard case .terminal(let status, let text, let model, let usage, _)? = try decoder.consume(final("Kein Fieber.")) else { return XCTFail("Missing terminal") }
+        guard case .terminal(let status, let text, let model, let usage, _, _)? = try decoder.consume(final("Kein Fieber.")) else { return XCTFail("Missing terminal") }
         XCTAssertEqual(status, .completed); XCTAssertEqual(text, "Kein Fieber."); XCTAssertEqual(model, "synthetic-model-snapshot")
         XCTAssertEqual(usage, AnalysisUsage(inputTokens: 50, outputTokens: 20))
         var mismatch = OpenAIAnalysisDecoder(); _ = try mismatch.consume(delta("Kein Fieber."))
@@ -209,7 +209,7 @@ final class SparringTests: XCTestCase {
     func testRefusalAndTokenLimitRemainNonComplete() throws {
         for (status, refused, expected) in [("incomplete", false, AnalysisStatus.incomplete), ("completed", true, .refused)] {
             var decoder = OpenAIAnalysisDecoder(); _ = try decoder.consume(delta("Teilantwort"))
-            guard case .terminal(let actual, _, _, _, _)? = try decoder.consume(final("Teilantwort", status: status, refusal: refused)) else { return XCTFail("Missing terminal") }
+            guard case .terminal(let actual, _, _, _, _, _)? = try decoder.consume(final("Teilantwort", status: status, refusal: refused)) else { return XCTFail("Missing terminal") }
             XCTAssertEqual(actual, expected)
         }
     }

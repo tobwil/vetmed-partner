@@ -189,6 +189,36 @@ class WalkthroughTests {
         shot("09-chat-antwort-nacht")
     }
 
+    @Test fun aMedicationAnswerWithoutOfficialSourceIsClearlyMarkedUnverified() {
+        val seeded = SyntheticCases.seed()
+        val location = seeded.withReport
+        val document = CaseOperations.run {
+            seeded.document.mapEncounter(location) { encounter ->
+                encounter.copy(analysisRuns = encounter.analysisRuns!!.map { it.copy(text = "Das Präparat enthält vermutlich Wirkstoff A. Übliche Dosierung 0,1 mg/kg.") })
+            }
+        }
+        val model = launch(document, AppearanceMode.DARK, AccentTheme.OZEAN)
+        compose.onNodeWithTag("tab-chat").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithTag("chat-row-" + location.encounterID).performClick()
+        val run = model.chatContext(de.tobwil.vetmed.core.ChatLocation(location.caseID, location.encounterID))!!.analysisRuns!!.single()
+        waitFor("Warnhinweis sichtbar", model) { runCatching { compose.onNodeWithTag("medication-warning-" + run.id).performScrollTo().assertIsDisplayed() }.isSuccess }
+        compose.onNodeWithText("Arzneimittelangaben ungeprüft").assertIsDisplayed()
+        compose.onNodeWithText("EU-Tierarzneimitteldatenbank öffnen").assertIsDisplayed()
+        shot("14-arzneimittel-warnung")
+    }
+
+    @Test fun anOrdinaryAnswerShowsNoMedicationWarning() {
+        val seeded = SyntheticCases.seed()
+        val model = launch(seeded.document)
+        compose.onNodeWithTag("tab-chat").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithTag("chat-row-" + seeded.withReport.encounterID).performClick()
+        waitFor("Chat geöffnet", model) { runCatching { compose.onNodeWithText("Mögliche Ursachen").assertIsDisplayed() }.isSuccess }
+        val run = model.chatContext(de.tobwil.vetmed.core.ChatLocation(seeded.withReport.caseID, seeded.withReport.encounterID))!!.analysisRuns!!.single()
+        compose.onNodeWithTag("medication-warning-" + run.id).assertDoesNotExist()
+    }
+
     @Test fun newQuickCheckSavesDraftWithoutCreatingACase() {
         val model = launch(SyntheticCases.seed().document)
         val cases = model.document.value.cases.size

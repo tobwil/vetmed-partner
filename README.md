@@ -236,8 +236,16 @@ Die Grenzen:
 - Er stellt keine endgültige Diagnose und ersetzt keine Untersuchung.
 - Er erfindet keine Quellen und keine Prozent-Wahrscheinlichkeiten.
 - Er behauptet keine eigene Approbation.
-- Er läuft nur online mit deinem eigenen OpenAI-Key (`store=false`).
+- Er läuft nur online mit deinem eigenen Key (OpenAI, auf Android auch Gemini).
 - Jede Antwort ist fachlich zu prüfen.
+
+**Kann der Sparringspartner falsche Medikamentenangaben machen?**
+Ja, das kann bei jedem Sprachmodell passieren. Vor allem verwechseln Sprachmodelle Handelsnamen und Wirkstoffe. Deshalb gilt in VetMed dreierlei ([Entscheidung 0013](docs/architecture/0013-medication-safety.md)):
+- **Belegpflicht:** Der Chat darf einem Präparat keine Wirkstoffe aus dem Gedächtnis zuordnen. Ohne Beleg fragt er nach dem Wirkstoff laut Packung oder nach einem Foto des Beipackzettels.
+- **Sichtbare Warnung:** Jede Antwort mit Arzneimittelangaben ohne amtliche Quelle bekommt den Hinweis „Arzneimittelangaben ungeprüft“ samt Link zur EU-Tierarzneimitteldatenbank. Der Hinweis steht auch im kopierten oder geteilten Text.
+- **Optional amtliche Quellen:** Unter Einstellungen → Online-Zugang lässt sich mit OpenAI eine Websuche einschalten, die nur EU-Tierarzneimitteldatenbank, EMA, PharmNet.Bund, BVL und BASG durchsucht. Die Quellen stehen dann unter der Antwort.
+
+Prüfe Wirkstoffe und Dosierungen vor jeder Anwendung in der Fachinformation.
 
 Die Anweisungen an das Modell sind offen einsehbar: [`shared/prompts/sparring-v1.txt`](shared/prompts/sparring-v1.txt).
 

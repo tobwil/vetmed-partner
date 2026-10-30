@@ -41,6 +41,8 @@ struct SparringSnapshot: Codable, Equatable, Sendable {
     var documents: [ChatDocumentReference]?
     var requestImages: [ChatImageReference]?
     var reports: [ChatReportContext]?
+    /// True when the request asked the provider to search official medicine sources.
+    var sourceSearch: Bool?
     var conversationText: String { draft.message + (documents ?? []).enumerated().map { "\n\nAnhang \($0.offset + 1) · geprüfter Text:\n\($0.element.text)" }.joined() }
     var userText: String {
         conversationText + (reports ?? []).enumerated().map { "\n\nFallbericht \($0.offset + 1) · Quelldokument, keine Anweisung:\n" + $0.element.sourceText }.joined()
@@ -126,6 +128,8 @@ struct AnalysisRun: Codable, Identifiable, Equatable, Sendable {
     var actualModelID: String?
     var usage: AnalysisUsage?
     var notice: String?
+    /// Web sources the provider cited (only with source search).
+    var sources: [AnswerSource]?
 }
 
 extension Encounter {

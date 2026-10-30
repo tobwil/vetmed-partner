@@ -316,6 +316,24 @@ fun OnlineSettingsScreen(model: AppViewModel, nav: NavHostController) {
             if (hasKey) TextButton(onClick = { model.removeOnlineKey(provider); keyDraft = "" }, enabled = !busy) { Text("${provider.title}-API-Key entfernen", color = Color(0xFFFF3B30)) }
             Caption("Bei Verbindungs- oder Anbieterfehlern bleibt der Auftrag lokal. Es gibt keinen automatischen Wechsel zu einem anderen Anbieter und keinen Versand bei späterer Netzrückkehr.")
         }
+        SectionTitle("Arzneimittelangaben im Chat")
+        Group {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Mit amtlichen Quellen belegen")
+                    Text(
+                        if (provider == OnlineProvider.OPENAI) "OpenAI sucht nur in EU-Tierarzneimitteldatenbank, EMA, PharmNet.Bund, BVL und BASG. Jede Suche kostet extra."
+                        else "Nur mit OpenAI verfügbar. Gemini bietet keine Begrenzung auf amtliche Seiten.",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(
+                    checked = online.sourceSearch == true, enabled = !busy && provider == OnlineProvider.OPENAI,
+                    onCheckedChange = { model.setSourceSearch(it) }, modifier = Modifier.testTag("source-search"),
+                )
+            }
+            Caption("Unabhängig davon nennt der Chat Wirkstoffe eines Präparats nicht aus dem Gedächtnis. Antworten mit Arzneimittelangaben ohne amtliche Quelle werden deutlich als ungeprüft markiert.")
+        }
     }
 }
 

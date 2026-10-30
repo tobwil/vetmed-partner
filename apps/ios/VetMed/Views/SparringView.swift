@@ -125,7 +125,8 @@ struct ChatConversationView: View {
     private var snapshot: Result<SparringSnapshot, Error> {
         Result {
             guard let encounter else { throw AppFailure("Dieser Chat ist nicht mehr vorhanden.") }
-            return try SparringRequestBuilder.prepare(caseID: caseID, encounter: encounter, draft: preparedDraft, modelID: app.onlineConfiguration.modelID, caseContext: caseContext)
+            return try SparringRequestBuilder.prepare(caseID: caseID, encounter: encounter, draft: preparedDraft, modelID: app.onlineConfiguration.modelID, caseContext: caseContext,
+                                                      sourceSearch: app.onlineConfiguration.sourceSearch == true)
         }
     }
     var body: some View {
@@ -181,6 +182,7 @@ struct ChatConversationView: View {
                             }
                             if !run.text.isEmpty {
                                 ChatMarkdownView(text: run.text).frame(maxWidth: .infinity, alignment: .leading).card(cornerRadius: 20)
+                                if !run.status.isActive { MedicationNotice(run: run) }
                                 HStack(spacing: 10) {
                                     Button(copiedID == run.id ? "Kopiert" : "Kopieren", systemImage: copiedID == run.id ? "checkmark" : "doc.on.doc") { withAnimation(.snappy) { copiedID = run.id }; ExportService.copyText(ChatMarkdown.export(run)) }.accessibilityIdentifier("copy-answer-" + run.id.uuidString)
                                         .contentTransition(.symbolEffect(.replace)).sensoryFeedback(.success, trigger: copiedID == run.id)
@@ -289,7 +291,10 @@ struct ChatConversationView: View {
                     Section("Verbindung") {
                         Text("OpenAI · \(app.onlineConfiguration.modelID.isEmpty ? "Noch nicht eingerichtet" : app.onlineConfiguration.modelID)")
                         NavigationLink("API-Key & Modell") { OnlineReportSettingsView() }
-                        Text("Nur beim Senden wird dein Chat übertragen. Kein automatischer Neuversand. Webrecherche ist derzeit aus.").font(.footnote)
+                        Text("Nur beim Senden wird dein Chat übertragen. Kein automatischer Neuversand.").font(.footnote)
+                        Text(app.onlineConfiguration.sourceSearch == true
+                             ? "Quellensuche: an, nur amtliche Arzneimittelquellen (EU, EMA, PharmNet.Bund, BVL, BASG)."
+                             : "Quellensuche: aus. Präparatangaben sind dann nur aus deiner Frage oder Anhängen belegbar.").font(.footnote)
                     }
                     if let transcript = encounter?.transcripts.last {
                         Section { Button("Falltranskript hinzufügen") { draft.context = transcript.editedText; draft.transcriptVersionID = transcript.id; details = false } }
@@ -555,4 +560,36 @@ private struct LocalPDFPreview: UIViewRepresentable {
     let data: Data
     func makeUIView(context: Context) -> PDFView { let view = PDFView(); view.autoScales = true; view.document = PDFDocument(data: data); return view }
     func updateUIView(_ uiView: PDFView, context: Context) {}
+}
+
+/// Medication guard under an answer: official sources when the provider cited some, otherwise a clearly visible
+/// warning with a link to the EU database. Shown for every answer that talks about medication or doses.
+struct MedicationNotice: View {
+    let run: AnalysisRun
+    var body: some View {
+        let official = MedicationSafety.officialSources(run)
+        VStack(alignment: .leading, spacing: 8) {
+            if !official.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Amtliche Quellen").font(.caption.weight(.semibold))
+                    ForEach(official, id: \.url) { source in
+                        if let url = URL(string: source.url) { Link(source.title ?? source.url, destination: url).font(.caption).lineLimit(2) }
+                    }
+                    Text("Angaben in der verlinkten Quelle prüfen.").font(.caption2).foregroundStyle(.secondary)
+                }.accessibilityIdentifier("answer-sources-" + run.id.uuidString)
+            }
+            if MedicationSafety.needsWarning(run) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Label("Arzneimittelangaben ungeprüft", systemImage: "exclamationmark.triangle.fill")
+                        .font(.subheadline.weight(.semibold)).foregroundStyle(.orange)
+                    Text(MedicationSafety.warning).font(.footnote)
+                    Link("EU-Tierarzneimitteldatenbank öffnen", destination: MedicationSafety.databaseURL).font(.footnote.weight(.medium))
+                }
+                .padding(12).frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.orange.opacity(0.14), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("medication-warning-" + run.id.uuidString)
+            }
+        }
+    }
 }

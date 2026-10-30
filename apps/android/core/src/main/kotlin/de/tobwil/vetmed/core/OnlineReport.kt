@@ -41,8 +41,12 @@ data class OnlineReportConfiguration(
     val verifiedModelID: String? = null,
     val verifiedAt: AppleDate? = null,
     val provider: OnlineProvider = OnlineProvider.OPENAI,
+    /** Chat: let OpenAI search official medicine sources for medication statements (costs per search). */
+    val sourceSearch: Boolean? = null,
 ) {
     val isEnabled: Boolean get() = consentDate != null && modelID.isNotEmpty()
+    /** Source search exists only with OpenAI's domain-limited web search; Gemini offers no domain restriction. */
+    val usesSourceSearch: Boolean get() = sourceSearch == true && provider == OnlineProvider.OPENAI
 }
 
 fun validateApiKey(key: String) {

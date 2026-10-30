@@ -531,7 +531,8 @@ class AppViewModel(
                         val change: (AnalysisRun) -> AnalysisRun = when (update) {
                             is AnalysisStreamUpdate.Text -> { run -> run.copy(status = AnalysisStatus.STREAMING, text = update.text) }
                             is AnalysisStreamUpdate.Terminal -> { run ->
-                                run.copy(status = update.status, text = update.text, actualModelID = update.model, usage = update.usage, notice = update.notice)
+                                run.copy(status = update.status, text = update.text, actualModelID = update.model, usage = update.usage, notice = update.notice,
+                                    sources = update.sources.ifEmpty { null })
                             }
                         }
                         val next = ChatOperations.updateRun(_document.value, location, analysis.id, change)
@@ -692,6 +693,17 @@ class AppViewModel(
             }
             true
         } catch (error: AppFailure) { _error.value = error.message; false }
+    }
+
+    /** Chat: let OpenAI's domain-limited web search back medication statements with official sources. */
+    fun setSourceSearch(enabled: Boolean) {
+        viewModelScope.launch {
+            try {
+                val next = _online.value.copy(sourceSearch = enabled)
+                repository.saveOnline(next)
+                _online.value = next
+            } catch (error: AppFailure) { _error.value = error.message }
+        }
     }
 
     /** Removes the key of [provider]. Removing the Gemini key also ends online transcription with Gemini. */

@@ -107,6 +107,8 @@ object ChatMarkdown {
 
     fun export(run: AnalysisRun): String {
         val status = if (run.status == AnalysisStatus.COMPLETED) "KI-Antwort · fachlich ungeprüft" else "UNVOLLSTÄNDIGE KI-Antwort · fachlich ungeprüft"
-        return "VetMed · $status\n\n" + plainText(run.text)
+        val sources = MedicationSafety.officialSources(run).joinToString("") { "\n- " + (it.title?.let { title -> "$title: " } ?: "") + it.url }
+        val warning = if (MedicationSafety.needsWarning(run)) "\n\nHinweis: " + MedicationSafety.WARNING else ""
+        return "VetMed · $status\n\n" + plainText(run.text) + (if (sources.isEmpty()) "" else "\n\nAmtliche Quellen:$sources") + warning
     }
 }

@@ -437,8 +437,9 @@ final class VetAppModel: ObservableObject {
                         case .text(let text):
                             encounter.analysisRuns?[index].status = .streaming
                             encounter.analysisRuns?[index].text = text
-                        case .terminal(let status, let text, let model, let usage, let notice):
+                        case .terminal(let status, let text, let model, let usage, let notice, let sources):
                             terminal = true
+                            encounter.analysisRuns?[index].sources = sources.isEmpty ? nil : sources
                             encounter.analysisRuns?[index].status = status
                             encounter.analysisRuns?[index].text = text
                             encounter.analysisRuns?[index].actualModelID = model
@@ -483,6 +484,16 @@ final class VetAppModel: ObservableObject {
         } catch { self.error = error.localizedDescription }
     }
     func resetOnlineModelVerification() { testedOnlineModel = nil }
+    /// Chat: let OpenAI's domain-limited web search back medication statements with official sources.
+    func setSourceSearch(_ enabled: Bool) {
+        guard !busy else { return }
+        do {
+            var configuration = onlineConfiguration
+            configuration.sourceSearch = enabled
+            try onlineStore.save(configuration)
+            onlineConfiguration = configuration
+        } catch { self.error = error.localizedDescription }
+    }
     func removeOnlineKey() {
         guard !busy else { return }
         do {

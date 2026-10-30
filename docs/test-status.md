@@ -212,3 +212,21 @@ Umgesetzt: optionale Online-Transkription mit Gemini, Gemini als Anbieter für B
 Auf dem Gerät bestätigt: Die Transkription der 38-min-Aufnahme mit Gemini lief durch. Noch nicht auf dem Gerät abgenommen: Hintergrundaufnahme sowie Bericht und Chat mit Gemini.
 
 Offener Befund: Ein Online-Bericht aus diesem 38-min-Gesprächstranskript scheitert schon im ersten von 27 Abschnitten an der lokalen Quellenprüfung („Diese Quellen fehlen oder sind unvollständig: q1, q4, …“). Die Pipeline verlangt, dass jeder fachlich gewertete Satz belegt im Bericht erscheint; lange Gespräche mit vielen Füllsätzen erfüllen das nicht. Das ist kein Anbieterfehler und wird gesondert entschieden.
+
+## Arzneimittelangaben im Sparring am 30.10.2026
+
+Anlass: Der Chat nannte zu einem Präparat falsche Wirkstoffe. Details in [ADR 0013](architecture/0013-medication-safety.md).
+
+Umgesetzt:
+- Belegpflicht im Prompt.
+- Quellenlage je Anfrage.
+- Sichtbare Warnung bei Arzneimittelangaben ohne amtliche Quelle, auch im Export.
+- Optionale, auf amtliche Domains begrenzte OpenAI-Websuche mit gespeicherten Quellen. Für Gemini gibt es sie nicht; vorbereitete Suchanfragen werden dort abgewiesen.
+
+Prüfung:
+- Android: `MedicationSafetyTests` (8 Tests) bestanden; dazu zwei UI-Tests: Warnung sichtbar bzw. nicht sichtbar.
+- iOS: dieselbe Logik unter Linux mit Swift 6.1 im Swift-6-Modus gebaut und mit denselben Fällen geprüft. XCTest in Xcode steht aus.
+- Live-Prüfung: `scripts/eval-medication.sh` mit 20 Präparaten, davon 3 erfunden. Braucht einen eigenen Key und ist noch nicht gelaufen.
+
+Eine eigene Arzneimitteldatenbank (EU-UPD, AMIce, Vetidata) ist recherchiert, aber mangels freier Schnittstelle bzw. Lizenz noch nicht angebunden.
+

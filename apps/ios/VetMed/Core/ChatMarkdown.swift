@@ -72,7 +72,9 @@ enum ChatMarkdown {
     }
     static func export(_ run: AnalysisRun) -> String {
         let status = run.status == .completed ? "KI-Antwort · fachlich ungeprüft" : "UNVOLLSTÄNDIGE KI-Antwort · fachlich ungeprüft"
-        return "VetMed · " + status + "\n\n" + plainText(run.text)
+        let sources = MedicationSafety.officialSources(run).map { "\n- " + ($0.title.map { $0 + ": " } ?? "") + $0.url }.joined()
+        let warning = MedicationSafety.needsWarning(run) ? "\n\nHinweis: " + MedicationSafety.warning : ""
+        return "VetMed · " + status + "\n\n" + plainText(run.text) + (sources.isEmpty ? "" : "\n\nAmtliche Quellen:" + sources) + warning
     }
 }
 

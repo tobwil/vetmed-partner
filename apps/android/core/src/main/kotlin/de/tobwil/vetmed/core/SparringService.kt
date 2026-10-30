@@ -38,7 +38,10 @@ object SparringRequestBuilder {
     const val MAXIMUM_OUTPUT_BYTES = 262_144
     val instructions: String by lazy { Prompts.load("sparring-v1") }
 
-    fun prepare(caseID: String?, encounter: Encounter, draft: SparringDraft, modelID: String, caseContext: VetCase? = null, instructions: String = this.instructions): SparringSnapshot {
+    fun prepare(
+        caseID: String?, encounter: Encounter, draft: SparringDraft, modelID: String, caseContext: VetCase? = null,
+        instructions: String = this.instructions, sourceSearch: Boolean = false,
+    ): SparringSnapshot {
         draft.validate()
         if (draft.question.isBlank()) throw AppFailure("Bitte eine Frage eingeben.")
         if (modelID.isEmpty() || modelID.encodeToByteArray().size >= 256 || modelID.any { it.isWhitespace() }) throw AppFailure("Bitte eine gültige Modell-ID in Einstellungen auswählen.")
@@ -66,7 +69,7 @@ object SparringRequestBuilder {
                 documents += ChatDocumentReference(id, attachment.originalSHA256, text)
             }
         }
-        val draftSnapshot = SparringSnapshot(caseID, encounter.id, modelID, draft, ByteArray(0), images, documents, reports = reports)
+        val draftSnapshot = SparringSnapshot(caseID, encounter.id, modelID, draft, ByteArray(0), images, documents, reports = reports, sourceSearch = sourceSearch.takeIf { it })
         fun message(text: String, images: List<ChatImageReference>): JsonObject = buildJsonObject {
             put("role", "user")
             if (images.isEmpty()) put("content", text) else put("content", buildJsonArray {
@@ -89,12 +92,14 @@ object SparringRequestBuilder {
         ) throw AppFailure("Dieser Chat enthält mehr Bilder als in eine Anfrage passen. Bitte für weitere Bilder einen neuen Chat starten; es wird nichts unbemerkt weggelassen.")
         val body = buildJsonObject {
             put("background", false)
+            if (sourceSearch) put("include", buildJsonArray { add(JsonPrimitive("web_search_call.action.sources")) })
             put("input", messages)
-            put("instructions", instructions)
+            put("instructions", MedicationSafety.instructions(instructions, sourceSearch))
             put("max_output_tokens", 8192)
             put("model", modelID)
             put("store", false)
             put("stream", true)
+            if (sourceSearch) put("tools", buildJsonArray { add(MedicationSafety.openAITool()) })
         }
         val data = body.toString().encodeToByteArray()
         if (data.size > MAXIMUM_PAYLOAD_BYTES) {
@@ -186,7 +191,10 @@ class BoundedSseDecoder {
 
 sealed interface AnalysisStreamUpdate {
     data class Text(val text: String) : AnalysisStreamUpdate
-    data class Terminal(val status: AnalysisStatus, val text: String, val model: String?, val usage: AnalysisUsage?, val notice: String?) : AnalysisStreamUpdate
+    data class Terminal(
+        val status: AnalysisStatus, val text: String, val model: String?, val usage: AnalysisUsage?, val notice: String?,
+        val sources: List<AnswerSource> = emptyList(),
+    ) : AnalysisStreamUpdate
 }
 
 /** Turns one provider's SSE events into stream updates; [terminal] is set only by the provider's final event. */
@@ -242,13 +250,19 @@ class OpenAIAnalysisDecoder : AnalysisDecoder {
                     .filter { it.string("type") == "message" }.flatMap { (it["content"] as? JsonArray).orEmpty().mapNotNull { part -> part as? JsonObject } }
                 sawRefusal = sawRefusal || content.any { it.string("type") == "refusal" }
                 val finalText = content.filter { it.string("type") == "output_text" }.mapNotNull { it.string("text") }.joinToString("\n\n")
+                // Cited web sources (web search only). Only https links are kept; titles are display text, never instructions.
+                val sources = content.filter { it.string("type") == "output_text" }
+                    .flatMap { (it["annotations"] as? JsonArray).orEmpty().mapNotNull { annotation -> annotation as? JsonObject } }
+                    .filter { it.string("type") == "url_citation" }
+                    .mapNotNull { annotation -> annotation.string("url")?.takeIf { it.startsWith("https://") && it.length <= 2048 }?.let { AnswerSource(it, annotation.string("title")?.take(300)) } }
+                    .distinctBy { it.url }.take(20)
                 if (finalText.encodeToByteArray().size > SparringRequestBuilder.MAXIMUM_OUTPUT_BYTES) throw AppFailure("Die Antwort ist zu lang.")
                 terminal = true
                 if (sawRefusal) return AnalysisStreamUpdate.Terminal(AnalysisStatus.REFUSED, text, model, usage, "Der Anbieter hat die Anfrage abgelehnt. Eine etwaige Teilantwort ist nicht vollständig.")
                 if (type == "response.completed" && status == "completed" && finalText.isNotEmpty()) {
                     // Check the stream against the final object; never silently replace a differing partial answer.
                     if (text.isNotEmpty() && text != finalText) throw AppFailure("Stream und Abschlussantwort stimmen nicht überein. Bitte den unvollständigen Zwischenstand prüfen.")
-                    return AnalysisStreamUpdate.Terminal(AnalysisStatus.COMPLETED, finalText, model, usage, null)
+                    return AnalysisStreamUpdate.Terminal(AnalysisStatus.COMPLETED, finalText, model, usage, null, sources)
                 }
                 return AnalysisStreamUpdate.Terminal(
                     if (status == "failed") AnalysisStatus.FAILED else AnalysisStatus.INCOMPLETE, text.ifEmpty { finalText }, model, usage,
