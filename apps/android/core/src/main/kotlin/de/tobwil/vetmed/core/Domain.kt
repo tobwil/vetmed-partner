@@ -71,8 +71,17 @@ enum class ReportTemplate(val title: String, val sections: List<String>) {
     @SerialName("soap") SOAP("SOAP", listOf("Subjektiv", "Objektiv", "Beurteilung", "Plan")),
     @SerialName("follow_up") FOLLOW_UP("Verlauf / Kontrolle", listOf("Anlass", "Veränderung", "Heutige Befunde", "Maßnahmen", "Nächster Schritt")),
     @SerialName("referral") REFERRAL("Überweisung", listOf("Fragestellung", "Vorgeschichte", "Befunde", "Bisherige Behandlung")),
-    @SerialName("owner_information") OWNER_INFORMATION("Information für Tierhalter", listOf("Beobachtungen", "Einordnung", "Vereinbarte Schritte"));
+    @SerialName("owner_information") OWNER_INFORMATION("Information für Tierhalter", listOf("Beobachtungen", "Einordnung", "Vereinbarte Schritte")),
+    /** Legacy: written by an earlier build. Kept so stored reports and backups stay readable; not offered for new reports. */
+    @SerialName("meeting_summary") MEETING_SUMMARY("Besprechungszusammenfassung", listOf("Zusammenfassung", "Besprochene Themen", "Vereinbarungen", "Offene Fragen"));
     val audience: Audience get() = if (this == OWNER_INFORMATION) Audience.OWNER else Audience.VETERINARIAN
+    /** Whether new reports can be created with this template. */
+    val isSelectable: Boolean get() = this != MEETING_SUMMARY
+
+    companion object {
+        /** Templates offered for new reports, in display order. */
+        val selectable: List<ReportTemplate> get() = entries.filter { it.isSelectable }
+    }
 }
 
 @Serializable

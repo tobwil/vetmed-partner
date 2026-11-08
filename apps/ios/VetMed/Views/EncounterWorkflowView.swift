@@ -297,7 +297,7 @@ struct EncounterEditor: View {
         NavigationStack {
             Form {
                 Section {
-                    Picker("Vorlage", selection: $template) { ForEach(ReportTemplate.allCases) { Text($0.title).tag($0) } }
+                    Picker("Vorlage", selection: $template) { ForEach(ReportTemplate.selectable) { Text($0.title).tag($0) } }
                     Picker("Länge", selection: $length) { ForEach(ReportLength.allCases) { Text($0.title).tag($0) } }
                 }
                 Section("Verarbeitung") {

@@ -34,7 +34,7 @@ object GeminiLive {
     const val USD_PER_INPUT_MINUTE = 0.005
     const val USD_PER_OUTPUT_MINUTE = 0.018
 
-    val voicePrompt: String by lazy { Prompts.load("voice-v1") }
+    val voicePrompt: String by lazy { Prompts.load("voice-v2") }
 
     /** Sparring rules, "no source search", the voice rules and the case context the user chose, in this order. */
     fun instructions(base: String, context: String): String = buildString {

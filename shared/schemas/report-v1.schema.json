@@ -24,7 +24,8 @@
         "soap",
         "follow_up",
         "referral",
-        "owner_information"
+        "owner_information",
+        "meeting_summary"
       ]
     },
     "length": {

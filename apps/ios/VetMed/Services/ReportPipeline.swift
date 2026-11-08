@@ -176,7 +176,7 @@ struct ModelReportDraft: Codable, Sendable {
         case .soap: aliases = ["Kontrolle": "Plan", "Weitere Ergebnisse": "Plan"]
         case .follow_up: aliases = ["Kontrolle": "Nächster Schritt", "Weitere Ergebnisse": "Nächster Schritt"]
         case .owner_information: aliases = ["Kontrolle": "Vereinbarte Schritte", "Weitere Ergebnisse": "Einordnung"]
-        case .referral: aliases = [:]
+        case .referral, .meeting_summary: aliases = [:]
         }
         for index in items.indices { if let canonical = aliases[items[index].section] { items[index].section = canonical } }
     }

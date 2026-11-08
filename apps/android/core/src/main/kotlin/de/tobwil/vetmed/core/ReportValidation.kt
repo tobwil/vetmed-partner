@@ -245,7 +245,7 @@ data class ModelReportDraft(
             ReportTemplate.SOAP -> mapOf("Kontrolle" to "Plan", "Weitere Ergebnisse" to "Plan")
             ReportTemplate.FOLLOW_UP -> mapOf("Kontrolle" to "Nächster Schritt", "Weitere Ergebnisse" to "Nächster Schritt")
             ReportTemplate.OWNER_INFORMATION -> mapOf("Kontrolle" to "Vereinbarte Schritte", "Weitere Ergebnisse" to "Einordnung")
-            ReportTemplate.REFERRAL -> emptyMap()
+            ReportTemplate.REFERRAL, ReportTemplate.MEETING_SUMMARY -> emptyMap()
         }
         return copy(items = items.map { item -> aliases[item.section]?.let { item.copy(section = it) } ?: item })
     }

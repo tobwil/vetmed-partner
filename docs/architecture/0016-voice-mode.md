@@ -17,7 +17,7 @@ Im Praxisalltag sind oft die Hände nicht frei. Der Nutzer wünscht sich, Fälle
   - an das Modell gebunden
   - Der Key steht nur im Header dieser Anfrage. Die Sprachverbindung (`BidiGenerateContentConstrained?access_token=…`) sieht ihn nie.
 - **Setup:**
-  - Sparring-Prompt mit Arzneimittel- und Laborregeln, dazu „Quellensuche: nicht aktiviert“ und der neue Prompt `shared/prompts/voice-v1.txt`. Er verlangt kurze, gesprochene Sätze, ausgesprochene Zahlen und Nachfragen bei Unverstandenem statt Raten.
+  - Sparring-Prompt mit Arzneimittel- und Laborregeln, dazu „Quellensuche: nicht aktiviert“ und der Prompt `shared/prompts/voice-v2.txt`. Er verlangt kurze, gesprochene Sätze, ausgesprochene Zahlen, Nachfragen bei Unverstandenem statt Raten und ausschließlich Deutsch (seit v2, siehe Grenzen).
   - Fallkontext: ausgewählte Berichte, Falltext und bestätigte Labortabellen des Chats, höchstens 60.000 Zeichen.
   - Mitschrift beider Seiten. Die Eingabe hat den Sprachhinweis `de-DE` und die eigene Fachwortliste (`customVocabulary`, höchstens 100 Begriffe).
   - `contextWindowCompression.slidingWindow` hebt die 15-Minuten-Grenze für Audio auf; `sessionResumption` ist an.
@@ -70,6 +70,6 @@ Im Praxisalltag sind oft die Hände nicht frei. Der Nutzer wünscht sich, Fälle
 ## Grenzen
 
 - Die Live API ist Preview. Formate können sich ändern.
-- Gemini wählt die Sprache selbst. Deutsch ist laut Anbieter unterstützt, aber nicht gezielt geprüft.
+- Gemini wählt die Sprache selbst; die App setzt keinen Sprachcode für die Ausgabe. Auf dem Pixel 9a antwortete v1 bei undeutlicher Eingabe auf Französisch und Hindi. Seit `voice-v2` verlangt der Prompt ausdrücklich nur Deutsch und bei fremd klingender oder unverständlicher Eingabe eine Rückfrage auf Deutsch. Das senkt das Risiko, garantiert es aber nicht.
 - Die Mitschrift ist eine Spracherkennung und kann vom Gesagten abweichen.
 - Ohne Websuche kann der Sprachmodus Präparatangaben nicht amtlich belegen; die Prompt-Regeln aus ADR 0013 gelten.

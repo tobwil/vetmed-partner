@@ -572,7 +572,7 @@ private fun ReportOptionsDialog(
                         modifier = Modifier.menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable).fillMaxWidth(),
                     )
                     ExposedDropdownMenu(expanded, { expanded = false }) {
-                        ReportTemplate.entries.forEach { DropdownMenuItem(text = { Text(it.title) }, onClick = { setTemplate(it); expanded = false }) }
+                        ReportTemplate.selectable.forEach { DropdownMenuItem(text = { Text(it.title) }, onClick = { setTemplate(it); expanded = false }) }
                     }
                 }
                 Text("Für: ${template.audience.title}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

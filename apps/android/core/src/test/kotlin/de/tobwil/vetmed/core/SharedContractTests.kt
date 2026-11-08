@@ -84,6 +84,19 @@ class SharedContractTests {
         assertEquals(templates, ReportTemplate.entries.map { VetJson.encodeToString(ReportTemplate.serializer(), it).trim('"') }.toSet())
     }
 
+    @Test fun legacyMeetingSummaryStaysReadableButIsNotOffered() {
+        // Reports written by an earlier build use "meeting_summary". They must still load (otherwise the whole vault fails to open).
+        val stored = StructuredReport(
+            template = ReportTemplate.MEETING_SUMMARY, length = ReportLength.SHORT, audience = Audience.VETERINARIAN, sourceTranscriptVersionId = newId(),
+            sections = listOf(ReportSection("Vereinbarungen", listOf(ReportItem("Kontrolle in 14 Tagen.", listOf(SourceReference("text-0", "Kontrolle in 14 Tagen.")), "dictated")))),
+            missingInformation = emptyList(), conflicts = emptyList(),
+        )
+        val json = VetJson.encodeToString(StructuredReport.serializer(), stored)
+        assertTrue(json.contains("\"template\":\"meeting_summary\""))
+        assertEquals(stored, VetJson.decodeFromString(StructuredReport.serializer(), json))
+        assertEquals(ReportTemplate.entries - ReportTemplate.MEETING_SUMMARY, ReportTemplate.selectable)
+    }
+
     @Test fun datesAndIdsUseTheSameJsonAsIos() {
         // Swift's JSONEncoder writes Date as seconds since 2001-01-01 and UUID uppercased.
         val case = VetCase(id = "9A7C3E4B-0000-4000-8000-000000000001", label = "Fall 1", species = "Hund", createdAt = Instant.parse("2026-09-29T12:00:00Z"))
