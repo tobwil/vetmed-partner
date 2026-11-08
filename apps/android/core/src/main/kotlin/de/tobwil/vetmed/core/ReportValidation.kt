@@ -62,7 +62,7 @@ object ReportValidator {
         val allowed = report.template.sections
         if (report.schemaVersion != 1 || !report.requiresReview ||
             report.sourceTranscriptVersionId != transcript.id ||
-            report.sections.isEmpty() || report.sections.all { it.items.isEmpty() } ||
+            report.sections.isEmpty() || (report.sections.all { it.items.isEmpty() } && report.omitted.isNullOrEmpty()) ||
             report.sections.map { it.key }.toSet().size != report.sections.size ||
             !report.sections.all { it.key in allowed }
         ) throw AppFailure("Berichtsformat oder Quellenstand ist ungültig.")
@@ -93,9 +93,11 @@ object ReportValidator {
         }
         val missingNumbers = numbers(transcript.editedText) - numbers(report.text)
         if (missingNumbers.isNotEmpty()) warnings += "Zahlen aus dem Transkript fehlen im Bericht: " + missingNumbers.sorted().joinToString(", ")
-        val covered = report.sections.flatMap { it.items }.flatMap { it.sourceRefs }.map { it.segmentId }.toSet()
+        val omitted = report.omitted.orEmpty()
+        val covered = report.sections.flatMap { it.items }.flatMap { it.sourceRefs }.map { it.segmentId }.toSet() + omitted.map { it.segmentId }
         val required = transcript.segments.filter { TranscriptSourcePolicy.requiresCoverage(it.text) }.map { it.id }
         if (!covered.containsAll(required)) warnings += "Nicht alle Transkriptabschnitte sind im Bericht belegt. Vollständigkeit prüfen."
+        if (omitted.isNotEmpty()) warnings += "${omitted.size} ${if (omitted.size == 1) "Satz wurde" else "Sätze wurden"} als nicht fachlich ausgelassen. Bitte die Liste „Nicht übernommen“ prüfen."
         if (report.conflicts.isNotEmpty()) warnings += "Widersprüchliche Angaben vor Freigabe klären."
         return warnings.sorted()
     }
@@ -112,6 +114,20 @@ object ReportValidator {
     fun units(text: String): Set<String> = unitPattern.findAll(text.lowercase()).map { it.value }.toSet()
     fun comparisons(text: String): Set<String> = comparisonPattern.findAll(text).map { it.value.replace(" ", "").replace(',', '.') }.toSet()
     fun hasNegation(text: String): Boolean = negationPattern.containsMatchIn(text)
+}
+
+/**
+ * Which sentences the model may leave out of a report (ADR 0018). Conversations contain greetings and small talk, so
+ * full coverage cannot be required. A sentence with a number or a negation is always clinical enough to stay.
+ */
+object ReportSkipPolicy {
+    /** Spoken numbers count as numbers: "drei Tage", "zwölf Kilo", "zweimal täglich", "halbe Tablette". */
+    private val numberWords = Regex(
+        """(?i)(?<!\p{L})(?:null|zwei|drei|vier|fünf|sechs|sieben|acht|neun|zehn|elf|zwölf|\p{L}*zehn|\p{L}*zig|\p{L}*ßig|hundert|tausend|""" +
+            """einmal|zweimal|dreimal|viermal|halb\p{L}*|viertel\p{L}*|anderthalb|eineinhalb|dutzend)(?!\p{L})""",
+    )
+    fun mayOmit(text: String): Boolean =
+        ReportValidator.numbers(text).isEmpty() && !ReportValidator.hasNegation(text) && !numberWords.containsMatchIn(text)
 }
 
 object TranscriptSourcePolicy {
@@ -214,9 +230,13 @@ data class ModelReportDraft(
     // Optional model annotations, never a claim that the source is complete or consistent.
     val missingInformation: List<String> = emptyList(),
     val conflicts: List<String> = emptyList(),
+    /** Sources the model chose not to take over, with a short reason. Checked by [ReportSkipPolicy]. */
+    val skipped: List<Skip> = emptyList(),
 ) {
     @Serializable
     data class Item(val section: String, val text: String, val segmentId: String, val quote: String)
+    @Serializable
+    data class Skip(val segmentId: String, val reason: String = "")
 
     /** Exact heading synonyms only. Statement text and source evidence are never rewritten. */
     fun normalizeSectionAliases(template: ReportTemplate): ModelReportDraft {
@@ -231,7 +251,7 @@ data class ModelReportDraft(
     }
 
     fun report(transcriptID: String, template: ReportTemplate, length: ReportLength, audience: Audience): StructuredReport {
-        if (items.isEmpty() || !items.all { it.section in template.sections }) {
+        if (!items.all { it.section in template.sections }) {
             throw AppFailure("Die Modellantwort enthält unbekannte oder leere Berichtsabschnitte.")
         }
         return StructuredReport(

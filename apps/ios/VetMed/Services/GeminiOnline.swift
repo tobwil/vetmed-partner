@@ -36,11 +36,14 @@ enum GeminiOnlineAPI {
             "properties": ["section": ["type": "STRING", "format": "enum", "enum": sections], "text": ["type": "STRING"],
                            "segmentId": ["type": "STRING", "format": "enum", "enum": (1...sourceLimit).map { "q\($0)" }], "quote": ["type": "STRING"]],
             "required": fields, "propertyOrdering": fields]
+        let skip: [String: Any] = ["type": "OBJECT",
+            "properties": ["segmentId": ["type": "STRING", "format": "enum", "enum": (1...sourceLimit).map { "q\($0)" }], "reason": ["type": "STRING"]],
+            "required": ["segmentId", "reason"]]
         let body: [String: Any] = [
             "systemInstruction": ["parts": [text(instructions)]],
             "contents": [["role": "user", "parts": [text(prompt)]]],
             "generationConfig": ["maxOutputTokens": 32_768, "responseMimeType": "application/json",
-                                 "responseSchema": ["type": "OBJECT", "properties": ["items": ["type": "ARRAY", "items": item]], "required": ["items"]]],
+                                 "responseSchema": ["type": "OBJECT", "properties": ["items": ["type": "ARRAY", "items": item], "skipped": ["type": "ARRAY", "items": skip]], "required": ["items"]]],
         ]
         return try post("models/\(modelID):generateContent", key: key, body: body)
     }
@@ -194,8 +197,9 @@ final class GeminiReportEngine: ReportTextEngine {
     private var actualModels = Set<String>()
     var engineID: String { "gemini/" + configuration.modelID }
     var engineRevision: String { actualModels.isEmpty ? configuration.modelID : actualModels.sorted().joined(separator: ", ") }
-    var sourceLimit: Int { 24 }
-    var characterLimit: Int { 12000 }
+    // Larger chunks keep long conversations within the request budget (ADR 0018).
+    var sourceLimit: Int { 60 }
+    var characterLimit: Int { 20000 }
     var executionLabel: String { "Gemini · online" }
     init(configuration: OnlineReportConfiguration, key: String, sections: [String], transport: any ReportHTTPTransport = EphemeralReportHTTP(),
          record: @escaping (Data, String) async throws -> UUID = { _, _ in UUID() },
@@ -205,7 +209,7 @@ final class GeminiReportEngine: ReportTextEngine {
     func generate(prompt: String, instructions: String) async throws -> String {
         try Task.checkCancellation()
         guard configuration.isEnabled else { throw AppFailure("Online-Berichte sind noch nicht aktiviert.") }
-        guard calls < 12 else { throw AppFailure("Das Limit von zwölf Anbieteranfragen für diesen Bericht ist erreicht. Gesicherte Abschnitte bleiben erhalten.") }
+        guard calls < reportMaxCalls else { throw AppFailure("Das Limit von \(reportMaxCalls) Anbieteranfragen für diesen Bericht ist erreicht. Gesicherte Abschnitte bleiben erhalten.") }
         let request = try GeminiOnlineAPI.reportRequest(modelID: configuration.modelID, key: key, prompt: prompt, instructions: instructions, sections: sections, sourceLimit: sourceLimit)
         // The stored request record never contains the key: it is only in the header.
         let id = try await record(request.httpBody ?? Data(), configuration.modelID)

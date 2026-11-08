@@ -123,11 +123,25 @@ struct StructuredReport: Codable, Equatable, Sendable {
     var missingInformation: [String]
     var conflicts: [String]
     var requiresReview = true
+    /// Sources left out as not clinical (greetings, small talk), shown for review; never part of `text` (ADR 0018).
+    var omitted: [OmittedSource]?
     var text: String {
-        sections.map { $0.key + "\n" + $0.items.map { "• " + $0.text }.joined(separator: "\n") }.joined(separator: "\n\n")
-        + (missingInformation.isEmpty ? "" : "\n\nOffene Angaben\n" + missingInformation.joined(separator: "\n"))
-        + (conflicts.isEmpty ? "" : "\n\nWidersprüche\n" + conflicts.joined(separator: "\n"))
+        // Built in steps: the single long expression is slow for the type checker.
+        let body: [String] = sections.map { section in
+            let lines: [String] = section.items.map { "• " + $0.text }
+            return section.key + "\n" + lines.joined(separator: "\n")
+        }
+        var result = body.joined(separator: "\n\n")
+        if !missingInformation.isEmpty { result += "\n\nOffene Angaben\n" + missingInformation.joined(separator: "\n") }
+        if !conflicts.isEmpty { result += "\n\nWidersprüche\n" + conflicts.joined(separator: "\n") }
+        return result
     }
+}
+/// A transcript sentence the model marked as not clinical. Only sentences without numbers and negations qualify.
+struct OmittedSource: Codable, Equatable, Sendable {
+    var segmentId: String
+    var text: String
+    var reason: String
 }
 struct ReportVersion: Codable, Identifiable, Equatable, Sendable {
     var id = UUID()
@@ -137,7 +151,7 @@ struct ReportVersion: Codable, Identifiable, Equatable, Sendable {
     var editedText: String?
     var modelID: String
     var modelRevision: String
-    var promptVersion = "report-v1"
+    var promptVersion = "report-v2"
     var warnings: [String]
     var approvedAt: Date?
     var text: String { editedText ?? content.text }

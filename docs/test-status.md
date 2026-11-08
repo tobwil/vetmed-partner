@@ -288,3 +288,17 @@ Prüfung:
 - Android: `LabReportTests` (16), UI-Tests Laborbefund und synthetische Rücküberweisung bestanden; gesamt Kern 133 (2 übersprungen), App 52, Lint und Build grün. Screenshots 17 (neu) und 19.
 - iOS: 24/24 Tests unter Linux mit Swift 6.1. Import, Seiten-OCR und Ansicht nur auf Syntax geprüft. **Vor `main`:** `./scripts/test-ios.sh` auf dem Mac.
 - Der echte Referenzbrief mit echtem Key steht aus (`scripts/eval-labs.sh`).
+
+## Berichte aus Gesprächen am 08.11.2026
+
+Anlass: Berichte aus aufgenommenen Gesprächen scheiterten, weil jeder Satz, auch Smalltalk, belegt sein musste und das Budget von 12 Anfragen zu klein war. Details in [ADR 0018](architecture/0018-conversation-reports.md).
+
+Umgesetzt (Android und iOS):
+- Das Modell darf Sätze ohne fachlichen Inhalt als `skipped` melden; die App lässt nur Sätze ohne Zahl, Zahlwort und Verneinung aus.
+- Ausgelassene Sätze stehen sichtbar unter „Nicht übernommen · bitte prüfen“, nie im Berichtstext.
+- Online bis 60 Sätze pro Anfrage und 40 Anfragen pro Bericht.
+
+Prüfung:
+- Android: `ConversationReportTests` (5) bestanden; gesamt Kern 138 (2 übersprungen), App 52, Lint und Build grün.
+- iOS: dieselben 5 Fälle unter Linux mit Swift 6.1, zusammen 29/29. Dabei zwei Fehler gefunden und behoben (`mg\/kg` im Prompt, Typprüfung von `StructuredReport.text`). Prüfansicht nur auf Syntax geprüft. **Vor `main`:** `./scripts/test-ios.sh` auf dem Mac.
+- Ein echtes Gespräch mit Key steht aus.

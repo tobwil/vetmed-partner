@@ -40,7 +40,7 @@ enum ReportValidator {
         guard Set(transcript.segments.map(\.id)).count == transcript.segments.count else { throw AppFailure("Das Transkript enthält doppelte Quellen-IDs. Bitte eine neue Textversion speichern.") }
         guard report.schemaVersion == 1, report.requiresReview,
               report.sourceTranscriptVersionId == transcript.id.uuidString,
-              !report.sections.isEmpty, !report.sections.flatMap(\.items).isEmpty,
+              !report.sections.isEmpty, !report.sections.flatMap(\.items).isEmpty || !(report.omitted ?? []).isEmpty,
               Set(report.sections.map(\.key)).count == report.sections.count,
               report.sections.allSatisfy({ report.template.sections.contains($0.key) }) else { throw AppFailure("Berichtsformat oder Quellenstand ist ungültig.") }
         let segments = Dictionary(uniqueKeysWithValues: transcript.segments.map { ($0.id, $0.text) })
@@ -65,8 +65,10 @@ enum ReportValidator {
         }
         let missingNumbers = numbers(transcript.editedText).subtracting(numbers(report.text))
         if !missingNumbers.isEmpty { warnings.append("Zahlen aus dem Transkript fehlen im Bericht: " + missingNumbers.sorted().joined(separator: ", ")) }
-        let covered = Set(report.sections.flatMap(\.items).flatMap(\.sourceRefs).map(\.segmentId))
+        let omitted = report.omitted ?? []
+        let covered = Set(report.sections.flatMap(\.items).flatMap(\.sourceRefs).map(\.segmentId)).union(omitted.map(\.segmentId))
         if !Set(transcript.segments.filter { TranscriptSourcePolicy.requiresCoverage($0.text) }.map(\.id)).isSubset(of: covered) { warnings.append("Nicht alle Transkriptabschnitte sind im Bericht belegt. Vollständigkeit prüfen.") }
+        if !omitted.isEmpty { warnings.append("\(omitted.count) \(omitted.count == 1 ? "Satz wurde" : "Sätze wurden") als nicht fachlich ausgelassen. Bitte die Liste „Nicht übernommen“ prüfen.") }
         if !report.conflicts.isEmpty { warnings.append("Widersprüchliche Angaben vor Freigabe klären.") }
         return Array(Set(warnings)).sorted()
     }
@@ -78,6 +80,16 @@ enum ReportValidator {
         guard let regex = try? NSRegularExpression(pattern: pattern) else { return [] }
         let ns = text as NSString
         return regex.matches(in: text, range: NSRange(location: 0, length: ns.length)).map { ns.substring(with: $0.range) }
+    }
+}
+/// Which sentences the model may leave out of a report (ADR 0018). Conversations contain greetings and small talk, so
+/// full coverage cannot be required. A sentence with a number or a negation is always clinical enough to stay.
+enum ReportSkipPolicy {
+    /// Spoken numbers count as numbers: "drei Tage", "zwölf Kilo", "zweimal täglich", "halbe Tablette".
+    private static let numberWords = #"(?i)(?<!\p{L})(?:null|zwei|drei|vier|fünf|sechs|sieben|acht|neun|zehn|elf|zwölf|\p{L}*zehn|\p{L}*zig|\p{L}*ßig|hundert|tausend|"#
+        + #"einmal|zweimal|dreimal|viermal|halb\p{L}*|viertel\p{L}*|anderthalb|eineinhalb|dutzend)(?!\p{L})"#
+    static func mayOmit(_ text: String) -> Bool {
+        ReportValidator.numbers(text).isEmpty && !ReportValidator.hasNegation(text) && text.range(of: numberWords, options: .regularExpression) == nil
     }
 }
 enum TranscriptSourcePolicy {
@@ -142,9 +154,20 @@ enum TranscriptBuilder {
 }
 struct ModelReportDraft: Codable, Sendable {
     struct Item: Codable, Sendable { var section: String; var text: String; var segmentId: String; var quote: String }
+    /// A source the model chose not to take over, with a short reason. Checked by `ReportSkipPolicy`.
+    struct Skip: Codable, Sendable {
+        var segmentId: String; var reason: String
+        init(segmentId: String, reason: String = "") { self.segmentId = segmentId; self.reason = reason }
+        init(from decoder: any Decoder) throws {
+            let values = try decoder.container(keyedBy: CodingKeys.self)
+            segmentId = try values.decode(String.self, forKey: .segmentId)
+            reason = try values.decodeIfPresent(String.self, forKey: .reason) ?? ""
+        }
+    }
     var items: [Item]
     var missingInformation: [String]
     var conflicts: [String]
+    var skipped: [Skip] = []
     mutating func normalizeSectionAliases(for template: ReportTemplate) {
         // Exact heading synonyms only. Statement text and source evidence are never rewritten.
         let aliases: [String: String]
@@ -158,7 +181,7 @@ struct ModelReportDraft: Codable, Sendable {
         for index in items.indices { if let canonical = aliases[items[index].section] { items[index].section = canonical } }
     }
     func report(transcriptID: UUID, template: ReportTemplate, length: ReportLength, audience: Audience) throws -> StructuredReport {
-        guard !items.isEmpty, items.allSatisfy({ template.sections.contains($0.section) }) else { throw AppFailure("Die Modellantwort enthält unbekannte oder leere Berichtsabschnitte.") }
+        guard items.allSatisfy({ template.sections.contains($0.section) }) else { throw AppFailure("Die Modellantwort enthält unbekannte oder leere Berichtsabschnitte.") }
         return StructuredReport(template: template, length: length, audience: audience, sourceTranscriptVersionId: transcriptID.uuidString,
             sections: template.sections.map { section in ReportSection(key: section, items: items.filter { $0.section == section }.map {
                 ReportItem(text: $0.text, sourceRefs: [SourceReference(segmentId: $0.segmentId, quote: $0.quote)], origin: "dictated")
@@ -173,6 +196,7 @@ extension ModelReportDraft {
         items = try values.decode([Item].self, forKey: .items)
         missingInformation = try values.decodeIfPresent([String].self, forKey: .missingInformation) ?? []
         conflicts = try values.decodeIfPresent([String].self, forKey: .conflicts) ?? []
+        skipped = try values.decodeIfPresent([Skip].self, forKey: .skipped) ?? []
     }
 }
 
@@ -180,7 +204,7 @@ extension ModelReportDraft {
 struct ReportPipeline {
     let engine: any ReportTextEngine
     static func instructions() throws -> String {
-        guard let url = Bundle.main.url(forResource: "report-v1", withExtension: "txt") else { throw AppFailure("Der versionierte Berichtsprompt fehlt.") }
+        guard let url = Bundle.main.url(forResource: "report-v2", withExtension: "txt") else { throw AppFailure("Der versionierte Berichtsprompt fehlt.") }
         return try String(contentsOf: url, encoding: .utf8)
     }
     func run(transcript: TranscriptVersion, template: ReportTemplate, length: ReportLength, audience: Audience,
@@ -204,24 +228,28 @@ struct ReportPipeline {
             struct WireSource: Encodable { var id: String; var text: String }
             let aliases = Dictionary(uniqueKeysWithValues: chunk.enumerated().map { ($0.element.id, "q\($0.offset + 1)") })
             let originals = Dictionary(uniqueKeysWithValues: aliases.map { ($0.value, $0.key) })
+            // Sources as written: "mg/kg" stays "mg/kg" instead of "mg\/kg", like on Android.
+            let wireEncoder = JSONEncoder(); wireEncoder.outputFormatting = [.withoutEscapingSlashes]
             func prompt(for sources: [TranscriptSegment]) throws -> String { """
             Erstelle einen \(template.title) auf Deutsch. Länge: \(length.title), Zielgruppe: \(audience.title).
             Ordne ALLE Befunde und vereinbarten Schritte aus den Quellen passenden Abschnitten zu.
             Jede Quellen-ID muss in mindestens einem Item erscheinen. Es gibt \(sources.count) Quellen: \(sources.compactMap { aliases[$0.id] }.joined(separator: ", ")).
             Auch negative Angaben, unbekannte Messwerte und vereinbarte Kontrollen müssen erhalten bleiben.
+            Quellen ohne fachlichen Inhalt (Begrüßung, Smalltalk, Füllwörter) führst du stattdessen unter skipped auf. Quellen mit Zahlen oder Verneinungen nie.
             Erlaubte section-Werte: \(sectionNames).
             Antworte mit genau einem JSON-Objekt. Beginne mit { und ende mit }. Kein Titel, keine Codeblöcke.
-            Struktur: {"items":[{"section":"Abschnittsname","text":"Aussage","segmentId":"Quellen-ID","quote":"wörtliches Zitat"}]}
-            Das äußere Objekt hat nur das Feld items. Beende die Antwort unmittelbar nach seiner schließenden Klammer.
+            Struktur: {"items":[{"section":"Abschnittsname","text":"Aussage","segmentId":"Quellen-ID","quote":"wörtliches Zitat"}],"skipped":[{"segmentId":"Quellen-ID","reason":"kurzer Grund"}]}
+            Das äußere Objekt hat nur die Felder items und skipped. Beende die Antwort unmittelbar nach seiner schließenden Klammer.
             Jedes Item hat genau diese vier String-Felder. Nutze echte Quellen-IDs aus id und exakte Zitate aus text.
             Keine Inhalte erfinden. Keine Normalbefunde ergänzen. Zahlen und Negationen unverändert erhalten.
             QUELLEN:
-            \(String(decoding: try JSONEncoder().encode(sources.map { WireSource(id: aliases[$0.id]!, text: $0.text) }), as: UTF8.self))
+            \(String(decoding: try wireEncoder.encode(sources.map { WireSource(id: aliases[$0.id]!, text: $0.text) }), as: UTF8.self))
             """ }
             var result: StructuredReport?
             var repairNote = ""
             var pending = chunk
             var accepted: [ModelReportDraft.Item] = []
+            var omitted: [OmittedSource] = []
             var missingInformation: [String] = []
             var conflicts: [String] = []
             for attempt in 0..<2 {
@@ -233,13 +261,22 @@ struct ReportPipeline {
                         guard let original = originals[draft.items[i].segmentId] else { throw AppFailure("Unbekannte Quellen-ID in der Modellantwort.") }
                         draft.items[i].segmentId = original
                     }
+                    // Unknown IDs in skipped count for nothing: such a source simply stays required.
+                    var skipped: [String: String] = [:]
+                    for skip in draft.skipped {
+                        guard let original = originals[skip.segmentId] else { continue }
+                        let reason = String(skip.reason.trimmingCharacters(in: .whitespacesAndNewlines).prefix(200))
+                        skipped[original] = reason.isEmpty ? "nicht fachlich" : reason
+                    }
                     let invalidSections = Set(draft.items.filter { !template.sections.contains($0.section) }.map(\.section))
                     draft.items.removeAll { !template.sections.contains($0.section) }
                     let sectionRepair = invalidSections.isEmpty ? "" : " Ungültige section-Werte: " + invalidSections.sorted().joined(separator: ", ") + ". Erlaubt sind ausschließlich: " + sectionNames + "."
-                    guard !draft.items.isEmpty else { throw AppFailure("Keine gültig zugeordneten Aussagen." + sectionRepair) }
-                    let candidate = try draft.report(transcriptID: transcript.id, template: template, length: length, audience: audience)
-                    var local = transcript; local.segments = pending; local.editedText = pending.map(\.text).joined(separator: "\n")
-                    _ = try ReportValidator.validate(candidate, transcript: local)
+                    guard !draft.items.isEmpty || !skipped.isEmpty else { throw AppFailure("Keine gültig zugeordneten Aussagen." + sectionRepair) }
+                    if !draft.items.isEmpty {
+                        let candidate = try draft.report(transcriptID: transcript.id, template: template, length: length, audience: audience)
+                        var local = transcript; local.segments = pending; local.editedText = pending.map(\.text).joined(separator: "\n")
+                        _ = try ReportValidator.validate(candidate, transcript: local)
+                    }
                     // Keep only complete, validated source groups. Repair missing groups in isolation,
                     // so a second generation cannot erase facts already covered by the first.
                     let completeIDs = Set(pending.filter { source in
@@ -250,12 +287,22 @@ struct ReportPipeline {
                     }.map(\.id))
                     accepted += draft.items.filter { completeIDs.contains($0.segmentId) }
                     missingInformation += draft.missingInformation; conflicts += draft.conflicts
-                    pending = pending.filter { TranscriptSourcePolicy.requiresCoverage($0.text) && !completeIDs.contains($0.id) }
-                    guard pending.isEmpty else { throw AppFailure("Diese Quellen fehlen oder sind unvollständig: " + pending.compactMap { aliases[$0.id] }.joined(separator: ", ") + "." + sectionRepair) }
-                    result = try ModelReportDraft(items: accepted, missingInformation: Array(Set(missingInformation)).sorted(), conflicts: Array(Set(conflicts)).sorted())
+                    // Left out only if the model said so and the sentence carries no number and no negation.
+                    let left = pending.filter { !completeIDs.contains($0.id) && skipped[$0.id] != nil && ReportSkipPolicy.mayOmit($0.text) }
+                    omitted += left.map { OmittedSource(segmentId: $0.id, text: $0.text, reason: skipped[$0.id]!) }
+                    let leftIDs = Set(left.map(\.id))
+                    let refused = pending.filter { !completeIDs.contains($0.id) && skipped[$0.id] != nil && !leftIDs.contains($0.id) }
+                    pending = pending.filter { TranscriptSourcePolicy.requiresCoverage($0.text) && !completeIDs.contains($0.id) && !leftIDs.contains($0.id) }
+                    guard pending.isEmpty else {
+                        let refusal = refused.isEmpty ? "" : " Diese Quellen enthalten Zahlen oder Verneinungen und dürfen nicht ausgelassen werden: " + refused.compactMap { aliases[$0.id] }.joined(separator: ", ") + "."
+                        throw AppFailure("Diese Quellen fehlen oder sind unvollständig: " + pending.compactMap { aliases[$0.id] }.joined(separator: ", ") + "." + refusal + sectionRepair)
+                    }
+                    var chunkReport = try ModelReportDraft(items: accepted, missingInformation: Array(Set(missingInformation)).sorted(), conflicts: Array(Set(conflicts)).sorted())
                         .report(transcriptID: transcript.id, template: template, length: length, audience: audience)
+                    chunkReport.omitted = omitted.isEmpty ? nil : omitted
+                    result = chunkReport
                     break
-                } catch { repairNote = "\nKorrektur für den erneuten Versuch: " + error.localizedDescription + " Gib alle Quellen vollständig wieder."; if attempt == 1 { throw AppFailure("Der lokale Bericht konnte auch nach einem Reparaturversuch nicht geprüft werden: \(error.localizedDescription) Das Transkript bleibt erhalten.") } }
+                } catch { repairNote = "\nKorrektur für den erneuten Versuch: " + error.localizedDescription + " Gib alle Quellen vollständig wieder."; if attempt == 1 { throw AppFailure("Der Bericht konnte auch nach einem Reparaturversuch nicht geprüft werden: \(error.localizedDescription) Das Transkript bleibt erhalten.") } }
             }
             if let result { collected.append(result) }
             if index + 1 < chunks.count {
@@ -267,12 +314,15 @@ struct ReportPipeline {
         }
         // Merge without another lossy summary; every generated item retains its original source IDs.
         let report = merge(collected, transcript: transcript, template: template, length: length, audience: audience)
+        guard !report.sections.flatMap(\.items).isEmpty else { throw AppFailure("In der Aufnahme wurden keine fachlichen Angaben gefunden. Das Transkript bleibt erhalten.") }
         let warnings = try ReportValidator.validate(report, transcript: transcript)
         return ReportVersion(content: report, modelID: engine.engineID, modelRevision: engine.engineRevision, warnings: warnings)
     }
     private func merge(_ collected: [StructuredReport], transcript: TranscriptVersion, template: ReportTemplate, length: ReportLength, audience: Audience) -> StructuredReport {
-        StructuredReport(template: template, length: length, audience: audience, sourceTranscriptVersionId: transcript.id.uuidString,
+        let omitted = collected.flatMap { $0.omitted ?? [] }
+        return StructuredReport(template: template, length: length, audience: audience, sourceTranscriptVersionId: transcript.id.uuidString,
             sections: template.sections.map { name in ReportSection(key: name, items: collected.flatMap(\.sections).filter { $0.key == name }.flatMap(\.items)) },
-            missingInformation: Array(Set(collected.flatMap(\.missingInformation))).sorted(), conflicts: Array(Set(collected.flatMap(\.conflicts))).sorted())
+            missingInformation: Array(Set(collected.flatMap(\.missingInformation))).sorted(), conflicts: Array(Set(collected.flatMap(\.conflicts))).sorted(),
+            omitted: omitted.isEmpty ? nil : omitted)
     }
 }

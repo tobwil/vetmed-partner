@@ -38,7 +38,7 @@
 		8F31604B46D57DE2FA47C8C6 /* ChatAttachment.swift in Sources */ = {isa = PBXBuildFile; fileRef = B292223B2545A82340DF736D /* ChatAttachment.swift */; };
 		943D6676DAE3801BD98892D5 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 46A8B384B2A496A2FA1F2BE2 /* Assets.xcassets */; };
 		9BA3C5B45E4CAF31FFA52002 /* NavigationAndSharingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2764ECC55D2DECD2FACEACA1 /* NavigationAndSharingTests.swift */; };
-		9F9CF4E1C211A2BFD7BA932B /* report-v1.txt in Resources */ = {isa = PBXBuildFile; fileRef = C43C15EFAC6916941801C8A9 /* report-v1.txt */; };
+		9F9CF4E1C211A2BFD7BA932B /* report-v2.txt in Resources */ = {isa = PBXBuildFile; fileRef = C43C15EFAC6916941801C8A9 /* report-v2.txt */; };
 		A0E953729DA7491CA831C934 /* EncounterWorkflowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBD27642F966E7E57BF07D74 /* EncounterWorkflowView.swift */; };
 		A34B0BE41BD896A83B6C2186 /* sparring-v1.txt in Resources */ = {isa = PBXBuildFile; fileRef = B23656A60E2E7C1B96EC5B56 /* sparring-v1.txt */; };
 		A6D0AF3209402AE4FA1E982F /* ChatMarkdown.swift in Sources */ = {isa = PBXBuildFile; fileRef = 367AB1287D219E05361B21C3 /* ChatMarkdown.swift */; };
@@ -109,7 +109,7 @@
 		B292223B2545A82340DF736D /* ChatAttachment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatAttachment.swift; sourceTree = "<group>"; };
 		BAE519C9878644D401718E2D /* ModelRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelRepository.swift; sourceTree = "<group>"; };
 		C211482ED4A9C76C6B4E757F /* DocumentTextExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentTextExtractor.swift; sourceTree = "<group>"; };
-		C43C15EFAC6916941801C8A9 /* report-v1.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "report-v1.txt"; sourceTree = "<group>"; };
+		C43C15EFAC6916941801C8A9 /* report-v2.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "report-v2.txt"; sourceTree = "<group>"; };
 		CA35497C4C52A3B6C746CED5 /* OnlineReportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnlineReportTests.swift; sourceTree = "<group>"; };
 		CC4497AA381F1031E3FDC240 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		CE73211A210171AC772A7721 /* ChatMarkdownView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatMarkdownView.swift; sourceTree = "<group>"; };
@@ -224,7 +224,7 @@
 		6F762D188258B42B9169DC49 /* prompts */ = {
 			isa = PBXGroup;
 			children = (
-				C43C15EFAC6916941801C8A9 /* report-v1.txt */,
+				C43C15EFAC6916941801C8A9 /* report-v2.txt */,
 				B23656A60E2E7C1B96EC5B56 /* sparring-v1.txt */,
 			);
 			name = prompts;
@@ -403,7 +403,7 @@
 				943D6676DAE3801BD98892D5 /* Assets.xcassets in Resources */,
 				45B0CCC44C05A323E6102DDF /* ModelManifest.json in Resources */,
 				35A143D9FA72A6F81A1CFB9A /* ThirdPartyNotices.txt in Resources */,
-				9F9CF4E1C211A2BFD7BA932B /* report-v1.txt in Resources */,
+				9F9CF4E1C211A2BFD7BA932B /* report-v2.txt in Resources */,
 				A34B0BE41BD896A83B6C2186 /* sparring-v1.txt in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

@@ -172,6 +172,17 @@ fun ReportReviewScreen(model: AppViewModel, nav: NavHostController, location: En
                             Spacer(Modifier.width(6.dp)); Text(warning, color = Color(0xFFFF9F0A), style = MaterialTheme.typography.bodyMedium)
                         }
                     }
+                    // Sentences the model left out as not clinical are shown, never dropped silently (ADR 0018).
+                    report.content.omitted?.takeIf { it.isNotEmpty() }?.let { omitted ->
+                        Text("Nicht übernommen · bitte prüfen", fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 12.dp).testTag("report-omitted"))
+                        omitted.forEach { source ->
+                            Column(Modifier.padding(top = 6.dp)) {
+                                Text("„${source.text.trim()}“", style = MaterialTheme.typography.bodyMedium)
+                                Text(source.reason, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                        Text("Gehört ein Satz doch in den Bericht, ergänze ihn oben im Text.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp))
+                    }
                     TextButton(onClick = { sources = !sources }) {
                         Text("Quellenbezüge"); Icon(if (sources) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore, null)
                     }

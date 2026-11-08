@@ -271,6 +271,12 @@ Einfach im Chat anhängen, als PDF oder Foto. Du musst nichts vorab auswählen (
 
 Frühere bestätigte Werte desselben Falls stehen als Verlauf dabei. Namen von Tier und Halter auf dem Befund vorher abdecken, wenn sie nicht an den Anbieter gehen sollen.
 
+**Klappt ein Bericht auch aus einem aufgenommenen Gespräch?**
+Ja ([Entscheidung 0018](docs/architecture/0018-conversation-reports.md)). Begrüßung, Smalltalk und Füllwörter darf das Modell weglassen, aber nie still:
+- Sie stehen in der Prüfansicht unter **„Nicht übernommen · bitte prüfen“**.
+- Sätze mit Zahlen, Zahlwörtern („drei Tage“) oder Verneinungen („kein Erbrechen“) lässt die App nie aus.
+- Online verarbeitet ein Bericht Aufnahmen bis etwa eine Stunde.
+
 **Landen meine Fälle in der Cloud?**
 Nein. Fälle, Aufnahmen und Berichte liegen verschlüsselt nur auf dem Gerät. Es gibt keine Synchronisation und kein Backup. Etwas verlässt das Gerät nur über deinen eigenen API-Key: „Bericht online erstellen“ sendet das geprüfte Transkript, „Senden“ im Chat die Frage, die angehängten Inhalte und den Verlauf dieses Chats. Die Online-Transkription sendet die Audioteile an Google (Gemini), aber erst nach deiner einmaligen Zustimmung. Mit „Nur auf dem Gerät verarbeiten“ bleiben Aufnahme, Transkription und Berichte lokal.
 

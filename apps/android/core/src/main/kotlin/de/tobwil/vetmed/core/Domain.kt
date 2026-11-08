@@ -179,12 +179,18 @@ data class StructuredReport(
     val missingInformation: List<String>,
     val conflicts: List<String>,
     val requiresReview: Boolean = true,
+    /** Sources left out as not clinical (greetings, small talk), shown for review; never part of [text]. */
+    val omitted: List<OmittedSource>? = null,
 ) {
     val text: String get() =
         sections.joinToString("\n\n") { section -> section.key + "\n" + section.items.joinToString("\n") { "• " + it.text } } +
             (if (missingInformation.isEmpty()) "" else "\n\nOffene Angaben\n" + missingInformation.joinToString("\n")) +
             (if (conflicts.isEmpty()) "" else "\n\nWidersprüche\n" + conflicts.joinToString("\n"))
 }
+
+/** A transcript sentence the model marked as not clinical. Only sentences without numbers and negations qualify. */
+@Serializable
+data class OmittedSource(val segmentId: String, val text: String, val reason: String)
 
 @Serializable
 data class ReportVersion(
@@ -195,7 +201,7 @@ data class ReportVersion(
     val editedText: String? = null,
     val modelID: String,
     val modelRevision: String,
-    val promptVersion: String = "report-v1",
+    val promptVersion: String = "report-v2",
     val warnings: List<String>,
     val approvedAt: AppleDate? = null,
 ) {

@@ -64,7 +64,20 @@ object GeminiOnlineApi {
                 put("responseMimeType", "application/json")
                 putJsonObject("responseSchema") {
                     put("type", "OBJECT")
-                    putJsonObject("properties") { putJsonObject("items") { put("type", "ARRAY"); put("items", item) } }
+                    putJsonObject("properties") {
+                        putJsonObject("items") { put("type", "ARRAY"); put("items", item) }
+                        putJsonObject("skipped") {
+                            put("type", "ARRAY")
+                            putJsonObject("items") {
+                                put("type", "OBJECT")
+                                putJsonObject("properties") {
+                                    putJsonObject("segmentId") { put("type", "STRING"); put("format", "enum"); put("enum", JsonArray((1..sourceLimit).map { JsonPrimitive("q$it") })) }
+                                    putJsonObject("reason") { put("type", "STRING") }
+                                }
+                                putJsonArray("required") { add(JsonPrimitive("segmentId")); add(JsonPrimitive("reason")) }
+                            }
+                        }
+                    }
                     putJsonArray("required") { add(JsonPrimitive("items")) }
                 }
             }
@@ -228,14 +241,14 @@ class GeminiReportEngine(
     private val actualModels = sortedSetOf<String>()
     override val engineID get() = "gemini/" + configuration.modelID
     override val engineRevision get() = if (actualModels.isEmpty()) configuration.modelID else actualModels.joinToString(", ")
-    override val sourceLimit get() = 24
-    override val characterLimit get() = 12_000
+    override val sourceLimit get() = 60
+    override val characterLimit get() = 20_000
     override val executionLabel get() = "Gemini · online"
 
     override suspend fun generate(prompt: String, instructions: String): String {
         currentCoroutineContext().ensureActive()
         if (!configuration.isEnabled) throw AppFailure("Online-Berichte sind noch nicht aktiviert.")
-        if (calls >= 12) throw AppFailure("Das Limit von zwölf Anbieteranfragen für diesen Bericht ist erreicht. Gesicherte Abschnitte bleiben erhalten.")
+        if (calls >= MAX_CALLS) throw AppFailure("Das Limit von $MAX_CALLS Anbieteranfragen für diesen Bericht ist erreicht. Gesicherte Abschnitte bleiben erhalten.")
         val request = GeminiOnlineApi.reportRequest(configuration.modelID, key, prompt, instructions, sections, sourceLimit)
         // The stored request record never contains the key: it is only in the header.
         val id = record(request.body ?: ByteArray(0), configuration.modelID)

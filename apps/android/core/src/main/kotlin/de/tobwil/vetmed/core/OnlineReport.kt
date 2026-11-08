@@ -125,6 +125,15 @@ object OpenAIReportApi {
             }
             putJsonArray("required") { listOf("section", "text", "segmentId", "quote").forEach { add(JsonPrimitive(it)) } }
         }
+        val skip = buildJsonObject {
+            put("type", "object")
+            put("additionalProperties", false)
+            putJsonObject("properties") {
+                putJsonObject("segmentId") { put("type", "string"); put("enum", JsonArray((1..sourceLimit).map { JsonPrimitive("q$it") })) }
+                putJsonObject("reason") { put("type", "string") }
+            }
+            putJsonArray("required") { add(JsonPrimitive("segmentId")); add(JsonPrimitive("reason")) }
+        }
         val body = buildJsonObject {
             put("model", modelID)
             put("store", false)
@@ -146,8 +155,11 @@ object OpenAIReportApi {
                     putJsonObject("schema") {
                         put("type", "object")
                         put("additionalProperties", false)
-                        putJsonObject("properties") { putJsonObject("items") { put("type", "array"); put("items", item) } }
-                        putJsonArray("required") { add(JsonPrimitive("items")) }
+                        putJsonObject("properties") {
+                            putJsonObject("items") { put("type", "array"); put("items", item) }
+                            putJsonObject("skipped") { put("type", "array"); put("items", skip) }
+                        }
+                        putJsonArray("required") { add(JsonPrimitive("items")); add(JsonPrimitive("skipped")) }
                     }
                 }
             }
@@ -201,6 +213,9 @@ object OpenAIReportApi {
     }
 }
 
+/** Request budget per report: about 20 chunks of 60 sentences plus one repair each, enough for an hour-long conversation. */
+const val MAX_CALLS = 40
+
 /** Online engine with request budget, consent gate and provenance callbacks, like iOS `OpenAIReportEngine`. */
 class OpenAIReportEngine(
     private val configuration: OnlineReportConfiguration,
@@ -214,14 +229,15 @@ class OpenAIReportEngine(
     private val actualModels = sortedSetOf<String>()
     override val engineID get() = "openai/" + configuration.modelID
     override val engineRevision get() = if (actualModels.isEmpty()) configuration.modelID else actualModels.joinToString(", ")
-    override val sourceLimit get() = 24
-    override val characterLimit get() = 12_000
+    // Larger chunks keep long conversations within the request budget; modern online models handle them easily.
+    override val sourceLimit get() = 60
+    override val characterLimit get() = 20_000
     override val executionLabel get() = "OpenAI · online"
 
     override suspend fun generate(prompt: String, instructions: String): String {
         currentCoroutineContext().ensureActive()
         if (!configuration.isEnabled) throw AppFailure("Online-Berichte sind noch nicht aktiviert.")
-        if (calls >= 12) throw AppFailure("Das Limit von zwölf Anbieteranfragen für diesen Bericht ist erreicht. Gesicherte Abschnitte bleiben erhalten.")
+        if (calls >= MAX_CALLS) throw AppFailure("Das Limit von $MAX_CALLS Anbieteranfragen für diesen Bericht ist erreicht. Gesicherte Abschnitte bleiben erhalten.")
         val request = OpenAIReportApi.request(configuration.modelID, key, prompt, instructions, sections, sourceLimit)
         val id = record(request.body ?: ByteArray(0), configuration.modelID)
         calls += 1

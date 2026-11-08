@@ -19,7 +19,7 @@ object Prompts {
     fun load(name: String): String =
         Prompts::class.java.classLoader.getResourceAsStream("$name.txt")?.use { it.readBytes().decodeToString() }
             ?: throw AppFailure("Der versionierte Prompt $name fehlt.")
-    val report: String by lazy { load("report-v1") }
+    val report: String by lazy { load("report-v2") }
 }
 
 /** Port of the iOS `ReportPipeline`: chunked generation, one repair attempt, local validation, no silent omission. */
@@ -67,10 +67,11 @@ class ReportPipeline(private val engine: ReportTextEngine, private val instructi
                     Ordne ALLE Befunde und vereinbarten Schritte aus den Quellen passenden Abschnitten zu.
                     Jede Quellen-ID muss in mindestens einem Item erscheinen. Es gibt ${sources.size} Quellen: ${sources.mapNotNull { aliases[it.id] }.joinToString(", ")}.
                     Auch negative Angaben, unbekannte Messwerte und vereinbarte Kontrollen müssen erhalten bleiben.
+                    Quellen ohne fachlichen Inhalt (Begrüßung, Smalltalk, Füllwörter) führst du stattdessen unter skipped auf. Quellen mit Zahlen oder Verneinungen nie.
                     Erlaubte section-Werte: $sectionNames.
                     Antworte mit genau einem JSON-Objekt. Beginne mit { und ende mit }. Kein Titel, keine Codeblöcke.
-                    Struktur: {"items":[{"section":"Abschnittsname","text":"Aussage","segmentId":"Quellen-ID","quote":"wörtliches Zitat"}]}
-                    Das äußere Objekt hat nur das Feld items. Beende die Antwort unmittelbar nach seiner schließenden Klammer.
+                    Struktur: {"items":[{"section":"Abschnittsname","text":"Aussage","segmentId":"Quellen-ID","quote":"wörtliches Zitat"}],"skipped":[{"segmentId":"Quellen-ID","reason":"kurzer Grund"}]}
+                    Das äußere Objekt hat nur die Felder items und skipped. Beende die Antwort unmittelbar nach seiner schließenden Klammer.
                     Jedes Item hat genau diese vier String-Felder. Nutze echte Quellen-IDs aus id und exakte Zitate aus text.
                     Keine Inhalte erfinden. Keine Normalbefunde ergänzen. Zahlen und Negationen unverändert erhalten.
                     QUELLEN:
@@ -80,6 +81,7 @@ class ReportPipeline(private val engine: ReportTextEngine, private val instructi
             var repairNote = ""
             var pending = chunk
             val accepted = mutableListOf<ModelReportDraft.Item>()
+            val omitted = mutableListOf<OmittedSource>()
             val missingInformation = mutableListOf<String>()
             val conflicts = mutableListOf<String>()
             for (attempt in 0 until 2) {
@@ -89,14 +91,18 @@ class ReportPipeline(private val engine: ReportTextEngine, private val instructi
                     draft = draft.copy(items = draft.items.map { item ->
                         item.copy(segmentId = originals[item.segmentId] ?: throw AppFailure("Unbekannte Quellen-ID in der Modellantwort."))
                     })
+                    // Unknown IDs in skipped count for nothing: such a source simply stays required.
+                    val skipped = draft.skipped.mapNotNull { skip -> originals[skip.segmentId]?.let { it to skip.reason.trim().take(200).ifEmpty { "nicht fachlich" } } }.toMap()
                     val invalidSections = draft.items.filter { it.section !in template.sections }.map { it.section }.toSortedSet()
                     draft = draft.copy(items = draft.items.filter { it.section in template.sections })
                     val sectionRepair = if (invalidSections.isEmpty()) "" else
                         " Ungültige section-Werte: " + invalidSections.joinToString(", ") + ". Erlaubt sind ausschließlich: " + sectionNames + "."
-                    if (draft.items.isEmpty()) throw AppFailure("Keine gültig zugeordneten Aussagen.$sectionRepair")
-                    val candidate = draft.report(transcript.id, template, length, audience)
-                    val local = transcript.copy(segments = pending, editedText = pending.joinToString("\n") { it.text })
-                    ReportValidator.validate(candidate, local)
+                    if (draft.items.isEmpty() && skipped.isEmpty()) throw AppFailure("Keine gültig zugeordneten Aussagen.$sectionRepair")
+                    if (draft.items.isNotEmpty()) {
+                        val candidate = draft.report(transcript.id, template, length, audience)
+                        val local = transcript.copy(segments = pending, editedText = pending.joinToString("\n") { it.text })
+                        ReportValidator.validate(candidate, local)
+                    }
                     // Keep only complete, validated source groups. Repair missing groups in isolation,
                     // so a second generation cannot erase facts already covered by the first.
                     val completeIDs = pending.filter { source ->
@@ -107,12 +113,19 @@ class ReportPipeline(private val engine: ReportTextEngine, private val instructi
                     }.map { it.id }.toSet()
                     accepted += draft.items.filter { it.segmentId in completeIDs }
                     missingInformation += draft.missingInformation; conflicts += draft.conflicts
-                    pending = pending.filter { TranscriptSourcePolicy.requiresCoverage(it.text) && it.id !in completeIDs }
+                    // Left out only if the model said so and the sentence carries no number and no negation.
+                    val left = pending.filter { it.id !in completeIDs && it.id in skipped && ReportSkipPolicy.mayOmit(it.text) }
+                    omitted += left.map { OmittedSource(it.id, it.text, skipped.getValue(it.id)) }
+                    val leftIDs = left.map { it.id }.toSet()
+                    val refused = pending.filter { it.id !in completeIDs && it.id in skipped && it.id !in leftIDs }
+                    pending = pending.filter { TranscriptSourcePolicy.requiresCoverage(it.text) && it.id !in completeIDs && it.id !in leftIDs }
                     if (pending.isNotEmpty()) {
-                        throw AppFailure("Diese Quellen fehlen oder sind unvollständig: " + pending.mapNotNull { aliases[it.id] }.joinToString(", ") + "." + sectionRepair)
+                        val refusal = if (refused.isEmpty()) "" else " Diese Quellen enthalten Zahlen oder Verneinungen und dürfen nicht ausgelassen werden: " +
+                            refused.mapNotNull { aliases[it.id] }.joinToString(", ") + "."
+                        throw AppFailure("Diese Quellen fehlen oder sind unvollständig: " + pending.mapNotNull { aliases[it.id] }.joinToString(", ") + "." + refusal + sectionRepair)
                     }
                     result = ModelReportDraft(accepted, missingInformation.toSortedSet().toList(), conflicts.toSortedSet().toList())
-                        .report(transcript.id, template, length, audience)
+                        .report(transcript.id, template, length, audience).copy(omitted = omitted.toList().ifEmpty { null })
                     break
                 } catch (error: AppFailure) {
                     repairNote = "\nKorrektur für den erneuten Versuch: " + error.message + " Gib alle Quellen vollständig wieder."
@@ -131,6 +144,7 @@ class ReportPipeline(private val engine: ReportTextEngine, private val instructi
         }
         // Merge without another lossy summary; every generated item retains its original source IDs.
         val report = merge(collected, transcript, template, length, audience)
+        if (report.sections.all { it.items.isEmpty() }) throw AppFailure("In der Aufnahme wurden keine fachlichen Angaben gefunden. Das Transkript bleibt erhalten.")
         val warnings = ReportValidator.validate(report, transcript)
         return ReportVersion(content = report, modelID = engine.engineID, modelRevision = engine.engineRevision, warnings = warnings)
     }
@@ -141,5 +155,6 @@ class ReportPipeline(private val engine: ReportTextEngine, private val instructi
             sections = template.sections.map { name -> ReportSection(name, collected.flatMap { it.sections }.filter { it.key == name }.flatMap { it.items }) },
             missingInformation = collected.flatMap { it.missingInformation }.toSortedSet().toList(),
             conflicts = collected.flatMap { it.conflicts }.toSortedSet().toList(),
+            omitted = collected.flatMap { it.omitted.orEmpty() }.ifEmpty { null },
         )
 }

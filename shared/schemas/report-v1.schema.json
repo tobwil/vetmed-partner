@@ -118,6 +118,30 @@
           }
         }
       }
+    },
+    "omitted": {
+      "type": "array",
+      "description": "Sources the model marked as not clinical (greetings, small talk). Never sentences with numbers or negations. Shown for review, not part of the report text.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "segmentId",
+          "text",
+          "reason"
+        ],
+        "properties": {
+          "segmentId": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      }
     }
   }
 }

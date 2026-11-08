@@ -129,8 +129,11 @@ enum OpenAIReportAPI {
             "properties": ["section": ["type": "string", "enum": sections], "text": ["type": "string"],
                            "segmentId": ["type": "string", "enum": (1...sourceLimit).map { "q\($0)" }], "quote": ["type": "string"]],
             "required": ["section", "text", "segmentId", "quote"]]
+        let skip: [String: Any] = ["type": "object", "additionalProperties": false,
+            "properties": ["segmentId": ["type": "string", "enum": (1...sourceLimit).map { "q\($0)" }], "reason": ["type": "string"]],
+            "required": ["segmentId", "reason"]]
         let schema: [String: Any] = ["type": "object", "additionalProperties": false,
-            "properties": ["items": ["type": "array", "items": item]], "required": ["items"]]
+            "properties": ["items": ["type": "array", "items": item], "skipped": ["type": "array", "items": skip]], "required": ["items", "skipped"]]
         let body: [String: Any] = ["model": modelID, "store": false, "stream": false, "background": false,
             "max_output_tokens": 8192, "instructions": instructions,
             "input": [["role": "user", "content": [["type": "input_text", "text": prompt]]]],
@@ -182,6 +185,9 @@ enum OpenAIReportAPI {
 }
 
 @MainActor
+/// Request budget per report: about 20 chunks of 60 sentences plus one repair each, enough for an hour-long conversation.
+let reportMaxCalls = 40
+
 final class OpenAIReportEngine: ReportTextEngine {
     let configuration: OnlineReportConfiguration
     private let key: String
@@ -193,8 +199,9 @@ final class OpenAIReportEngine: ReportTextEngine {
     private var actualModels = Set<String>()
     var engineID: String { "openai/" + configuration.modelID }
     var engineRevision: String { actualModels.isEmpty ? configuration.modelID : actualModels.sorted().joined(separator: ", ") }
-    var sourceLimit: Int { 24 }
-    var characterLimit: Int { 12000 }
+    // Larger chunks keep long conversations within the request budget (ADR 0018).
+    var sourceLimit: Int { 60 }
+    var characterLimit: Int { 20000 }
     var executionLabel: String { "OpenAI · online" }
     init(configuration: OnlineReportConfiguration, key: String, sections: [String], transport: any ReportHTTPTransport = EphemeralReportHTTP(),
          record: @escaping (Data, String) async throws -> UUID = { _, _ in UUID() },
@@ -204,7 +211,7 @@ final class OpenAIReportEngine: ReportTextEngine {
     func generate(prompt: String, instructions: String) async throws -> String {
         try Task.checkCancellation()
         guard configuration.isEnabled else { throw AppFailure("Online-Berichte sind noch nicht aktiviert.") }
-        guard calls < 12 else { throw AppFailure("Das Limit von zwölf Anbieteranfragen für diesen Bericht ist erreicht. Gesicherte Abschnitte bleiben erhalten.") }
+        guard calls < reportMaxCalls else { throw AppFailure("Das Limit von \(reportMaxCalls) Anbieteranfragen für diesen Bericht ist erreicht. Gesicherte Abschnitte bleiben erhalten.") }
         let request = try OpenAIReportAPI.request(modelID: configuration.modelID, key: key, prompt: prompt, instructions: instructions, sections: sections, sourceLimit: sourceLimit)
         let id = try await record(request.httpBody ?? Data(), configuration.modelID)
         calls += 1

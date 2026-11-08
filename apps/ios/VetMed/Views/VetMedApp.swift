@@ -137,13 +137,26 @@ struct ReportReview: View {
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(report.approvedAt == nil ? Color.orange : Color.green)
                         .symbolEffect(.bounce, value: report.approvedAt != nil)
-                    Text(report.modelID.hasPrefix("openai/") ? "Online erstellt · OpenAI" : "Lokal auf dem Gerät erstellt").font(.caption).foregroundStyle(.secondary)
+                    Text(report.modelID.hasPrefix("openai/") ? "Online erstellt · OpenAI" : report.modelID.hasPrefix("gemini/") ? "Online erstellt · Gemini" : "Lokal auf dem Gerät erstellt").font(.caption).foregroundStyle(.secondary)
                     DisclosureGroup("Modell & Version") { Text(report.modelID + "\n" + report.modelRevision).font(.caption).textSelection(.enabled) }
                     TextEditor(text: $edited).frame(minHeight: 300).accessibilityIdentifier("report-editor")
                     if edited != report.text { Button("Als neue Version speichern") { Task { if await app.saveReportEdit(edited, report: report, at: location) { dismiss() } } } }
                 }
                 Section("Prüfung am Original") {
                     ForEach(report.warnings, id: \.self) { Text($0).foregroundStyle(.orange) }
+                    // Sentences the model left out as not clinical are shown, never dropped silently (ADR 0018).
+                    if let omitted = report.content.omitted, !omitted.isEmpty {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Nicht übernommen · bitte prüfen").font(.subheadline.weight(.semibold))
+                            ForEach(Array(omitted.enumerated()), id: \.offset) { _, source in
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("„\(source.text.trimmingCharacters(in: .whitespacesAndNewlines))“").font(.subheadline)
+                                    Text(source.reason).font(.caption).foregroundStyle(.secondary)
+                                }
+                            }
+                            Text("Gehört ein Satz doch in den Bericht, ergänze ihn oben im Text.").font(.caption).foregroundStyle(.secondary)
+                        }.accessibilityIdentifier("report-omitted")
+                    }
                     DisclosureGroup("Quellenbezüge") {
                         ForEach(Array(report.content.sections.flatMap(\.items).enumerated()), id: \.offset) { _, item in
                             VStack(alignment: .leading, spacing: 5) { Text(item.text).font(.subheadline); ForEach(Array(item.sourceRefs.enumerated()), id: \.offset) { _, ref in Text("„\(ref.quote)“ · \(ref.segmentId)").font(.caption).foregroundStyle(.secondary) } }

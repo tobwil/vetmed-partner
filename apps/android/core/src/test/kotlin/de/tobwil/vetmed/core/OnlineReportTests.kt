@@ -72,9 +72,9 @@ class OnlineReportTests {
     @Test fun requestBudgetAndActualModelProvenance() = runTest {
         val transport = StubTransport(completed())
         val engine = OpenAIReportEngine(configuration, key, listOf("Befunde"), transport)
-        repeat(12) { engine.generate("Synthetic", "Test") }
-        try { engine.generate("Synthetic", "Test"); fail("Budget exceeded") } catch (error: AppFailure) { assertTrue(error.message!!.contains("zwölf")) }
-        assertEquals(12, transport.requests.size)
+        repeat(MAX_CALLS) { engine.generate("Synthetic", "Test") }
+        try { engine.generate("Synthetic", "Test"); fail("Budget exceeded") } catch (error: AppFailure) { assertTrue(error.message!!.contains("Limit von $MAX_CALLS")) }
+        assertEquals(MAX_CALLS, transport.requests.size)
         assertEquals("synthetic-snapshot-1", engine.engineRevision)
     }
 
