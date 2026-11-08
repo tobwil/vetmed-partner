@@ -17,11 +17,16 @@ import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
 import java.util.Base64
 
-/** Optional online speech-to-text with the user's own Gemini key. Off until explicitly switched on in settings. */
+/**
+ * Online speech-to-text with the user's own Gemini key. It is the default once the key exists and the user agreed
+ * once ([decidedAt]); before that the app asks instead of sending audio (see [Processing.transcription]).
+ */
 @Serializable
 data class GeminiTranscriptionConfiguration(
     val enabled: Boolean = false,
     val modelID: String = DEFAULT_MODEL,
+    /** When the user explicitly chose online or device transcription. Older stores have none and are asked once. */
+    val decidedAt: AppleDate? = null,
 ) {
     companion object { const val DEFAULT_MODEL = "gemini-3.6-flash" }
 }

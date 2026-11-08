@@ -62,10 +62,11 @@ class WalkthroughTests {
         document: VaultDocument?, mode: AppearanceMode = AppearanceMode.LIGHT, theme: AccentTheme = AccentTheme.KLINIK,
         microphone: AudioSourceFactory = SyntheticMicrophone(0), transcriber: Transcriber = SyntheticTranscriber(),
         localModel: de.tobwil.vetmed.data.LocalReportModel = syntheticLocalModel(folder.root, SyntheticModelServer(), SyntheticRuntime("Befunde")),
+        gemini: de.tobwil.vetmed.core.GeminiTranscriptionApi = de.tobwil.vetmed.core.GeminiTranscriptionApi(transport = { throw AssertionError("Unerwarteter Netzaufruf") }),
     ): AppViewModel {
         AppearanceStore(application).apply { this.mode = mode; this.theme = theme }
         if (document != null) runBlocking { repository().save(document) }
-        val model = AppViewModel(application, repository(), microphone, transcriber, localModel)
+        val model = AppViewModel(application, repository(), microphone, transcriber, localModel, gemini)
         compose.setContent { VetMedApp(model) }
         waitFor("App geöffnet", model) { model.ready.value }
         compose.waitForIdle()
@@ -269,6 +270,74 @@ class WalkthroughTests {
         compose.onNodeWithTag("original-recording").performClick()
         compose.waitForIdle()
         shot("12-transkript-mit-aufnahme")
+    }
+
+    /** Records five synthetic seconds in a new dictation and finishes it, which starts the transcription. */
+    private fun recordAndFinish(model: AppViewModel) {
+        compose.onNodeWithText("Diktat aufnehmen").performClick()
+        waitFor("Diktat angelegt", model) { model.document.value.cases.isNotEmpty() }
+        compose.onNodeWithTag("record-audio").performClick()
+        waitFor("Aufnahme läuft", model) { model.recorder.recording.value && model.recorder.elapsed.value >= 5.0 }
+        compose.onNodeWithTag("finish-dictation").performClick()
+    }
+
+    private val geminiKey = "synthetic-gemini-key-for-walkthrough"
+
+    @Test fun aGeminiKeyAsksOnceBeforeAudioLeavesTheDevice() {
+        shadowOf(application).grantPermissions(android.Manifest.permission.RECORD_AUDIO)
+        runBlocking { repository().saveGemini(de.tobwil.vetmed.core.GeminiTranscriptionConfiguration(), geminiKey) }
+        val transcriber = SyntheticTranscriber()
+        val model = launch(null, microphone = SyntheticMicrophone(Wav.BYTES_PER_SECOND * 5L), transcriber = transcriber)
+        assertEquals(de.tobwil.vetmed.core.ProcessingRoute.ASK, model.transcriptionRoute.value)
+        recordAndFinish(model)
+        waitFor("Frage gestellt", model) { model.transcriptionQuestion.value != null }
+        compose.onNodeWithText("Online transkribieren?").assertIsDisplayed()
+        assertTrue("Vor der Antwort darf nichts transkribiert werden", model.document.value.cases.single().encounters.single().transcripts.isEmpty())
+        compose.onNodeWithTag("consent-device").performClick()
+        waitFor("Auf dem Gerät transkribiert", model) { model.document.value.cases.single().encounters.single().transcripts.isNotEmpty() }
+        assertEquals(transcriber.engineName, model.document.value.cases.single().encounters.single().transcripts.single().engine)
+        val stored = runBlocking { repository().geminiConfiguration() }
+        assertEquals(false, stored.enabled)
+        assertTrue(stored.decidedAt != null)
+        assertEquals(de.tobwil.vetmed.core.ProcessingRoute.DEVICE, model.transcriptionRoute.value)
+    }
+
+    @Test fun aFailedOnlineTranscriptionOffersTheDeviceButNeverSwitchesByItself() {
+        shadowOf(application).grantPermissions(android.Manifest.permission.RECORD_AUDIO)
+        runBlocking { repository().saveGemini(de.tobwil.vetmed.core.GeminiTranscriptionConfiguration(enabled = true, decidedAt = de.tobwil.vetmed.core.now()), geminiKey) }
+        var sent = 0
+        val gemini = de.tobwil.vetmed.core.GeminiTranscriptionApi(transport = { sent += 1; de.tobwil.vetmed.core.HttpResponse(503, ByteArray(0)) }, retryDelays = emptyList())
+        val transcriber = SyntheticTranscriber()
+        val model = launch(null, microphone = SyntheticMicrophone(Wav.BYTES_PER_SECOND * 5L), transcriber = transcriber, gemini = gemini)
+        recordAndFinish(model)
+        waitFor("Fehler gemeldet", model) { !model.busy.value && model.deviceOffer.value != null }
+        assertEquals(1, sent)
+        assertTrue("Kein stiller Wechsel", model.document.value.cases.single().encounters.single().transcripts.isEmpty())
+        model.dismissError()
+        compose.waitForIdle()
+        compose.onNodeWithTag("device-offer").performScrollTo().assertIsDisplayed()
+        shot("15-online-fehler-geraet-anbieten")
+        compose.onNodeWithTag("transcribe-on-device").performClick()
+        waitFor("Auf dem Gerät transkribiert", model) { model.document.value.cases.single().encounters.single().transcripts.isNotEmpty() }
+        assertEquals(transcriber.engineName, model.document.value.cases.single().encounters.single().transcripts.single().engine)
+        assertEquals(1, sent)
+        // The choice applied to this run only: the next one is online again.
+        assertEquals(de.tobwil.vetmed.core.ProcessingRoute.ONLINE, model.transcriptionRoute.value)
+    }
+
+    @Test fun deviceOnlyInSettingsKeepsTranscriptionAndReportsOnTheDevice() {
+        runBlocking { repository().saveGemini(de.tobwil.vetmed.core.GeminiTranscriptionConfiguration(enabled = true, decidedAt = de.tobwil.vetmed.core.now()), geminiKey) }
+        val model = launch(null)
+        assertEquals(de.tobwil.vetmed.core.ProcessingRoute.ONLINE, model.transcriptionRoute.value)
+        compose.onNodeWithContentDescription("Einstellungen").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithTag("device-only").performScrollTo().performClick()
+        waitFor("Gespeichert", model) { model.online.value.deviceOnly == true }
+        assertEquals(de.tobwil.vetmed.core.ProcessingRoute.DEVICE, model.transcriptionRoute.value)
+        assertEquals(de.tobwil.vetmed.core.ReportExecutionMode.OFFLINE, model.reportMode.value)
+        assertEquals(true, runBlocking { repository().onlineConfiguration() }.deviceOnly)
+        compose.onNodeWithTag("processing-summary", useUnmergedTree = true).assertIsDisplayed()
+        shot("16-verarbeitung-einstellungen")
     }
 
     @Test fun rotationAndLeavingTheAppKeepRecording() {

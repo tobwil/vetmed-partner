@@ -43,6 +43,8 @@ data class OnlineReportConfiguration(
     val provider: OnlineProvider = OnlineProvider.OPENAI,
     /** Chat: let OpenAI search official medicine sources for medication statements (costs per search). */
     val sourceSearch: Boolean? = null,
+    /** "Nur auf dem Gerät verarbeiten": transcription and reports stay on the device even with a key (ADR 0014). */
+    val deviceOnly: Boolean? = null,
 ) {
     val isEnabled: Boolean get() = consentDate != null && modelID.isNotEmpty()
     /** Source search exists only with OpenAI's domain-limited web search; Gemini offers no domain restriction. */

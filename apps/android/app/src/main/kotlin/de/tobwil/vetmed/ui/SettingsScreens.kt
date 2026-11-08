@@ -79,6 +79,8 @@ import androidx.navigation.NavHostController
 import de.tobwil.vetmed.AppViewModel
 import de.tobwil.vetmed.core.VocabularyEntry
 import de.tobwil.vetmed.core.OnlineProvider
+import de.tobwil.vetmed.core.Processing
+import de.tobwil.vetmed.core.ProcessingRoute
 import de.tobwil.vetmed.data.SpeechStatus
 
 @Composable
@@ -118,6 +120,22 @@ fun SettingsScreen(model: AppViewModel, nav: NavHostController) {
     val hasKey by model.hasKey.collectAsStateWithLifecycle()
     val haptics = LocalHapticFeedback.current
     SettingsScaffold("Einstellungen", nav) {
+        SectionTitle("Verarbeitung")
+        Group {
+            val route by model.transcriptionRoute.collectAsStateWithLifecycle()
+            Text(if (online.deviceOnly != true && online.isEnabled && hasKey) "Online · beste Qualität" else "Auf dem Gerät", fontWeight = FontWeight.SemiBold)
+            Text(Processing.summary(online, hasKey, route), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.testTag("processing-summary"))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Nur auf dem Gerät verarbeiten")
+                    Caption("Transkription und Berichte ohne Internet. Der Chat braucht weiterhin den Online-Zugang.")
+                }
+                Switch(online.deviceOnly == true, { model.setDeviceOnly(it) }, modifier = Modifier.testTag("device-only"))
+            }
+            LinkRow("API-Key & Modell") { nav.navigate(OnlineRoute) }
+            Caption(if (hasKey) "${online.provider.title} · ${online.modelID.ifEmpty { "kein Modell gewählt" }}" else "Noch kein API-Key hinterlegt")
+            Caption("Fällt Online aus, zeigt die App den Fehler und bietet die Verarbeitung auf dem Gerät als Knopf an. Sie wechselt nie von selbst und sendet später nichts automatisch nach.")
+        }
         SectionTitle("Darstellung")
         Group {
             SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
@@ -138,12 +156,6 @@ fun SettingsScreen(model: AppViewModel, nav: NavHostController) {
                     }
                 }
             }
-        }
-        SectionTitle("Online-Zugang")
-        Group {
-            LinkRow("API-Key & Modell") { nav.navigate(OnlineRoute) }
-            Caption(if (hasKey) "${online.provider.title} · ${online.modelID.ifEmpty { "kein Modell gewählt" }}" else "Noch kein API-Key hinterlegt")
-            Caption("Mit aktivierter Konfiguration ist Online der Standard. Offline kannst du pro Bericht ausdrücklich auswählen.")
         }
         SectionTitle("Optionales Offline-Modell")
         Group {
@@ -200,8 +212,13 @@ fun SettingsScreen(model: AppViewModel, nav: NavHostController) {
             }
             val gemini by model.geminiConfiguration.collectAsStateWithLifecycle()
             val hasGeminiKey by model.hasGeminiKey.collectAsStateWithLifecycle()
-            Caption(if (gemini.enabled && hasGeminiKey) "Aktiv: Online-Transkription mit Gemini (${gemini.modelID}). Die Aufnahme wird dafür an Google gesendet."
-                else "Transkribiert wird mit dem Offline-Erkenner des Systems. Online-Transkription mit Gemini ist nur nach ausdrücklicher Aktivierung möglich.")
+            val route by model.transcriptionRoute.collectAsStateWithLifecycle()
+            Caption(when (route) {
+                ProcessingRoute.ONLINE -> "Aktiv: Online-Transkription mit Gemini (${gemini.modelID}). Die Audioteile werden dafür an Google gesendet."
+                ProcessingRoute.ASK -> "Gemini ist eingerichtet. Vor der ersten Transkription fragt die App einmal, ob Audio an Google gehen darf."
+                ProcessingRoute.DEVICE -> if (hasGeminiKey && online.deviceOnly != true) "Transkribiert wird auf dem Gerät, wie von dir gewählt. Gemini erkennt Fachsprache meist deutlich besser."
+                    else "Transkribiert wird mit dem Offline-Erkenner des Systems. Mit einem Gemini-Key wird die genauere Online-Transkription der Standard."
+            })
             LinkRow("Online-Transkription (Gemini)") { nav.navigate(GeminiRoute) }
             LinkRow("Eigene Fachwortkorrekturen") { nav.navigate(VocabularyRoute) }
         }
@@ -347,7 +364,9 @@ fun GeminiSettingsScreen(model: AppViewModel, nav: NavHostController) {
     val uri = LocalUriHandler.current
     var keyDraft by remember { mutableStateOf("") }
     var modelID by rememberSaveable(configuration.modelID) { mutableStateOf(configuration.modelID) }
-    var enabled by rememberSaveable(configuration.enabled) { mutableStateOf(configuration.enabled) }
+    // Undecided means recommended: online. Saving here counts as the explicit choice.
+    val initial = configuration.enabled || configuration.decidedAt == null
+    var enabled by rememberSaveable(initial) { mutableStateOf(initial) }
     SettingsScaffold("Online-Transkription", nav) {
         SectionTitle("Gemini")
         Group {

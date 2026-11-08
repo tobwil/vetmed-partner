@@ -44,6 +44,8 @@ import de.tobwil.vetmed.core.GeminiTranscriptionApi
 import de.tobwil.vetmed.core.GeminiTranscriptionConfiguration
 import de.tobwil.vetmed.core.GeminiOnlineApi
 import de.tobwil.vetmed.core.OnlineProvider
+import de.tobwil.vetmed.core.Processing
+import de.tobwil.vetmed.core.ProcessingRoute
 import de.tobwil.vetmed.core.onlineReportEngine
 import de.tobwil.vetmed.data.RecordingService
 import de.tobwil.vetmed.core.VaultDocument
@@ -116,6 +118,20 @@ class AppViewModel(
     val hasKey: StateFlow<Boolean> = combine(_online, _hasOpenAIKey, _hasGeminiKey) { online, openAI, gemini ->
         if (online.provider == OnlineProvider.GEMINI) gemini else openAI
     }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+    /** Where the next transcription runs: online first, unless the user chose the device or has not agreed yet. */
+    val transcriptionRoute: StateFlow<ProcessingRoute> = combine(_online, _geminiConfiguration, _hasGeminiKey) { online, gemini, key ->
+        Processing.transcription(online, gemini, key)
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, ProcessingRoute.DEVICE)
+    /** Preselected report mode: online with a configured key, offline with "Nur auf dem Gerät" or without key. */
+    val reportMode: StateFlow<ReportExecutionMode> = combine(_online, hasKey) { online, key -> Processing.reportMode(online, key) }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, ReportExecutionMode.OFFLINE)
+    /** A transcription waiting for the one-time answer whether audio may go to Gemini. */
+    private val _transcriptionQuestion = MutableStateFlow<EncounterLocation?>(null)
+    val transcriptionQuestion: StateFlow<EncounterLocation?> = _transcriptionQuestion.asStateFlow()
+    /** After an online step failed: the device route, offered as a button. Never taken automatically. */
+    data class DeviceOffer(val location: EncounterLocation, val kind: Kind) { enum class Kind { TRANSCRIPTION, REPORT } }
+    private val _deviceOffer = MutableStateFlow<DeviceOffer?>(null)
+    val deviceOffer: StateFlow<DeviceOffer?> = _deviceOffer.asStateFlow()
     private val _vocabulary = MutableStateFlow<List<VocabularyEntry>>(emptyList())
     val vocabulary: StateFlow<List<VocabularyEntry>> = _vocabulary.asStateFlow()
     private val _activeAnalysisID = MutableStateFlow<String?>(null)
@@ -303,18 +319,22 @@ class AppViewModel(
     }
 
     /**
-     * Speech recognition of all audio that has no transcript yet: on the device, or with Gemini when the user has
-     * switched that on with their own key. Recognized text is saved even when a later segment fails or the run is
-     * cancelled, so a retry continues with the remaining segments instead of starting over.
+     * Speech recognition of all audio that has no transcript yet: with Gemini when its key exists and the user agreed
+     * once, otherwise on the device. [route] overrides that for one run (the "auf dem Gerät" button after a failure).
+     * Recognized text is saved even when a later segment fails or the run is cancelled, so a retry continues with the
+     * remaining segments instead of starting over.
      */
-    fun transcribe(location: EncounterLocation) {
+    fun transcribe(location: EncounterLocation, route: ProcessingRoute? = null) {
         val current = encounter(location) ?: return
         if (_busy.value || recorder.recording.value) return
         val done = current.transcripts.flatMap { it.segments }.mapNotNull { it.audioID }.toSet()
         val pending = current.audio.filter { it.id !in done }
         if (pending.isEmpty()) { _error.value = "Keine neuen Audiosegmente vorhanden."; return }
+        val chosen = route ?: transcriptionRoute.value
+        if (chosen == ProcessingRoute.ASK) { _transcriptionQuestion.value = location; return }
+        _deviceOffer.value = null
         run(location, EncounterState.TRANSCRIBING) {
-            val online = _geminiConfiguration.value.takeIf { it.enabled }
+            val online = _geminiConfiguration.value.takeIf { chosen == ProcessingRoute.ONLINE }
             val key = online?.let { repository.geminiKey() ?: throw AppFailure("Der Gemini-API-Key fehlt. Bitte in den Einstellungen hinterlegen.") }
             val engine = if (online != null) "Gemini ${online.modelID} · online" else transcriber.engineName
             val vocabulary = _vocabulary.value.map { it.preferred }.distinct()
@@ -333,12 +353,31 @@ class AppViewModel(
                     recognized += TranscriptBuilder.audioSentences(segments)
                     finished += batch.size
                 }
+            } catch (error: Exception) {
+                if (online != null && error !is CancellationException) _deviceOffer.value = DeviceOffer(location, DeviceOffer.Kind.TRANSCRIPTION)
+                throw error
             } finally {
                 if (recognized.isNotEmpty()) withContext(NonCancellable) { saveRecognized(location, recognized, engine) }
             }
             if (recognized.isEmpty()) throw AppFailure("Kein verständlicher Text erkannt. Die Aufnahme bleibt erhalten.")
         }
     }
+
+    /** The one-time answer: [online] allows Gemini for this and future recordings; otherwise the device is used. */
+    fun decideTranscription(online: Boolean) {
+        val location = _transcriptionQuestion.value
+        _transcriptionQuestion.value = null
+        viewModelScope.launch {
+            try {
+                val next = _geminiConfiguration.value.copy(enabled = online, decidedAt = now())
+                repository.saveGemini(next)
+                _geminiConfiguration.value = next
+                location?.let { transcribe(it, if (online) ProcessingRoute.ONLINE else ProcessingRoute.DEVICE) }
+            } catch (error: AppFailure) { _error.value = error.message }
+        }
+    }
+
+    fun dismissTranscriptionQuestion() { _transcriptionQuestion.value = null }
 
     private suspend fun saveRecognized(location: EncounterLocation, recognized: List<de.tobwil.vetmed.core.TranscriptSegment>, engine: String) {
         persist { document ->
@@ -563,6 +602,7 @@ class AppViewModel(
         if (_busy.value) return
         val transcript = encounter(location)?.transcripts?.lastOrNull() ?: run { _error.value = "Bitte zuerst das Transkript speichern."; return }
         val configuration = _online.value
+        _deviceOffer.value = null
         run(location) {
             val engine: ReportTextEngine = if (mode == ReportExecutionMode.OFFLINE) {
                 _workStatus.value = "Offline-Modell wird geprüft und geladen"
@@ -592,11 +632,16 @@ class AppViewModel(
                 },
             )
             }
-            val report = ReportPipeline(engine).run(
-                transcript, template, length, template.audience,
-                checkpoint = { value -> persist { document -> document.mapEncounter(location) { it.copy(reportCheckpoint = value) } } },
-                progress = { _workStatus.value = it },
-            )
+            val report = try {
+                ReportPipeline(engine).run(
+                    transcript, template, length, template.audience,
+                    checkpoint = { value -> persist { document -> document.mapEncounter(location) { it.copy(reportCheckpoint = value) } } },
+                    progress = { _workStatus.value = it },
+                )
+            } catch (error: Exception) {
+                if (mode == ReportExecutionMode.ONLINE && error !is CancellationException) _deviceOffer.value = DeviceOffer(location, DeviceOffer.Kind.REPORT)
+                throw error
+            }
             persist { document ->
                 document.mapEncounter(location) { it.copy(reports = it.reports + report, reportCheckpoint = null, state = EncounterState.REVIEW_REQUIRED) }
             }
@@ -706,6 +751,17 @@ class AppViewModel(
         }
     }
 
+    /** "Nur auf dem Gerät verarbeiten" for transcription and reports. Chat needs an online access either way. */
+    fun setDeviceOnly(enabled: Boolean) {
+        viewModelScope.launch {
+            try {
+                val next = _online.value.copy(deviceOnly = enabled)
+                repository.saveOnline(next)
+                _online.value = next
+            } catch (error: AppFailure) { _error.value = error.message }
+        }
+    }
+
     /** Removes the key of [provider]. Removing the Gemini key also ends online transcription with Gemini. */
     fun removeOnlineKey(provider: OnlineProvider) {
         viewModelScope.launch {
@@ -730,7 +786,7 @@ class AppViewModel(
             if (model.isEmpty()) throw AppFailure("Bitte eine Gemini-Modell-ID eingeben.")
             if (keyDraft.isNotEmpty()) validateApiKey(keyDraft)
             if (enabled && keyDraft.isEmpty() && !_hasGeminiKey.value) throw AppFailure("Bitte einen Gemini-API-Key eingeben.")
-            val next = GeminiTranscriptionConfiguration(enabled = enabled, modelID = model)
+            val next = GeminiTranscriptionConfiguration(enabled = enabled, modelID = model, decidedAt = now())
             viewModelScope.launch {
                 try {
                     repository.saveGemini(next, keyDraft.ifEmpty { null })

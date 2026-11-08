@@ -124,6 +124,8 @@ import de.tobwil.vetmed.core.ReportLength
 import de.tobwil.vetmed.core.ReportTemplate
 import de.tobwil.vetmed.core.ReportValidator
 import de.tobwil.vetmed.core.germanDateTime
+import de.tobwil.vetmed.core.Processing
+import de.tobwil.vetmed.core.ProcessingRoute
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -166,7 +168,9 @@ fun EncounterScreen(model: AppViewModel, nav: NavHostController, location: Encou
     var saved by rememberSaveable { mutableStateOf(transcript) }
     var template by rememberSaveable { mutableStateOf(ReportTemplate.TREATMENT_REPORT) }
     var length by rememberSaveable { mutableStateOf(ReportLength.MEDIUM) }
-    var mode by rememberSaveable { mutableStateOf(online.preferredMode) }
+    var mode by rememberSaveable { mutableStateOf(model.reportMode.value) }
+    val transcriptionQuestion by model.transcriptionQuestion.collectAsStateWithLifecycle()
+    val deviceOffer by model.deviceOffer.collectAsStateWithLifecycle()
     var options by remember { mutableStateOf(false) }
     var editingCase by remember { mutableStateOf(false) }
     val reportCount = encounter?.reports?.size ?: 0
@@ -336,6 +340,26 @@ fun EncounterScreen(model: AppViewModel, nav: NavHostController, location: Encou
                         }
                     }
                 }
+                // Online failed: the device route is offered, never taken by itself (ADR 0014).
+                val offer = deviceOffer?.takeIf { it.location == location && !busy && !recording }
+                if (offer != null) {
+                    Column(Modifier.fillMaxWidth().vetCard(colors, RoundedCornerShape(22.dp)).testTag("device-offer")) {
+                        Text(if (offer.kind == AppViewModel.DeviceOffer.Kind.TRANSCRIPTION) "Online-Transkription fehlgeschlagen" else "Online-Bericht fehlgeschlagen", fontWeight = FontWeight.SemiBold)
+                        Text("Es wird nicht automatisch gewechselt. Du kannst es erneut online versuchen oder bewusst auf dem Gerät verarbeiten (geringere Qualität).",
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            if (offer.kind == AppViewModel.DeviceOffer.Kind.TRANSCRIPTION) {
+                                TextButton(onClick = { model.transcribe(location, ProcessingRoute.ONLINE) }) { Text("Erneut online") }
+                                TextButton(onClick = { model.transcribe(location, ProcessingRoute.DEVICE) }, modifier = Modifier.testTag("transcribe-on-device")) { Text("Auf dem Gerät transkribieren") }
+                            } else {
+                                TextButton(onClick = { mode = ReportExecutionMode.OFFLINE; scope.launch { if (model.saveTranscript(transcript, location)) { saved = transcript; model.generate(location, template, length, ReportExecutionMode.OFFLINE) } } },
+                                    modifier = Modifier.testTag("report-on-device")) { Text("Offline-Bericht erstellen") }
+                            }
+                        }
+                    }
+                } else if (step == EncounterStep.TRANSCRIPT && encounter.hasPendingAudio && !busy && !recording) {
+                    TextButton(onClick = { model.transcribe(location) }, modifier = Modifier.testTag("transcribe-pending")) { Text("Ausstehende Aufnahmeteile transkribieren") }
+                }
                 Spacer(Modifier.size(80.dp))
             }
         }
@@ -347,6 +371,13 @@ fun EncounterScreen(model: AppViewModel, nav: NavHostController, location: Encou
         onOpenSettings = { options = false; nav.navigate(if (mode == ReportExecutionMode.ONLINE) OnlineRoute else SettingsRoute) },
     ) { options = false }
     if (editingCase) CaseEditorDialog(model, item) { editingCase = false }
+    if (transcriptionQuestion == location) AlertDialog(
+        onDismissRequest = { model.dismissTranscriptionQuestion() },
+        title = { Text("Online transkribieren?") },
+        text = { Text(Processing.TRANSCRIPTION_CONSENT) },
+        confirmButton = { TextButton(onClick = { model.decideTranscription(true) }, modifier = Modifier.testTag("consent-online")) { Text("Online mit Gemini") } },
+        dismissButton = { TextButton(onClick = { model.decideTranscription(false) }, modifier = Modifier.testTag("consent-device")) { Text("Auf dem Gerät") } },
+    )
 }
 
 /** Segmented step control with a gradient pill that slides to the active step. */
