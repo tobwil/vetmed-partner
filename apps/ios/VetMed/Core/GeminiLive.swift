@@ -23,7 +23,7 @@ enum GeminiLive {
         #else
         let bundle = Bundle.main
         #endif
-        guard let url = bundle.url(forResource: "voice-v1", withExtension: "txt") else { throw AppFailure("Die Anweisungen für den Sprachmodus fehlen in diesem Build.") }
+        guard let url = bundle.url(forResource: "voice-v2", withExtension: "txt") else { throw AppFailure("Die Anweisungen für den Sprachmodus fehlen in diesem Build.") }
         return try String(contentsOf: url, encoding: .utf8)
     }
 

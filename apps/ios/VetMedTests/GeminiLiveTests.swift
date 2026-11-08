@@ -30,6 +30,9 @@ final class GeminiLiveTests: XCTestCase {
         let instructions = try GeminiLive.instructions(base: "# Rolle\nSparring.", context: "Laborbefund · Kreatinin 1,9")
         XCTAssertTrue(instructions.contains("Quellensuche: nicht aktiviert"))
         XCTAssertTrue(instructions.contains("# Sprachmodus"))
+        // Found on a Pixel 9a: unclear audio made Gemini answer in French and Hindi.
+        XCTAssertTrue(instructions.contains("SPRICH AUSSCHLIESSLICH DEUTSCH"))
+        XCTAssertTrue(instructions.contains("Wechsle nie die Sprache"))
         XCTAssertTrue(instructions.hasSuffix("Laborbefund · Kreatinin 1,9"))
         XCTAssertFalse(try GeminiLive.instructions(base: "Basis", context: " ").contains("Fallkontext"))
         let setup = setupOf(GeminiLive.setup(instructions: instructions, vocabulary: ["Meloxicam", "Meloxicam", " ", "Robenacoxib"] + (1...200).map { "Begriff \($0)" }))

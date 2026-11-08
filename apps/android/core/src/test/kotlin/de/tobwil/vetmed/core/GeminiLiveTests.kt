@@ -45,6 +45,9 @@ class GeminiLiveTests {
         val instructions = GeminiLive.instructions("# Rolle\nSparring.", "Laborbefund · Kreatinin 1,9")
         assertTrue(instructions.contains("Quellensuche: nicht aktiviert"))
         assertTrue(instructions.contains("# Sprachmodus"))
+        // Found on a Pixel 9a: unclear audio made Gemini answer in French and Hindi.
+        assertTrue(instructions.contains("SPRICH AUSSCHLIESSLICH DEUTSCH"))
+        assertTrue(instructions.contains("Wechsle nie die Sprache"))
         assertTrue(instructions.endsWith("Laborbefund · Kreatinin 1,9"))
         assertFalse(GeminiLive.instructions("Basis", " ").contains("Fallkontext"))
         val setup = json(GeminiLive.setup(instructions, listOf("Meloxicam", "Meloxicam", " ", "Robenacoxib") + (1..200).map { "Begriff $it" })).getValue("setup").jsonObject
