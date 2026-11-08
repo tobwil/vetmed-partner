@@ -27,6 +27,8 @@ data class GeminiTranscriptionConfiguration(
     val modelID: String = DEFAULT_MODEL,
     /** When the user explicitly chose online or device transcription. Older stores have none and are asked once. */
     val decidedAt: AppleDate? = null,
+    /** One-time consent for the voice mode (conversation audio and the chosen case context go to Gemini Live). */
+    val voiceConsentAt: AppleDate? = null,
 ) {
     companion object { const val DEFAULT_MODEL = "gemini-3.6-flash" }
 }

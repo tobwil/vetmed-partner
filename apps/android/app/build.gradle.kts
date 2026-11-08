@@ -71,6 +71,8 @@ dependencies {
     implementation(libs.mlkit.text)
     // On-device LLM runtime for the optional offline model (Gemma 4 E2B). Weights are downloaded only on request.
     implementation(libs.litertlm)
+    // WebSocket for the voice mode (Gemini Live). Android has no built-in WebSocket client.
+    implementation(libs.okhttp)
     testImplementation(libs.sqlite.framework)
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.androidx.test.ext.junit)

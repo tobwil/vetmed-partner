@@ -60,6 +60,7 @@ import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.MenuBook
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.Science
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.Stop
@@ -233,6 +234,7 @@ fun ChatConversationScreen(model: AppViewModel, nav: NavHostController, location
     val busy by model.busy.collectAsStateWithLifecycle()
     val online by model.online.collectAsStateWithLifecycle()
     val hasKey by model.hasKey.collectAsStateWithLifecycle()
+    val hasGeminiKey by model.hasGeminiKey.collectAsStateWithLifecycle()
     val activeID by model.activeAnalysisID.collectAsStateWithLifecycle()
     val colors = LocalVetColors.current
     val haptics = LocalHapticFeedback.current
@@ -316,6 +318,15 @@ fun ChatConversationScreen(model: AppViewModel, nav: NavHostController, location
             }
         }
     }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val voicePermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) model.startVoice(location, draft)
+        else model.reportError("Ohne Mikrofonzugriff ist der Sprachmodus nicht möglich. Du kannst den Zugriff in den Android-Einstellungen erlauben.")
+    }
+    val startVoice = {
+        if (androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.RECORD_AUDIO) == android.content.pm.PackageManager.PERMISSION_GRANTED) model.startVoice(location, draft)
+        else voicePermission.launch(android.Manifest.permission.RECORD_AUDIO)
+    }
     val share = rememberShareLauncher("Antwort teilen") {}
     val listState = rememberLazyListState()
     LaunchedEffect(runs.size, runs.lastOrNull()?.text?.length) { if (runs.isNotEmpty()) listState.animateScrollToItem(runs.size) }
@@ -327,6 +338,9 @@ fun ChatConversationScreen(model: AppViewModel, nav: NavHostController, location
             containerColor = Color.Transparent, contentColor = MaterialTheme.colorScheme.onBackground,
             topBar = {
                 BackTopBar("Chat", nav) {
+                    if (hasGeminiKey) IconButton(enabled = !busy, onClick = startVoice, modifier = Modifier.testTag("start-voice")) {
+                        Icon(Icons.Rounded.GraphicEq, "Sprechen")
+                    }
                     IconButton(enabled = !busy, onClick = { model.newQuickCheck { nav.navigate(ChatConversationRoute(it.caseID, it.encounterID)) } }) { Icon(Icons.Rounded.EditNote, "Neuer Chat") }
                     Box {
                         IconButton(enabled = !busy, onClick = { menu = true }, modifier = Modifier.testTag("chat-menu")) { Icon(Icons.Rounded.MoreVert, "Chat-Menü") }
@@ -430,6 +444,10 @@ fun ChatConversationScreen(model: AppViewModel, nav: NavHostController, location
         }
     }
 
+    val voice by model.voice.collectAsStateWithLifecycle()
+    val voiceQuestion by model.voiceQuestion.collectAsStateWithLifecycle()
+    voice?.takeIf { it.location == location }?.let { VoiceOverlay(model, it) }
+    if (voiceQuestion?.first == location) VoiceConsentDialog { model.decideVoice(it) }
     review?.let { attachment ->
         val use: (String) -> Unit = { id ->
             if (id !in draft.attachmentIDs.orEmpty()) draft = draft.copy(attachmentIDs = draft.attachmentIDs.orEmpty() + id)

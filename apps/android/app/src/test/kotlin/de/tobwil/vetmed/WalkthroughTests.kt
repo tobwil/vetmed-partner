@@ -65,10 +65,12 @@ class WalkthroughTests {
         localModel: de.tobwil.vetmed.data.LocalReportModel = syntheticLocalModel(folder.root, SyntheticModelServer(), SyntheticRuntime("Befunde")),
         gemini: de.tobwil.vetmed.core.GeminiTranscriptionApi = de.tobwil.vetmed.core.GeminiTranscriptionApi(transport = { throw AssertionError("Unerwarteter Netzaufruf") }),
         transport: de.tobwil.vetmed.core.HttpTransport = de.tobwil.vetmed.core.HttpTransport { throw AssertionError("Unerwarteter Netzaufruf") },
+        liveConnector: de.tobwil.vetmed.core.LiveConnector = de.tobwil.vetmed.core.LiveConnector { _, _ -> throw AssertionError("Unerwartete Sprachverbindung") },
+        voiceAudio: de.tobwil.vetmed.data.VoiceAudioFactory = de.tobwil.vetmed.data.VoiceAudioFactory { throw AssertionError("Unerwartetes Audio") },
     ): AppViewModel {
         AppearanceStore(application).apply { this.mode = mode; this.theme = theme }
         if (document != null) runBlocking { repository().save(document) }
-        val model = AppViewModel(application, repository(), microphone, transcriber, localModel, gemini, transport)
+        val model = AppViewModel(application, repository(), microphone, transcriber, localModel, gemini, transport, liveConnector, voiceAudio)
         compose.setContent { VetMedApp(model) }
         waitFor("App geöffnet", model) { model.ready.value }
         compose.waitForIdle()
@@ -409,6 +411,77 @@ class WalkthroughTests {
         val confirmed = model.chatContext(location)!!.chatAttachments!!.single()
         assertTrue(confirmed.reviewedText!!.contains("| Kreatinin | 1,9 | mg/dl | 0,5 - 1,8 | H | ↑ hoch |"))
         assertEquals(de.tobwil.vetmed.core.LabEvidence.EDITED, confirmed.lab!!.values[1].evidence)
+    }
+
+    /** Plays Gemini Live for the voice test: records what the app sends and lets the test answer. */
+    private class FakeLive : de.tobwil.vetmed.core.LiveConnector {
+        val sent = java.util.concurrent.CopyOnWriteArrayList<String>()
+        lateinit var listener: de.tobwil.vetmed.core.LiveSocketListener
+        var url = ""; var closed = false
+        override fun connect(url: String, listener: de.tobwil.vetmed.core.LiveSocketListener): de.tobwil.vetmed.core.LiveSocket {
+            this.url = url; this.listener = listener
+            return object : de.tobwil.vetmed.core.LiveSocket {
+                override fun send(text: String): Boolean { sent += text; return true }
+                override fun close() { closed = true }
+            }.also { listener.onOpen() }
+        }
+    }
+
+    private class FakeVoiceAudio : de.tobwil.vetmed.data.VoiceAudio {
+        override val level = kotlinx.coroutines.flow.MutableStateFlow(0f)
+        var microphone: ((ByteArray) -> Unit)? = null
+        val played = java.util.concurrent.CopyOnWriteArrayList<ByteArray>()
+        var flushes = 0; var stopped = false
+        override fun start(onChunk: (ByteArray) -> Unit) { microphone = onChunk }
+        override fun play(pcm: ByteArray) { played += pcm; level.value = 0.6f }
+        override fun flush() { flushes++ }
+        override fun setMuted(muted: Boolean) {}
+        override fun stop() { stopped = true }
+    }
+
+    @Test fun aVoiceConversationAsksOnceStreamsAndKeepsOnlyTheTranscript() {
+        shadowOf(application).grantPermissions(android.Manifest.permission.RECORD_AUDIO)
+        val seeded = SyntheticCases.seed()
+        val location = de.tobwil.vetmed.core.ChatLocation(seeded.withReport.caseID, seeded.withReport.encounterID)
+        runBlocking { repository().saveGemini(de.tobwil.vetmed.core.GeminiTranscriptionConfiguration(enabled = true, decidedAt = de.tobwil.vetmed.core.now()), "synthetic-gemini-key-for-walkthrough") }
+        val live = FakeLive(); val audio = FakeVoiceAudio()
+        val tokenRequests = mutableListOf<de.tobwil.vetmed.core.HttpRequest>()
+        val model = launch(seeded.document, AppearanceMode.DARK, AccentTheme.LAVENDEL, liveConnector = live, voiceAudio = { audio },
+            transport = { request -> tokenRequests += request; de.tobwil.vetmed.core.HttpResponse(200, """{"name":"auth_tokens/synthetic"}""".encodeToByteArray()) })
+        compose.onNodeWithTag("tab-chat").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithTag("chat-row-" + location.encounterID).performClick()
+        compose.waitForIdle()
+        compose.onNodeWithTag("start-voice").performClick()
+        compose.onNodeWithText("Sprachmodus starten?").assertIsDisplayed()
+        assertTrue("Vor der Zustimmung wird nichts verbunden", tokenRequests.isEmpty())
+        compose.onNodeWithTag("voice-consent").performClick()
+        waitFor("Verbunden", model) { live.url.isNotEmpty() && live.sent.isNotEmpty() }
+        assertTrue(live.url.endsWith("access_token=auth_tokens%2Fsynthetic"))
+        assertTrue("Key nur im Header der Token-Anfrage", !tokenRequests.single().body!!.decodeToString().contains("synthetic-gemini-key"))
+        val setup = live.sent.first()
+        assertTrue(setup.contains("# Sprachmodus") && setup.contains("Quellensuche: nicht aktiviert"))
+        live.listener.onMessage("""{"setupComplete":{}}""")
+        audio.microphone!!.invoke(ByteArray(3200))
+        waitFor("Audio gesendet", model) { live.sent.any { it.contains("audio/pcm;rate=16000") } }
+        live.listener.onMessage("""{"serverContent":{"inputTranscription":{"text":"Hund, zwölf Kilo, lahmt hinten links seit gestern."}}}""")
+        live.listener.onMessage("""{"serverContent":{"modelTurn":{"parts":[{"inlineData":{"mimeType":"audio/pcm;rate=24000","data":"AAAAAA=="}}]},"outputTranscription":{"text":"Belastet er das Bein noch? Und gab es ein Trauma?"},"turnComplete":true}}""")
+        compose.waitForIdle()
+        compose.onNodeWithText("Belastet er das Bein noch? Und gab es ein Trauma?").assertIsDisplayed()
+        assertEquals(1, audio.played.size)
+        shot("18-sprachmodus")
+        compose.onNodeWithTag("voice-interrupt").performClick()
+        assertEquals(1, audio.flushes)
+        compose.onNodeWithTag("voice-end").performClick()
+        waitFor("Mitschrift gespeichert", model) { model.chatContext(location)!!.analysisRuns!!.size == 2 }
+        assertTrue(live.closed && audio.stopped)
+        val run = model.chatContext(location)!!.analysisRuns!!.last()
+        assertEquals("Sprachgespräch", run.snapshot.draft.question)
+        assertEquals("**Du:** Hund, zwölf Kilo, lahmt hinten links seit gestern.\n\n**VetMed:** Belastet er das Bein noch? Und gab es ein Trauma?", run.text)
+        assertTrue(run.notice!!.contains("Mitschrift"))
+        assertEquals(null, model.voice.value)
+        // The consent is asked only once.
+        assertTrue(runBlocking { repository().geminiConfiguration() }.voiceConsentAt != null)
     }
 
     @Test fun rotationAndLeavingTheAppKeepRecording() {

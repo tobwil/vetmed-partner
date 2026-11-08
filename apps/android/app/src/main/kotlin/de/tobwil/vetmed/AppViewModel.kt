@@ -80,6 +80,9 @@ class AppViewModel(
     private val gemini: GeminiTranscriptionApi = GeminiTranscriptionApi(),
     /** Network for reading lab results; replaced by a fake in tests. */
     private val transport: de.tobwil.vetmed.core.HttpTransport = de.tobwil.vetmed.core.EphemeralHttpTransport,
+    /** Voice mode: WebSocket and audio, replaced by fakes in tests. */
+    private val liveConnector: de.tobwil.vetmed.core.LiveConnector = de.tobwil.vetmed.data.OkHttpLiveConnector,
+    private val voiceAudio: de.tobwil.vetmed.data.VoiceAudioFactory = de.tobwil.vetmed.data.VoiceAudioFactory { de.tobwil.vetmed.data.AndroidVoiceAudio() },
 ) : AndroidViewModel(application) {
     /** Used by the default view model factory: SQLCipher case database and sealed secrets under separate Keystore keys, outside backups. */
     constructor(application: Application) : this(
@@ -456,12 +459,112 @@ class AppViewModel(
      */
     fun background(changingConfigurations: Boolean = false) {
         if (changingConfigurations) return
+        // A voice conversation never continues unseen in the background; its transcript is kept.
+        endVoice()
         stopPlayback()
         if (!_busy.value && !recorder.recording.value) localModel.unload()
     }
 
+    // Voice mode (ADR 0016) -------------------------------------------------------------------------
+
+    /** A running voice conversation: the session, its audio and the chat it belongs to. */
+    class Voice(val location: ChatLocation, val session: de.tobwil.vetmed.core.LiveSession, val audio: de.tobwil.vetmed.data.VoiceAudio, val instructions: String) {
+        val muted = MutableStateFlow(false)
+    }
+    private val _voice = MutableStateFlow<Voice?>(null)
+    val voice: StateFlow<Voice?> = _voice.asStateFlow()
+    private val _voiceQuestion = MutableStateFlow<Pair<ChatLocation, SparringDraft>?>(null)
+    /** Waiting for the one-time consent before the first voice conversation. */
+    val voiceQuestion: StateFlow<Pair<ChatLocation, SparringDraft>?> = _voiceQuestion.asStateFlow()
+
+    /** The case context a voice conversation starts with: chosen reports, added case text and confirmed lab tables. */
+    fun voiceContext(location: ChatLocation, draft: SparringDraft): String {
+        val encounter = chatContext(location) ?: return ""
+        val item = location.caseID?.let { id -> _document.value.cases.firstOrNull { it.id == id } }
+        val reports = runCatching { de.tobwil.vetmed.core.ChatReportSelection.resolve(draft.reportIDs.orEmpty(), location.caseID, location.encounterID, item) }.getOrDefault(emptyList())
+        val labs = encounter.chatAttachments.orEmpty().filter { it.id in draft.attachmentIDs.orEmpty() && it.reviewedAt != null }.mapNotNull { it.reviewedText }
+        return (listOfNotNull(draft.context.takeIf { it.isNotBlank() }?.let { "Falltext:\n$it" }) +
+            reports.mapIndexed { index, report -> "Fallbericht ${index + 1}:\n" + report.sourceText } +
+            labs.mapIndexed { index, text -> "Anhang ${index + 1} · geprüft:\n$text" }).joinToString("\n\n").take(60_000)
+    }
+
+    /** Starts a voice conversation in this chat. Needs the Gemini key and, once, the user's consent. */
+    fun startVoice(location: ChatLocation, draft: SparringDraft) {
+        if (_busy.value || recorder.recording.value || _voice.value != null) return
+        if (!_hasGeminiKey.value) { _error.value = "Für den Sprachmodus bitte einen Gemini-API-Key in den Einstellungen hinterlegen."; return }
+        if (_geminiConfiguration.value.voiceConsentAt == null) { _voiceQuestion.value = location to draft; return }
+        try { ChatOperations.checkAnalysisBudget(_document.value, location) } catch (error: AppFailure) { _error.value = error.message; return }
+        viewModelScope.launch {
+            try {
+                val key = repository.geminiKey() ?: throw AppFailure("Der Gemini-API-Key fehlt.")
+                stopPlayback(); localModel.unload()
+                val instructions = de.tobwil.vetmed.core.GeminiLive.instructions(de.tobwil.vetmed.core.SparringRequestBuilder.instructions, voiceContext(location, draft))
+                val session = de.tobwil.vetmed.core.LiveSession(key, instructions, _vocabulary.value.map { it.preferred }.distinct(), liveConnector, viewModelScope, transport)
+                val audio = voiceAudio.create()
+                val voice = Voice(location, session, audio, instructions)
+                session.onAudio = audio::play
+                session.onInterrupted = audio::flush
+                _voice.value = voice
+                session.start()
+                audio.start { chunk -> if (!voice.muted.value) session.sendAudio(chunk) }
+            } catch (error: Exception) {
+                _voice.value?.let { runCatching { it.session.stop(); it.audio.stop() } }
+                _voice.value = null
+                _error.value = (error as? AppFailure)?.message ?: "Der Sprachmodus konnte nicht gestartet werden."
+            }
+        }
+    }
+
+    fun decideVoice(consent: Boolean) {
+        val pending = _voiceQuestion.value ?: return
+        _voiceQuestion.value = null
+        if (!consent) return
+        viewModelScope.launch {
+            try {
+                val next = _geminiConfiguration.value.copy(voiceConsentAt = now())
+                repository.saveGemini(next); _geminiConfiguration.value = next
+                startVoice(pending.first, pending.second)
+            } catch (error: AppFailure) { _error.value = error.message }
+        }
+    }
+
+    fun setVoiceMuted(muted: Boolean) {
+        val voice = _voice.value ?: return
+        voice.muted.value = muted; voice.audio.setMuted(muted)
+        if (muted) voice.session.pauseInput()
+    }
+
+    fun interruptVoice() { _voice.value?.session?.interrupt() }
+
+    /** Ends the conversation and stores its transcript in the chat. Audio is never stored. */
+    fun endVoice() {
+        val voice = _voice.value ?: return
+        _voice.value = null
+        voice.session.stop(); voice.audio.stop()
+        val text = de.tobwil.vetmed.core.LiveTranscript.markdown(voice.session.turns.value)
+        if (text.isBlank()) return
+        val (input, output) = voice.session.audioSeconds.value
+        viewModelScope.launch {
+            commit("Die Mitschrift konnte nicht gespeichert werden: ") { document ->
+                val encounter = ChatOperations.context(document, voice.location) ?: throw AppFailure("Dieser Chat ist nicht mehr vorhanden.")
+                val item = voice.location.caseID?.let { id -> document.cases.firstOrNull { it.id == id } }
+                val snapshot = de.tobwil.vetmed.core.SparringRequestBuilder.prepare(
+                    voice.location.caseID, encounter, SparringDraft(question = "Sprachgespräch"), de.tobwil.vetmed.core.GeminiLive.MODEL, item, instructions = voice.instructions,
+                )
+                val minutes = (input + output) / 60
+                val run = AnalysisRun(
+                    snapshot = snapshot, status = AnalysisStatus.COMPLETED, text = text, actualModelID = de.tobwil.vetmed.core.GeminiLive.MODEL,
+                    notice = "Sprachgespräch, Mitschrift der Spracherkennung: Der Wortlaut kann abweichen. Dauer ca. ${"%.1f".format(java.util.Locale.GERMANY, minutes)} min Audio, " +
+                        "Kosten ca. ${"%.2f".format(java.util.Locale.GERMANY, de.tobwil.vetmed.core.GeminiLive.costUSD(input, output))} US-$ (bezahltes Kontingent).",
+                )
+                ChatOperations.mapChat(document, voice.location) { it.copy(analysisRuns = it.analysisRuns.orEmpty() + run) }
+            }
+        }
+    }
+
     /** The activity is finishing for good (not a rotation): the loop ends and its unsaved segment is recovered at next start. */
     override fun onCleared() {
+        _voice.value?.let { runCatching { it.session.stop(); it.audio.stop() } }
         RecordingService.stop(getApplication())
         stopPlayback(); localModel.unload()
         getApplication<Application>().unregisterComponentCallbacks(memory)
