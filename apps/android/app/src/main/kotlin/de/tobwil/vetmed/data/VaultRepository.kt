@@ -7,6 +7,8 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.sqlite.db.SupportSQLiteDatabase
 import de.tobwil.vetmed.core.AppFailure
+import de.tobwil.vetmed.core.BackupContent
+import de.tobwil.vetmed.core.BackupFile
 import de.tobwil.vetmed.core.Encounter
 import de.tobwil.vetmed.core.GeminiTranscriptionConfiguration
 import de.tobwil.vetmed.core.OnlineReportConfiguration
@@ -27,6 +29,8 @@ import kotlinx.serialization.KSerializer
 import kotlinx.serialization.builtins.ListSerializer
 import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
 import java.io.File
+import java.io.InputStream
+import java.io.OutputStream
 import java.security.SecureRandom
 
 /** Opens the case database. Production uses SQLCipher; JVM tests substitute plain SQLite on Robolectric. */
@@ -213,6 +217,39 @@ class VaultRepository(
                 .forEach { if (it.delete()) removed += 1 }
         }
         removed
+    }
+
+    // Backup (ADR 0019) -------------------------------------------------------------------------------
+
+    private fun sealed(file: BackupFile): SealedFile = when (file) {
+        is BackupFile.Attachment -> attachmentFile(file.caseID, file.encounterID, file.id, file.upload)
+        is BackupFile.Audio -> audioFile(file.caseID, file.encounterID, file.segmentID)
+    }
+
+    /** Writes a password-protected backup of [document] to [out]; the stream is closed at the end. */
+    suspend fun writeBackup(
+        out: OutputStream, password: String, document: VaultDocument, includeAudio: Boolean, progress: (Int, Int) -> Unit,
+    ): BackupContent.Written = io {
+        val entries = dao().vocabulary().map { decode(VocabularyEntry.serializer(), it.payload) }
+        out.use {
+            BackupContent.write(it, password, document, entries, includeAudio, "android", progress = progress) { file ->
+                try { sealed(file).read() } catch (error: AppFailure) { null }
+            }
+        }
+    }
+
+    /**
+     * Reads a backup and stores the files of every newly added case. The caller saves the returned document; if that
+     * fails, the files written here are orphans and are removed at the next start.
+     */
+    suspend fun readBackup(input: InputStream, password: String, local: VaultDocument): BackupContent.Restored = io {
+        val entries = dao().vocabulary().map { decode(VocabularyEntry.serializer(), it.payload) }
+        input.use { stream ->
+            BackupContent.restore(stream, password, local, entries) { file, bytes ->
+                if (root.usableSpace < bytes.size * 3L + 20_000_000) throw AppFailure("Zu wenig Gerätespeicher für die Wiederherstellung. Bitte Speicher freigeben.")
+                sealed(file).write(bytes)
+            }
+        }
     }
 
     // Opening ---------------------------------------------------------------------------------------

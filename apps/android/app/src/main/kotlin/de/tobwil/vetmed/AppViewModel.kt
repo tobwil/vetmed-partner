@@ -282,6 +282,64 @@ class AppViewModel(
 
     fun cancel() { work?.cancel() }
 
+    // Backup (ADR 0019) -----------------------------------------------------------------------------------
+
+    private val _backupResult = MutableStateFlow<String?>(null)
+    /** Outcome of the last backup or restore, shown on the backup screen. */
+    val backupResult: StateFlow<String?> = _backupResult.asStateFlow()
+
+    /**
+     * Writes every case, quick check and file to [open], encrypted with [password]. On failure [discard] removes
+     * the incomplete file, which would not open anyway.
+     */
+    fun createBackup(password: String, includeAudio: Boolean, open: () -> java.io.OutputStream?, discard: () -> Unit = {}) {
+        if (_busy.value) return
+        _backupResult.value = null
+        work = viewModelScope.launch {
+            _busy.value = true; _workStatus.value = "Sicherung wird verschlüsselt …"
+            try {
+                val stream = withContext(kotlinx.coroutines.Dispatchers.IO) { open() } ?: throw AppFailure("Die Zieldatei konnte nicht geöffnet werden.")
+                val written = repository.writeBackup(stream, password, _document.value, includeAudio) { done, total -> _workStatus.value = "Sicherung · Datei $done von $total" }
+                val manifest = written.manifest
+                _backupResult.value = buildString {
+                    append("Sicherung gespeichert: ${manifest.cases} ${if (manifest.cases == 1) "Fall" else "Fälle"}, ${manifest.quickChecks} Schnellchecks, ${written.files} Dateien")
+                    append(if (includeAudio) " einschließlich Aufnahmen." else ", ohne Aufnahmen.")
+                    if (written.missing > 0) append(" ${written.missing} Dateien fehlten schon auf dem Gerät und sind nicht enthalten.")
+                }
+            } catch (error: CancellationException) {
+                withContext(NonCancellable) { runCatching { discard() } }
+                throw error
+            } catch (error: AppFailure) {
+                runCatching { discard() }; _error.value = "Sicherung fehlgeschlagen: " + error.message
+            } catch (error: java.io.IOException) {
+                runCatching { discard() }; _error.value = "Sicherung fehlgeschlagen: Die Datei konnte nicht geschrieben werden. Bitte Speicherort und freien Platz prüfen."
+            } finally { _busy.value = false; _workStatus.value = "" }
+        }
+    }
+
+    /** Adds the cases of a backup that are not on this device yet. Nothing here is overwritten. */
+    fun restoreBackup(password: String, open: () -> java.io.InputStream?) {
+        if (_busy.value) return
+        _backupResult.value = null
+        work = viewModelScope.launch {
+            _busy.value = true; _workStatus.value = "Passwort wird geprüft …"
+            try {
+                writes.withLock {
+                    val stream = withContext(kotlinx.coroutines.Dispatchers.IO) { open() } ?: throw AppFailure("Die Datei konnte nicht geöffnet werden.")
+                    val restored = repository.readBackup(stream, password, _document.value)
+                    if (restored.document != _document.value) repository.save(restored.document)
+                    if (restored.vocabulary != _vocabulary.value) repository.saveVocabulary(restored.vocabulary)
+                    _document.value = restored.document; _vocabulary.value = restored.vocabulary
+                    _backupResult.value = restored.summary
+                }
+            } catch (error: AppFailure) {
+                _error.value = "Wiederherstellen fehlgeschlagen: " + error.message + " Auf dem Gerät wurde nichts geändert."
+            } catch (error: java.io.IOException) {
+                _error.value = "Wiederherstellen fehlgeschlagen: Die Datei konnte nicht gelesen werden. Auf dem Gerät wurde nichts geändert."
+            } finally { _busy.value = false; _workStatus.value = "" }
+        }
+    }
+
     // Recording and transcription --------------------------------------------------------------------
 
     val captureInProgress: Boolean get() = recorder.recording.value

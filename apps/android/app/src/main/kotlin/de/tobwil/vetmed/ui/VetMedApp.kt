@@ -84,6 +84,7 @@ import kotlinx.serialization.Serializable
 @Serializable object OnlineRoute
 @Serializable object VocabularyRoute
 @Serializable object GeminiRoute
+@Serializable object BackupRoute
 
 /** Day/night and theme actions shared by the toggle on Start and the settings screen. */
 class AppearanceController(
@@ -170,6 +171,7 @@ private fun AppContent(model: AppViewModel) {
                     composable<OnlineRoute> { OnlineSettingsScreen(model, navController) }
                     composable<VocabularyRoute> { VocabularyScreen(model, navController) }
                     composable<GeminiRoute> { GeminiSettingsScreen(model, navController) }
+                    composable<BackupRoute> { BackupScreen(model, navController) }
                 }
                 androidx.compose.animation.AnimatedVisibility(
                     busy, Modifier.align(Alignment.BottomCenter),

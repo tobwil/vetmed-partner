@@ -39,6 +39,7 @@ Native App für Tierärztinnen und Tierärzte auf iPhone und Android. Du diktier
 | Sprachmodus: Fall im Gespräch besprechen (Gemini 3.8 Live, eigener Key) | ja | ja |
 | Klinischer Sparringspartner (online): Differenzialdiagnosen und nächste Schritte, mit Bildern, Labor-PDFs und eigenen Berichten, auch ohne Fall | ja | ja |
 | Freigabe, Teilen als Text oder PDF | ja | ja |
+| Verschlüsselte Sicherung aller Fälle in eine Datei, auch zwischen iPhone und Android | ja | ja |
 | Tag/Nacht und sechs Farbthemen | ja | ja |
 
 Was auf welchem Gerät geprüft ist und was noch offen ist, steht ehrlich im [Prüfstand](docs/test-status.md).
@@ -89,7 +90,15 @@ Gerendert aus den Compose-UI-Tests (Robolectric, Bildschirmgröße wie Pixel 9),
   </tr>
   <tr>
     <td align="center"><img src="docs/evidence/android/13-offline-modell-nacht.png" width="180" alt="Android: Offline-Modell in den Einstellungen"><br><sub>Offline-Modell · Wald</sub></td>
-    <td></td><td></td><td></td>
+    <td align="center"><img src="docs/evidence/android/14-arzneimittel-warnung.png" width="180" alt="Android: Warnung bei Arzneimittelangaben ohne amtliche Quelle"><br><sub>Arzneimittel-Warnung</sub></td>
+    <td align="center"><img src="docs/evidence/android/15-online-fehler-geraet-anbieten.png" width="180" alt="Android: Online-Fehler mit Angebot, auf dem Gerät zu verarbeiten"><br><sub>Online-Fehler · Gerät anbieten</sub></td>
+    <td align="center"><img src="docs/evidence/android/16-verarbeitung-einstellungen.png" width="180" alt="Android: Einstellungen zur Verarbeitung"><br><sub>Verarbeitung</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/evidence/android/17-laborbefund-pruefen.png" width="180" alt="Android: Laborbefund am Original prüfen"><br><sub>Laborbefund prüfen</sub></td>
+    <td align="center"><img src="docs/evidence/android/18-sprachmodus.png" width="180" alt="Android: Sprachmodus"><br><sub>Sprachmodus</sub></td>
+    <td align="center"><img src="docs/evidence/android/19-brief-mit-werten-pruefen.png" width="180" alt="Android: Brief mit eingebetteten Werten prüfen"><br><sub>Brief mit Werten</sub></td>
+    <td align="center"><img src="docs/evidence/android/20-sicherung.png" width="180" alt="Android: verschlüsselte Sicherung"><br><sub>Sicherung</sub></td>
   </tr>
 </table>
 
@@ -278,7 +287,15 @@ Ja ([Entscheidung 0018](docs/architecture/0018-conversation-reports.md)). Begrü
 - Online verarbeitet ein Bericht Aufnahmen bis etwa eine Stunde.
 
 **Landen meine Fälle in der Cloud?**
-Nein. Fälle, Aufnahmen und Berichte liegen verschlüsselt nur auf dem Gerät. Es gibt keine Synchronisation und kein Backup. Etwas verlässt das Gerät nur über deinen eigenen API-Key: „Bericht online erstellen“ sendet das geprüfte Transkript, „Senden“ im Chat die Frage, die angehängten Inhalte und den Verlauf dieses Chats. Die Online-Transkription sendet die Audioteile an Google (Gemini), aber erst nach deiner einmaligen Zustimmung. Mit „Nur auf dem Gerät verarbeiten“ bleiben Aufnahme, Transkription und Berichte lokal.
+Nein. Fälle, Aufnahmen und Berichte liegen verschlüsselt nur auf dem Gerät. Es gibt keine Synchronisation; eine Sicherung legst du selbst an (siehe unten). Etwas verlässt das Gerät nur über deinen eigenen API-Key: „Bericht online erstellen“ sendet das geprüfte Transkript, „Senden“ im Chat die Frage, die angehängten Inhalte und den Verlauf dieses Chats. Die Online-Transkription sendet die Audioteile an Google (Gemini), aber erst nach deiner einmaligen Zustimmung. Mit „Nur auf dem Gerät verarbeiten“ bleiben Aufnahme, Transkription und Berichte lokal.
+
+**Wie sichere ich meine Fälle?**
+Unter **Einstellungen → Lokale Daten → Sicherung** ([Entscheidung 0019](docs/architecture/0019-backup.md)):
+1. Ein Passwort mit mindestens 10 Zeichen wählen und wählen, ob Aufnahmen mitgesichert werden.
+2. Die App schreibt alle Fälle, Berichte, Chats, Anhänge und die Fachwortliste in **eine verschlüsselte Datei** (AES-256, Schlüssel aus dem Passwort).
+3. Du legst sie ab, wo du willst: auf dem Computer, einem USB-Stick oder in deinem Cloud-Ordner. Ohne Passwort ist sie unlesbar.
+
+Wiederherstellen fügt nur Fälle hinzu, die auf dem Gerät fehlen; vorhandene bleiben unverändert. Eine Sicherung vom iPhone öffnet auch Android und umgekehrt. API-Keys sind nicht enthalten. **Das Passwort lässt sich nicht wiederherstellen.**
 
 **Wie sind die Daten geschützt?**
 Auf dem iPhone mit SQLCipher und der Dateischutzklasse von iOS; der Schlüssel liegt im Schlüsselbund. Auf Android mit Room und SQLCipher; der Schlüssel ist über den Android Keystore gesichert. API-Keys liegen jeweils getrennt davon. Eine zusätzliche Face-ID-Sperre gibt es auf Wunsch nicht. Wer die App löscht oder das Gerät verliert, verliert auch die Daten.

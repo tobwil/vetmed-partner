@@ -67,11 +67,15 @@ class WalkthroughTests {
         transport: de.tobwil.vetmed.core.HttpTransport = de.tobwil.vetmed.core.HttpTransport { throw AssertionError("Unerwarteter Netzaufruf") },
         liveConnector: de.tobwil.vetmed.core.LiveConnector = de.tobwil.vetmed.core.LiveConnector { _, _ -> throw AssertionError("Unerwartete Sprachverbindung") },
         voiceAudio: de.tobwil.vetmed.data.VoiceAudioFactory = de.tobwil.vetmed.data.VoiceAudioFactory { throw AssertionError("Unerwartetes Audio") },
+        files: androidx.activity.result.ActivityResultRegistryOwner? = null,
     ): AppViewModel {
         AppearanceStore(application).apply { this.mode = mode; this.theme = theme }
         if (document != null) runBlocking { repository().save(document) }
         val model = AppViewModel(application, repository(), microphone, transcriber, localModel, gemini, transport, liveConnector, voiceAudio)
-        compose.setContent { VetMedApp(model) }
+        compose.setContent {
+            if (files == null) VetMedApp(model)
+            else androidx.compose.runtime.CompositionLocalProvider(androidx.activity.compose.LocalActivityResultRegistryOwner provides files) { VetMedApp(model) }
+        }
         waitFor("App geöffnet", model) { model.ready.value }
         compose.waitForIdle()
         return model
@@ -139,6 +143,57 @@ class WalkthroughTests {
         compose.waitForIdle()
         compose.onNodeWithContentDescription("Farbthema Koralle").assertIsDisplayed()
         shot("07-einstellungen-koralle")
+    }
+
+    /** Stands in for the system file dialog: every request answers with the same local file. */
+    private class SyntheticFileDialog(file: java.io.File) : androidx.activity.result.ActivityResultRegistryOwner {
+        val requests = mutableListOf<Any?>()
+        override val activityResultRegistry = object : androidx.activity.result.ActivityResultRegistry() {
+            override fun <I, O> onLaunch(requestCode: Int, contract: androidx.activity.result.contract.ActivityResultContract<I, O>, input: I, options: androidx.core.app.ActivityOptionsCompat?) {
+                requests += input
+                dispatchResult(requestCode, android.net.Uri.fromFile(file))
+            }
+        }
+    }
+
+    @Test fun aBackupIsSavedWithAPasswordAndBringsADeletedCaseBack() {
+        val seeded = SyntheticCases.seed()
+        val target = java.io.File(folder.root, "VetMed-Sicherung.vetmedbackup")
+        val dialog = SyntheticFileDialog(target)
+        val model = launch(seeded.document, theme = AccentTheme.OZEAN, files = dialog)
+        compose.onNodeWithContentDescription("Einstellungen").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithText("Sicherung erstellen oder wiederherstellen").performScrollTo().performClick()
+        compose.waitForIdle()
+        // A short or mismatched password never reaches the file dialog.
+        compose.onNodeWithTag("backup-password").performTextInput("kurz")
+        compose.onNodeWithTag("backup-password-repeat").performTextInput("kurz")
+        compose.onNodeWithTag("backup-create").performScrollTo().performClick()
+        compose.onNodeWithTag("backup-problem").assertIsDisplayed()
+        assertTrue(dialog.requests.isEmpty())
+        compose.onNodeWithTag("backup-password").performTextClearance(); compose.onNodeWithTag("backup-password").performTextInput("Synthetisches Passwort 1")
+        compose.onNodeWithTag("backup-password-repeat").performTextClearance(); compose.onNodeWithTag("backup-password-repeat").performTextInput("Synthetisches Passwort 1")
+        shot("20-sicherung")
+        compose.onNodeWithTag("backup-create").performScrollTo().performClick()
+        waitFor("Sicherung geschrieben", model) { model.backupResult.value != null || model.error.value != null }
+        assertEquals(null, model.error.value)
+        assertTrue(dialog.requests.single().toString().endsWith(".vetmedbackup"))
+        assertTrue(model.backupResult.value!!, model.backupResult.value!!.startsWith("Sicherung gespeichert: 3 Fälle"))
+        assertTrue(target.length() > 0 && !target.readText(Charsets.ISO_8859_1).contains("Bello"))
+
+        // The case is deleted on the device, then restored from the file; the other cases stay as they are.
+        model.deleteCase(seeded.withReport.caseID)
+        waitFor("Fall gelöscht", model) { model.document.value.cases.size == 2 }
+        compose.onNodeWithTag("backup-pick").performScrollTo().performClick()
+        compose.waitForIdle()
+        compose.onNodeWithTag("restore-password").performScrollTo().performTextInput("Synthetisches Passwort 1")
+        compose.onNodeWithTag("restore-start").performClick()
+        waitFor("Wiederhergestellt", model) { model.backupResult.value?.contains("wiederhergestellt") == true || model.error.value != null }
+        assertEquals(null, model.error.value)
+        assertEquals("1 Fall und 0 Schnellchecks wiederhergestellt. 3 schon vorhanden, unverändert gelassen.", model.backupResult.value)
+        assertEquals(seeded.document.cases.map { it.id }.toSet(), model.document.value.cases.map { it.id }.toSet())
+        assertEquals(seeded.document.cases.first { it.id == seeded.withReport.caseID }, model.document.value.cases.first { it.id == seeded.withReport.caseID })
+        compose.onNodeWithTag("backup-result").assertIsDisplayed()
     }
 
     @Test fun typedTextAutosavesAndSurvivesRelaunch() {

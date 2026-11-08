@@ -32,6 +32,8 @@ final class VetAppModel: ObservableObject {
     @Published private(set) var recordingLocation: EncounterLocation?
     @Published var speechStatus = "Wird geprüft"
     @Published private(set) var vocabulary: [VocabularyEntry] = []
+    /// Outcome of the last backup or restore, shown on the backup screen (ADR 0019).
+    @Published var backupResult: String?
     @Published private(set) var onlineConfiguration = OnlineReportConfiguration()
     @Published private(set) var hasOpenAIKey = false
     @Published private(set) var hasGeminiKey = false
@@ -830,6 +832,49 @@ final class VetAppModel: ObservableObject {
         do { try await repository.saveVocabulary(entries); vocabulary = entries }
         catch { self.error = error.localizedDescription }
     }
+    // Backup (ADR 0019) -------------------------------------------------------------------------------------
+
+    /// Writes every case, quick check and file into an encrypted file in the temporary folder. The view then lets the
+    /// user move it to a place of their choice; a cancelled move deletes it.
+    func createBackup(password: String, includeAudio: Bool) async -> URL? {
+        guard let repository, !busy, !captureInProgress else { return nil }
+        busy = true; error = nil; backupResult = nil; workStatus = "Sicherung wird verschlüsselt …"
+        defer { busy = false; workStatus = "" }
+        let day = ISO8601DateFormatter.string(from: Date(), timeZone: .current, formatOptions: [.withFullDate])
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("VetMed-Sicherung-\(day).\(BackupFormat.fileExtension)")
+        do {
+            if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) }
+            let written = try await repository.writeBackup(to: url, password: password, document: document, includeAudio: includeAudio)
+            let manifest = written.manifest
+            var text = "Sicherung erstellt: \(manifest.cases) \(manifest.cases == 1 ? "Fall" : "Fälle"), \(manifest.quickChecks) Schnellchecks, \(written.files) Dateien"
+            text += includeAudio ? " einschließlich Aufnahmen." : ", ohne Aufnahmen."
+            if written.missing > 0 { text += " \(written.missing) Dateien fehlten schon auf dem Gerät und sind nicht enthalten." }
+            backupResult = text
+            return url
+        } catch {
+            try? FileManager.default.removeItem(at: url)
+            self.error = "Sicherung fehlgeschlagen: " + error.localizedDescription
+            return nil
+        }
+    }
+    /// Adds the cases of a backup that are not on this iPhone yet. Nothing here is overwritten.
+    func restoreBackup(from url: URL, password: String) async {
+        guard let repository, !busy, !captureInProgress else { return }
+        busy = true; error = nil; backupResult = nil; workStatus = "Passwort wird geprüft …"
+        defer { busy = false; workStatus = "" }
+        let access = url.startAccessingSecurityScopedResource()
+        defer { if access { url.stopAccessingSecurityScopedResource() } }
+        do {
+            let restored = try await repository.readBackup(from: url, password: password, local: document)
+            if restored.document != document { try await repository.save(restored.document) }
+            if restored.vocabulary != vocabulary { try await repository.saveVocabulary(restored.vocabulary) }
+            document = restored.document; vocabulary = restored.vocabulary
+            backupResult = restored.summary
+        } catch {
+            self.error = "Wiederherstellen fehlgeschlagen: " + error.localizedDescription + " Auf dem Gerät wurde nichts geändert."
+        }
+    }
+
     func installSpeech() { run { [self] in try await AppleOfflineTranscriber.install(); speechStatus = await AppleOfflineTranscriber.status() } }
     func cancel() { work?.cancel() }
     private func run(state: EncounterState? = nil, location: EncounterLocation? = nil, onFinish: (() -> Void)? = nil, operation: @escaping @MainActor () async throws -> Void) {

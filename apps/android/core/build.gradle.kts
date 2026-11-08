@@ -15,4 +15,8 @@ dependencies {
     testImplementation(libs.kotlinx.coroutines.test)
 }
 
-tasks.test { systemProperty("vetmed.shared", rootDir.resolve("../../shared").absolutePath) }
+tasks.test {
+    systemProperty("vetmed.shared", rootDir.resolve("../../shared").absolutePath)
+    // Rewrites the shared backup fixture read by the iOS tests (ADR 0019); only on purpose.
+    providers.systemProperty("vetmed.writeBackupFixture").orNull?.let { systemProperty("vetmed.writeBackupFixture", it) }
+}

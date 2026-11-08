@@ -225,7 +225,8 @@ fun SettingsScreen(model: AppViewModel, nav: NavHostController) {
         SectionTitle("Lokale Daten")
         Group {
             Row(verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Rounded.Lock, null, tint = LocalVetColors.current.primary); Spacer(Modifier.width(8.dp)); Text("Verschlüsselt auf diesem Gerät") }
-            Caption("AES-256-GCM mit einem Schlüssel im Android Keystore. Keine Cloud-Synchronisation und kein Backup. Deinstallation oder Geräteverlust kann zum Datenverlust führen.")
+            Caption("AES-256-GCM mit einem Schlüssel im Android Keystore. Keine Cloud-Synchronisation. Ohne eigene Sicherung gehen Fälle bei Deinstallation oder Geräteverlust verloren.")
+            LinkRow("Sicherung erstellen oder wiederherstellen") { nav.navigate(BackupRoute) }
         }
         SectionTitle("Entwicklungsstand")
         Group {
@@ -429,3 +430,92 @@ fun VocabularyScreen(model: AppViewModel, nav: NavHostController) {
         }
     }
 }
+
+/**
+ * Password-protected backup of all cases to a file of the user's choice, and restoring from one (ADR 0019).
+ * The file is chosen with the system dialog, so it can go to a computer, a USB stick or a cloud folder.
+ */
+@Composable
+fun BackupScreen(model: AppViewModel, nav: NavHostController) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val document by model.document.collectAsStateWithLifecycle()
+    val busy by model.busy.collectAsStateWithLifecycle()
+    val result by model.backupResult.collectAsStateWithLifecycle()
+    val status by model.workStatus.collectAsStateWithLifecycle()
+    // Passwords live only in memory for this screen, never in saved state.
+    var password by remember { mutableStateOf("") }
+    var repeated by remember { mutableStateOf("") }
+    var includeAudio by remember { mutableStateOf(true) }
+    var problem by remember { mutableStateOf<String?>(null) }
+    var source by remember { mutableStateOf<android.net.Uri?>(null) }
+    var restorePassword by remember { mutableStateOf("") }
+    val create = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
+        if (uri != null) {
+            val secret = password
+            password = ""; repeated = ""
+            model.createBackup(secret, includeAudio, open = { context.contentResolver.openOutputStream(uri, "wt") },
+                discard = { android.provider.DocumentsContract.deleteDocument(context.contentResolver, uri) })
+        }
+    }
+    val pick = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri -> source = uri; restorePassword = "" }
+    SettingsScaffold("Sicherung", nav) {
+        SectionTitle("Sicherung erstellen")
+        Group {
+            Text("Alle Fälle, Berichte, Chats, Anhänge und die Fachwortliste in eine Datei", fontWeight = FontWeight.SemiBold)
+            Caption("Die Datei ist mit deinem Passwort verschlüsselt (AES-256). Ohne das Passwort lässt sie sich nicht öffnen, auch nicht von uns. API-Keys sind nicht enthalten. Speichere die Datei außerhalb des Telefons, etwa auf dem Computer.")
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Aufnahmen mitsichern")
+                    Caption("Ungefähr ${megabytes(de.tobwil.vetmed.core.BackupContent.estimatedBytes(document, includeAudio))} insgesamt")
+                }
+                Switch(includeAudio, { includeAudio = it }, modifier = Modifier.testTag("backup-audio"))
+            }
+            OutlinedTextField(password, { password = it; problem = null }, label = { Text("Passwort (mindestens ${de.tobwil.vetmed.core.BackupFormat.MIN_PASSWORD} Zeichen)") },
+                singleLine = true, visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                modifier = Modifier.fillMaxWidth().testTag("backup-password"))
+            OutlinedTextField(repeated, { repeated = it; problem = null }, label = { Text("Passwort wiederholen") },
+                singleLine = true, visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                modifier = Modifier.fillMaxWidth().testTag("backup-password-repeat"))
+            problem?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("backup-problem")) }
+            Caption("Das Passwort kann nicht wiederhergestellt werden. Bitte sicher notieren.")
+            Button(onClick = {
+                try {
+                    de.tobwil.vetmed.core.BackupFormat.checkNewPassword(password, repeated)
+                    create.launch("VetMed-Sicherung-${java.time.LocalDate.now()}.${de.tobwil.vetmed.core.BackupFormat.FILE_EXTENSION}")
+                } catch (error: de.tobwil.vetmed.core.AppFailure) { problem = error.message }
+            }, enabled = !busy && (document.cases.isNotEmpty() || !document.quickChecks.isNullOrEmpty()), modifier = Modifier.testTag("backup-create")) { Text("Sicherung speichern …") }
+        }
+        SectionTitle("Wiederherstellen")
+        Group {
+            Text("Fälle aus einer Sicherung übernehmen", fontWeight = FontWeight.SemiBold)
+            Caption("Fälle, die schon auf dem Gerät sind, bleiben unverändert. Nur fehlende Fälle und Schnellchecks kommen hinzu. Eine Sicherung vom iPhone lässt sich hier ebenfalls öffnen.")
+            if (source == null) {
+                TextButton(onClick = { pick.launch(arrayOf("*/*")) }, enabled = !busy, modifier = Modifier.testTag("backup-pick")) { Text("Sicherung auswählen …") }
+            } else {
+                Caption("Datei gewählt. Bitte das Passwort dieser Sicherung eingeben.")
+                OutlinedTextField(restorePassword, { restorePassword = it }, label = { Text("Passwort der Sicherung") },
+                    singleLine = true, visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                    modifier = Modifier.fillMaxWidth().testTag("restore-password"))
+                Row {
+                    Button(onClick = {
+                        val uri = source!!; val secret = restorePassword
+                        source = null; restorePassword = ""
+                        model.restoreBackup(secret) { context.contentResolver.openInputStream(uri) }
+                    }, enabled = !busy && restorePassword.isNotEmpty(), modifier = Modifier.testTag("restore-start")) { Text("Wiederherstellen") }
+                    TextButton(onClick = { source = null; restorePassword = "" }) { Text("Abbrechen") }
+                }
+            }
+        }
+        if (busy && status.isNotEmpty()) Caption(status)
+        result?.let {
+            Group {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Rounded.Check, null, tint = LocalVetColors.current.primary); Spacer(Modifier.width(8.dp))
+                    Text(it, modifier = Modifier.testTag("backup-result"))
+                }
+            }
+        }
+    }
+}
+
+private fun megabytes(bytes: Long): String = if (bytes < 1_000_000) "unter 1 MB" else "%,d MB".format(java.util.Locale.GERMANY, bytes / 1_000_000)

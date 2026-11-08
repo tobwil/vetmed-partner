@@ -302,3 +302,17 @@ Prüfung:
 - Android: `ConversationReportTests` (5) bestanden; gesamt Kern 138 (2 übersprungen), App 52, Lint und Build grün.
 - iOS: dieselben 5 Fälle unter Linux mit Swift 6.1, zusammen 29/29. Dabei zwei Fehler gefunden und behoben (`mg\/kg` im Prompt, Typprüfung von `StructuredReport.text`). Prüfansicht nur auf Syntax geprüft. **Vor `main`:** `./scripts/test-ios.sh` auf dem Mac.
 - Ein echtes Gespräch mit Key steht aus.
+
+## Verschlüsselte Sicherung am 08.11.2026
+
+Anlass: Es gab keine Sicherung. Geräteverlust, Deinstallation oder Gerätewechsel bedeuteten den Verlust aller Fälle. Details in [ADR 0019](architecture/0019-backup.md).
+
+Umgesetzt (Android und iOS, ein gemeinsames Format):
+- Alle Fälle, Berichte, Chats, Anhänge, auf Wunsch Aufnahmen, und die Fachwortliste in eine Datei; AES-256-GCM in Blöcken, Schlüssel per PBKDF2-SHA256 (600.000 Durchläufe) aus dem Passwort.
+- Ablage über den Systemdialog; nichts wird hochgeladen; API-Keys sind nicht enthalten.
+- Wiederherstellen ergänzt nur fehlende Fälle und überschreibt nichts; Sicherungen gehen auch zwischen iPhone und Android.
+
+Prüfung:
+- Android: `BackupTests` (9), `BackupStorageTests` (1) und UI-Test mit Dateidialog-Ersatz bestanden; gesamt Kern 147 (2 übersprungen), App 54, Lint und Build grün. Screenshot 20.
+- iOS: `BackupTests.swift` (5) unter Linux mit Swift 6.1, darunter das Öffnen der von Android geschriebenen Testdatei; zusammen 34/34. Speicher, Modell und Ansicht nur auf Syntax geprüft. **Vor `main`:** `./scripts/test-ios.sh` auf dem Mac.
+- Auf echten Geräten steht aus: Sicherung und Übertragung in beide Richtungen, Dauer der Schlüsselableitung.

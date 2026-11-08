@@ -300,6 +300,46 @@ actor CaseRepository {
         let attachments = root.appendingPathComponent("ChatAttachments").appendingPathComponent(id.uuidString)
         if FileManager.default.fileExists(atPath: attachments.path) { try FileManager.default.removeItem(at: attachments) }
     }
+    // Backup (ADR 0019) -------------------------------------------------------------------------------------
+
+    /// Plaintext of one file for a backup, or nil if it is gone; the backup then leaves it out and counts it.
+    private func backupData(_ file: BackupFile) -> Data? {
+        switch file {
+        case let .attachment(caseID, encounterID, id, upload): try? attachmentData(caseID: caseID, encounterID: encounterID, id: id, upload: upload)
+        case let .audio(caseID, encounterID, segmentID): try? audio(caseID: caseID, encounterID: encounterID, segmentID: segmentID)
+        }
+    }
+    private func restoreFile(_ file: BackupFile, _ data: Data) throws {
+        let available = try root.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]).volumeAvailableCapacityForImportantUsage ?? 0
+        guard available > Int64(data.count * 3 + 20_000_000) else { throw AppFailure("Zu wenig Gerätespeicher für die Wiederherstellung. Bitte Speicher freigeben.") }
+        switch file {
+        case let .attachment(caseID, encounterID, id, upload):
+            let url = attachmentURL(caseID: caseID, encounterID: encounterID, id: id, upload: upload)
+            try AppPaths.prepare(url.deletingLastPathComponent())
+            let context = "chat-attachment-v1/\(caseID?.uuidString ?? "quick")/\(encounterID)/\(id)/\(upload ? "upload" : "original")"
+            try encrypt(data, context: context).write(to: url, options: [.atomic, .completeFileProtection])
+        case let .audio(caseID, encounterID, segmentID):
+            try storeAudio(data, caseID: caseID, encounterID: encounterID, segmentID: segmentID)
+        }
+    }
+    /// Writes a password-protected backup of `document` to `url`.
+    func writeBackup(to url: URL, password: String, document: VaultDocument, includeAudio: Bool) throws -> BackupContent.Written {
+        guard FileManager.default.createFile(atPath: url.path, contents: nil, attributes: [.protectionKey: FileProtectionType.complete]) else {
+            throw AppFailure("Die Sicherungsdatei konnte nicht angelegt werden.")
+        }
+        let handle = try FileHandle(forWritingTo: url)
+        defer { try? handle.close() }
+        return try BackupContent.write(sink: { try handle.write(contentsOf: $0) }, password: password, document: document,
+                                       vocabulary: try vocabulary(), includeAudio: includeAudio) { backupData($0) }
+    }
+    /// Reads a backup and stores the files of every newly added case. The caller saves the returned document; if that
+    /// fails, the files written here are orphans and are removed at the next unlock.
+    func readBackup(from url: URL, password: String, local: VaultDocument) throws -> BackupContent.Restored {
+        let handle = try FileHandle(forReadingFrom: url)
+        defer { try? handle.close() }
+        return try BackupContent.restore(source: { try handle.read(upToCount: $0) ?? Data() }, password: password, local: local,
+                                         localVocabulary: try vocabulary()) { try restoreFile($0, $1) }
+    }
     private func audioURL(_ c: UUID, _ e: UUID, _ s: UUID) -> URL {
         root.appendingPathComponent(c.uuidString).appendingPathComponent(e.uuidString).appendingPathComponent(s.uuidString + ".aesgcm")
     }

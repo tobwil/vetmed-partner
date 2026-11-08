@@ -68,7 +68,11 @@ targets:
   VetMedTests:
     type: bundle.unit-test
     platform: iOS
-    sources: [VetMedTests]
+    sources:
+      - VetMedTests
+      # Backup written by Android; the iOS tests must open it (ADR 0019).
+      - path: ../../shared/fixtures/backup-v1-synthetic.vetmedbackup
+        buildPhase: resources
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES

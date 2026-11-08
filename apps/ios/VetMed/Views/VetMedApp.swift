@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 @main
 struct VetMedApp: App {
@@ -238,7 +239,8 @@ struct SettingsView: View {
             }
             Section("Lokale Daten") {
                 Label("Verschlüsselt auf diesem iPhone", systemImage: "lock.shield")
-                Text("Keine automatische Cloud-Synchronisation. Lokale Daten und Modelle sind von App-Backups ausgeschlossen. Geräteverlust oder Deinstallation kann zum Datenverlust führen.").font(.caption)
+                Text("Keine automatische Cloud-Synchronisation. Lokale Daten und Modelle sind von iPhone-Backups ausgeschlossen. Ohne eigene Sicherung gehen Fälle bei Geräteverlust oder Deinstallation verloren.").font(.caption)
+                NavigationLink("Sicherung erstellen oder wiederherstellen") { BackupView() }
             }
             Section("Entwicklungsstand") {
                 Text("iPhone-Pilot · 0.1").font(.headline)
@@ -397,5 +399,81 @@ struct DeviceDiagnosticsView: View {
             else if model.isBusy { ProgressView() }
             Text("Laufzeit, Speicher und Quellenprüfung werden im Prüfprotokoll festgehalten.").font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
         }.padding(32)
+    }
+}
+
+/// Password-protected backup of all cases to a place of the user's choice, and restoring from one (ADR 0019).
+struct BackupView: View {
+    @EnvironmentObject private var app: VetAppModel
+    // Passwords live only in memory for this screen.
+    @State private var password = ""
+    @State private var repeated = ""
+    @State private var includeAudio = true
+    @State private var problem: String?
+    @State private var created: URL?
+    @State private var moving = false
+    @State private var picking = false
+    @State private var source: URL?
+    @State private var restorePassword = ""
+
+    var body: some View {
+        Form {
+            Section {
+                Text("Alle Fälle, Berichte, Chats, Anhänge und die Fachwortliste in eine Datei").font(.headline)
+                Text("Die Datei ist mit deinem Passwort verschlüsselt (AES-256). Ohne das Passwort lässt sie sich nicht öffnen, auch nicht von uns. API-Keys sind nicht enthalten. Speichere die Datei außerhalb des iPhones, etwa auf dem Computer.")
+                    .font(.caption).foregroundStyle(.secondary)
+                Toggle(isOn: $includeAudio) {
+                    VStack(alignment: .leading) {
+                        Text("Aufnahmen mitsichern")
+                        Text("Ungefähr " + Self.megabytes(BackupContent.estimatedBytes(app.document, includeAudio: includeAudio)) + " insgesamt").font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                SecureField("Passwort (mindestens \(BackupFormat.minimumPassword) Zeichen)", text: $password).textContentType(.newPassword).accessibilityIdentifier("backup-password")
+                SecureField("Passwort wiederholen", text: $repeated).textContentType(.newPassword).accessibilityIdentifier("backup-password-repeat")
+                if let problem { Text(problem).font(.caption).foregroundStyle(.red) }
+                Text("Das Passwort kann nicht wiederhergestellt werden. Bitte sicher notieren.").font(.caption).foregroundStyle(.secondary)
+                Button("Sicherung erstellen …") {
+                    do {
+                        try BackupFormat.checkNewPassword(password, repeated: repeated)
+                        let secret = password; password = ""; repeated = ""; problem = nil
+                        Task { if let url = await app.createBackup(password: secret, includeAudio: includeAudio) { created = url; moving = true } }
+                    } catch { problem = error.localizedDescription }
+                }.disabled(app.busy || (app.document.cases.isEmpty && (app.document.quickChecks ?? []).isEmpty)).accessibilityIdentifier("backup-create")
+            } header: { Text("Sicherung erstellen") }
+            Section {
+                Text("Fälle, die schon auf dem iPhone sind, bleiben unverändert. Nur fehlende Fälle und Schnellchecks kommen hinzu. Eine Sicherung von Android lässt sich hier ebenfalls öffnen.")
+                    .font(.caption).foregroundStyle(.secondary)
+                if source == nil {
+                    Button("Sicherung auswählen …") { picking = true }.disabled(app.busy).accessibilityIdentifier("backup-pick")
+                } else {
+                    SecureField("Passwort der Sicherung", text: $restorePassword).accessibilityIdentifier("restore-password")
+                    HStack {
+                        Button("Wiederherstellen") {
+                            guard let url = source else { return }
+                            let secret = restorePassword; source = nil; restorePassword = ""
+                            Task { await app.restoreBackup(from: url, password: secret) }
+                        }.disabled(app.busy || restorePassword.isEmpty).accessibilityIdentifier("restore-start")
+                        Spacer()
+                        Button("Abbrechen", role: .cancel) { source = nil; restorePassword = "" }
+                    }.buttonStyle(.borderless)
+                }
+            } header: { Text("Wiederherstellen") }
+            if app.busy, !app.workStatus.isEmpty { Section { Text(app.workStatus).font(.footnote) } }
+            if let result = app.backupResult { Section { Label(result, systemImage: "checkmark.circle").accessibilityIdentifier("backup-result") } }
+        }
+        .themedBackground().navigationTitle("Sicherung").navigationBarTitleDisplayMode(.inline)
+        .fileMover(isPresented: $moving, file: created) { result in
+            if case .failure = result, let created { try? FileManager.default.removeItem(at: created) }
+            if case .failure = result { app.backupResult = nil }
+            created = nil
+        }
+        .fileImporter(isPresented: $picking, allowedContentTypes: [.data]) { result in
+            if case let .success(url) = result { source = url; restorePassword = "" }
+        }
+        .onDisappear { password = ""; repeated = ""; restorePassword = "" }
+    }
+
+    private static func megabytes(_ bytes: Int64) -> String {
+        bytes < 1_000_000 ? "unter 1 MB" : "\((bytes / 1_000_000).formatted(.number.locale(Locale(identifier: "de_DE")))) MB"
     }
 }
