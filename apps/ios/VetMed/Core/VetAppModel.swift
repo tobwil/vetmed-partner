@@ -643,7 +643,7 @@ final class VetAppModel: ObservableObject {
             guard !id.isEmpty else { throw AppFailure("Bitte eine Modell-ID auswählen.") }
             let key = keyDraft.trimmingCharacters(in: .whitespacesAndNewlines)
             if !key.isEmpty { try OnlineReportStore.validateKey(key) }
-            guard !key.isEmpty || (try onlineStore.key(for: provider)) != nil else { throw AppFailure("Bitte deinen API-Key eintragen.") }
+            guard try (!key.isEmpty || onlineStore.key(for: provider) != nil) else { throw AppFailure("Bitte deinen API-Key eintragen.") }
             var configuration = onlineConfiguration
             configuration.modelID = id; configuration.consentDate = Date(); configuration.preferredMode = .online; configuration.provider = provider
             configuration.verifiedModelID = testedOnlineModel == id ? id : nil

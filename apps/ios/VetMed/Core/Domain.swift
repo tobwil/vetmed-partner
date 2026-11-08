@@ -19,11 +19,17 @@ enum EncounterState: String, Codable, Sendable {
 }
 enum ReportTemplate: String, CaseIterable, Codable, Identifiable, Sendable {
     case treatment_report, soap, follow_up, referral, owner_information
+    /// Legacy: written by an earlier Android build. Kept so stored reports and backups stay readable; not offered for new reports.
+    case meeting_summary
     var id: String { rawValue }
     var title: String {
-        switch self { case .treatment_report: "Behandlungsbericht"; case .soap: "SOAP"; case .follow_up: "Verlauf / Kontrolle"; case .referral: "Überweisung"; case .owner_information: "Information für Tierhalter" }
+        switch self { case .treatment_report: "Behandlungsbericht"; case .soap: "SOAP"; case .follow_up: "Verlauf / Kontrolle"; case .referral: "Überweisung"; case .owner_information: "Information für Tierhalter"; case .meeting_summary: "Besprechungszusammenfassung" }
     }
     var audience: Audience { self == .owner_information ? .owner : .veterinarian }
+    /// Whether new reports can be created with this template.
+    var isSelectable: Bool { self != .meeting_summary }
+    /// Templates offered for new reports, in display order.
+    static var selectable: [ReportTemplate] { allCases.filter(\.isSelectable) }
     var sections: [String] {
         switch self {
         case .treatment_report: ["Anamnese", "Befunde", "Beurteilung", "Therapie", "Weiteres Vorgehen"]
@@ -31,6 +37,7 @@ enum ReportTemplate: String, CaseIterable, Codable, Identifiable, Sendable {
         case .follow_up: ["Anlass", "Veränderung", "Heutige Befunde", "Maßnahmen", "Nächster Schritt"]
         case .referral: ["Fragestellung", "Vorgeschichte", "Befunde", "Bisherige Behandlung"]
         case .owner_information: ["Beobachtungen", "Einordnung", "Vereinbarte Schritte"]
+        case .meeting_summary: ["Zusammenfassung", "Besprochene Themen", "Vereinbarungen", "Offene Fragen"]
         }
     }
 }

@@ -330,3 +330,19 @@ Prüfung:
 - Android: `DosingTests` (8) und UI-Test bestanden; gesamt Kern 155 (2 übersprungen), App 55, Lint und Build grün. Screenshots 21 und 22.
 - iOS: `DosingTests.swift` (6) unter Linux mit Swift 6.1, zusammen 40/40. Ansichten mit Swift Charts nur auf Syntax geprüft. **Vor `main`:** `./scripts/test-ios.sh` auf dem Mac.
 - Fachliche Durchsicht der Regeltexte durch eine Tierärztin steht aus.
+
+## Update auf dem Pixel 9a und alte Berichtsvorlage am 08.11.2026
+
+Anlass: Beim Update einer Version vom 15.10.2026 auf den aktuellen Stand öffnete die App keine Fälle mehr („Gespeicherte Falldaten konnten nicht gelesen werden“). Zwei gespeicherte Berichte nutzten die Vorlage `meeting_summary` („Besprechungszusammenfassung“). Sie stammt aus einem lokalen, nie veröffentlichten Stand, und der aktuelle Code kannte sie nicht.
+
+Umgesetzt (Android, iOS, gemeinsames Schema):
+- `meeting_summary` ist wieder ein gültiger Wert, damit gespeicherte Berichte und Sicherungen lesbar bleiben (auch Android-Sicherungen auf dem iPhone).
+- Für neue Berichte wird die Vorlage nicht angeboten (`ReportTemplate.selectable`).
+- iOS: fehlendes `try` in `VetAppModel.saveOnline` ergänzt; ohne diese Korrektur baut iOS mit Xcode 27 nicht. Das Xcode-Projekt ist neu erzeugt und enthält wieder alle Dateien.
+
+Prüfung:
+- Android: `legacyMeetingSummaryStaysReadableButIsNotOffered`; gesamt 211 Tests (2 übersprungen), Lint und Build grün.
+- iOS (Xcode 27, Simulator, nur `VetMedTests`): `testLegacyMeetingSummaryStaysReadableButIsNotOffered` bestanden, 139 bestanden. **Offen:** `OnlineReportTests.testRequestBudgetAndActualModelProvenance` schlägt fehl (13 statt 12 Anfragen); unabhängig von dieser Änderung.
+- Pixel 9a (Android 17), echte Daten: Update ohne Neuinstallation, 3 Fälle, 18 Chats und alle Berichtsversionen samt Prüfstatus erhalten; Vorlagenauswahl zeigt fünf Vorlagen. Mit synthetischem Testfall: Diktat mit Gemini-Transkription, Online-Bericht, Fallchat, Dosisrechner mit MDR1-Warnung, Sicherung (115 MB) und Wiederherstellen („0 wiederhergestellt, 23 schon vorhanden“); kein Absturz.
+- **Befund Sprachmodus:** Mit Testsprache aus einem Lautsprecher erkannte Gemini Live Teile als Französisch bzw. Hindi und antwortete in diesen Sprachen; Raumgeräusche wurden als Eingabe gewertet. Eine feste Antwortsprache fehlt (siehe ADR 0016, Grenzen). Nicht behoben.
+- Laborverlauf auf dem Gerät nicht geprüft.

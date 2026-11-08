@@ -11,6 +11,15 @@ final class CoreTests: XCTestCase {
             sections: [.init(key: "Befunde", items: [.init(text: text, sourceRefs: [.init(segmentId: t.segments[0].id, quote: text)], origin: "dictated")])], missingInformation: [], conflicts: [])
         return (t, report)
     }
+    func testLegacyMeetingSummaryStaysReadableButIsNotOffered() throws {
+        // Reports written by an earlier Android build use "meeting_summary"; backups carrying them must still open here.
+        var (_, report) = fixture()
+        report.template = .meeting_summary
+        let data = try JSONEncoder().encode(report)
+        XCTAssertTrue(String(decoding: data, as: UTF8.self).contains("\"template\":\"meeting_summary\""))
+        XCTAssertEqual(try JSONDecoder().decode(StructuredReport.self, from: data), report)
+        XCTAssertEqual(ReportTemplate.selectable, ReportTemplate.allCases.filter { $0 != .meeting_summary })
+    }
     func testValidSourceAndGermanDecimal() throws {
         let (t, r) = fixture()
         XCTAssertEqual(try ReportValidator.validate(r, transcript: t), [])
