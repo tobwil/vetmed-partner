@@ -46,6 +46,22 @@ final class VetAppModel: ObservableObject {
     @Published var transcriptionQuestion: EncounterLocation?
     /// After an online step failed: the device route, offered as a button. Never taken automatically.
     @Published private(set) var deviceOffer: DeviceOffer?
+    /// A running voice conversation (ADR 0016) and the chat it belongs to.
+    @Published private(set) var voice: VoiceConversation?
+    /// Waiting for the one-time consent before the first voice conversation.
+    @Published var voiceQuestion: VoiceRequest?
+    struct VoiceRequest: Identifiable { let id = UUID(); let caseID: UUID?; let encounterID: UUID; let draft: SparringDraft }
+    final class VoiceConversation: Identifiable {
+        let id = UUID()
+        let caseID: UUID?
+        let encounterID: UUID
+        let session: LiveSession
+        let audio: VoiceAudio
+        let instructions: String
+        init(caseID: UUID?, encounterID: UUID, session: LiveSession, audio: VoiceAudio, instructions: String) {
+            self.caseID = caseID; self.encounterID = encounterID; self.session = session; self.audio = audio; self.instructions = instructions
+        }
+    }
     @Published var onlineModels: [String] = []
     @Published var onlineSettingsStatus: String?
     @Published private(set) var testedOnlineModel: String?
@@ -158,6 +174,8 @@ final class VetAppModel: ObservableObject {
         } catch { self.error = error.localizedDescription }
     }
     func background() async {
+        // A voice conversation never continues unseen in the background; its transcript is kept.
+        await endVoice()
         locked = true; player?.stop(); player = nil
         work?.cancel()
         if recorder.isRecording { await recorder.pause(); await markInterrupted() }
@@ -721,6 +739,82 @@ final class VetAppModel: ObservableObject {
             player = try AVAudioPlayer(data: data); player?.currentTime = segment.startSeconds ?? 0; player?.play()
         } catch { self.error = error.localizedDescription }
     }
+    // Voice mode (ADR 0016) ---------------------------------------------------------------------
+
+    /// The case context a voice conversation starts with: chosen reports, added case text and confirmed lab tables.
+    func voiceContext(caseID: UUID?, encounterID: UUID, draft: SparringDraft) -> String {
+        guard let encounter = analysisContext(caseID: caseID, encounterID: encounterID) else { return "" }
+        let item = caseID.flatMap { id in document.cases.first { $0.id == id } }
+        let reports = (try? ChatReportSelection.resolve(ids: draft.reportIDs ?? [], caseID: caseID, encounterID: encounterID, item: item)) ?? []
+        let selected = Set(draft.attachmentIDs ?? [])
+        let labs = (encounter.chatAttachments ?? []).filter { selected.contains($0.id) && $0.reviewedAt != nil }.compactMap(\.reviewedText)
+        var parts: [String] = []
+        if !draft.context.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { parts.append("Falltext:\n" + draft.context) }
+        parts += reports.enumerated().map { "Fallbericht \($0.offset + 1):\n" + $0.element.sourceText }
+        parts += labs.enumerated().map { "Anhang \($0.offset + 1) · geprüft:\n" + $0.element }
+        return String(parts.joined(separator: "\n\n").prefix(60_000))
+    }
+
+    /// Starts a voice conversation in this chat. Needs the Gemini key and, once, the user's consent.
+    func startVoice(caseID: UUID?, encounterID: UUID, draft: SparringDraft, connector: any LiveConnector = URLSessionLiveConnector()) async {
+        guard !busy, !captureInProgress, voice == nil else { return }
+        guard hasGeminiKey else { error = "Für den Sprachmodus bitte einen Gemini-API-Key in den Einstellungen hinterlegen."; return }
+        guard geminiConfiguration.voiceConsentAt != nil else { voiceQuestion = VoiceRequest(caseID: caseID, encounterID: encounterID, draft: draft); return }
+        guard await AVAudioApplication.requestRecordPermission() else { error = "Ohne Mikrofonzugriff ist der Sprachmodus nicht möglich. Du kannst den Zugriff in den iOS-Einstellungen erlauben."; return }
+        do {
+            guard let key = try onlineStore.geminiKey() else { throw AppFailure("Der Gemini-API-Key fehlt.") }
+            try model.unload(); player?.stop(); player = nil
+            guard let url = Bundle.main.url(forResource: "sparring-v1", withExtension: "txt") else { throw AppFailure("Die Sparring-Anweisungen fehlen in diesem Build.") }
+            let instructions = try GeminiLive.instructions(base: try String(contentsOf: url, encoding: .utf8), context: voiceContext(caseID: caseID, encounterID: encounterID, draft: draft))
+            let session = LiveSession(key: key, instructions: instructions, vocabulary: Array(Set(vocabulary.map(\.preferred))).sorted(), connector: connector)
+            let audio = VoiceAudio()
+            session.onAudio = { [weak audio] in audio?.play($0) }
+            session.onInterrupted = { [weak audio] in audio?.flush() }
+            voice = VoiceConversation(caseID: caseID, encounterID: encounterID, session: session, audio: audio, instructions: instructions)
+            try audio.start { [weak session] chunk in session?.sendAudio(chunk) }
+            await session.start()
+        } catch {
+            voice?.session.stop(); voice?.audio.stop(); voice = nil
+            self.error = (error as? AppFailure)?.message ?? "Der Sprachmodus konnte nicht gestartet werden."
+        }
+    }
+
+    func decideVoice(_ consent: Bool) async {
+        guard let request = voiceQuestion else { return }
+        voiceQuestion = nil
+        guard consent else { return }
+        do {
+            var next = geminiConfiguration; next.voiceConsentAt = Date()
+            try onlineStore.saveGemini(next); geminiConfiguration = next
+            await startVoice(caseID: request.caseID, encounterID: request.encounterID, draft: request.draft)
+        } catch { self.error = error.localizedDescription }
+    }
+
+    func setVoiceMuted(_ muted: Bool) {
+        guard let voice else { return }
+        voice.audio.setMuted(muted)
+        if muted { voice.session.pauseInput() }
+    }
+
+    /// Ends the conversation and stores its transcript in the chat. Audio is never stored.
+    func endVoice() async {
+        guard let voice else { return }
+        self.voice = nil
+        voice.session.stop(); voice.audio.stop()
+        let text = LiveTranscript.markdown(voice.session.turns)
+        guard !text.isEmpty, let encounter = analysisContext(caseID: voice.caseID, encounterID: voice.encounterID) else { return }
+        do {
+            let item = voice.caseID.flatMap { id in document.cases.first { $0.id == id } }
+            let snapshot = try SparringRequestBuilder.prepare(caseID: voice.caseID, encounter: encounter, draft: SparringDraft(question: "Sprachgespräch"), modelID: GeminiLive.model, caseContext: item)
+            let input = voice.session.inputSeconds, output = voice.session.outputSeconds
+            var run = AnalysisRun(snapshot: snapshot, status: .completed, text: text)
+            run.actualModelID = GeminiLive.model
+            run.notice = "Sprachgespräch, Mitschrift der Spracherkennung: Der Wortlaut kann abweichen. Dauer ca. \(String(format: "%.1f", (input + output) / 60)) min Audio, Kosten ca. \(String(format: "%.2f", GeminiLive.costUSD(inputSeconds: input, outputSeconds: output))) US-$ (bezahltes Kontingent)."
+            mutateAnalysis(caseID: voice.caseID, encounterID: voice.encounterID) { $0.analysisRuns = ($0.analysisRuns ?? []) + [run] }
+            try await persist()
+        } catch { self.error = "Die Mitschrift konnte nicht gespeichert werden: " + error.localizedDescription }
+    }
+
     func installModel() { run { [self] in try await model.install() } }
     func saveVocabulary(_ entries: [VocabularyEntry]) async {
         guard let repository else { return }

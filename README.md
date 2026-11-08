@@ -36,6 +36,7 @@ Native App für Tierärztinnen und Tierärzte auf iPhone und Android. Du diktier
 | Bericht offline auf dem Gerät (optional) | Gemma 4 E2B über MLX | Gemma 4 E2B über LiteRT-LM |
 | Quellenprüfung (Zahlen, Einheiten, Verneinungen) | ja | ja |
 | Laborbefunde als geprüfte Wertetabelle (Abgleich mit dem Original, Bewertung aus dem gedruckten Referenzbereich) | ja | ja |
+| Sprachmodus: Fall im Gespräch besprechen (Gemini 3.8 Live, eigener Key) | ja | ja |
 | Klinischer Sparringspartner (online): Differenzialdiagnosen und nächste Schritte, mit Bildern, Labor-PDFs und eigenen Berichten, auch ohne Fall | ja | ja |
 | Freigabe, Teilen als Text oder PDF | ja | ja |
 | Tag/Nacht und sechs Farbthemen | ja | ja |
@@ -251,6 +252,14 @@ Ja, das kann bei jedem Sprachmodell passieren. Vor allem verwechseln Sprachmodel
 Prüfe Wirkstoffe und Dosierungen vor jeder Anwendung in der Fachinformation.
 
 Die Anweisungen an das Modell sind offen einsehbar: [`shared/prompts/sparring-v1.txt`](shared/prompts/sparring-v1.txt).
+
+**Kann ich mit dem Sparringspartner sprechen?**
+Ja, mit eigenem Gemini-Key: im Chat auf **Sprechen** tippen ([Entscheidung 0016](docs/architecture/0016-voice-mode.md)).
+- Die App verbindet sich mit Gemini 3.8 Live. Du sprichst frei und kannst ins Wort fallen. Die Antworten kommen gesprochen.
+- Ausgewählte Berichte, Falltext und bestätigte Labortabellen des Chats gehen als Kontext mit. Es gelten dieselben Regeln wie im Chat, auch zu Arzneimitteln. Eine Websuche gibt es nicht.
+- Gespeichert wird nur die Mitschrift als Chat-Eintrag, kein Audio.
+- Die Kosten zeigt die App an, im bezahlten Kontingent ca. 0,5 Cent pro Minute Sprechen und 1,8 Cent pro Minute Antwort.
+- Vor dem ersten Gespräch fragt die App einmal um Zustimmung.
 
 **Wie liest VetMed Laborbefunde?**
 Im Chat über **+ → Laborbefund hinzufügen** (PDF oder Foto). So geht es weiter ([Entscheidung 0015](docs/architecture/0015-lab-results.md)):

@@ -23,7 +23,7 @@
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>VetMed nimmt bewusst gestartete Diktate lokal auf.</string>
+	<string>VetMed nimmt bewusst gestartete Diktate lokal auf und nutzt das Mikrofon im Sprachmodus, den du im Chat startest.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>VetMed transkribiert Diktate ausschließlich auf diesem iPhone.</string>
 	<key>UILaunchScreen</key>

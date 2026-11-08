@@ -260,3 +260,17 @@ Prüfung:
 - Android: `LabReportTests` (13) und UI-Test mit synthetischem Befund bestanden; gesamt Kern 120 (1 übersprungen), App 50, Lint und Build grün. Screenshot 17.
 - iOS: `LabReportTests` (9) und `OnlineFirstTests` (6) unter Linux mit Swift 6.1 im Swift-6-Modus gebaut und bestanden (15/15). Dabei einen Namenskonflikt (`Range`) gefunden und behoben. Prüfansicht, PDFKit-Rendering und Vision-OCR nur auf Syntax geprüft. **Vor `main`:** `./scripts/test-ios.sh` auf dem Mac.
 - Echte Befunde: `scripts/eval-labs.sh` steht bereit, wartet auf anonymisierte Beispielbefunde und einen Key. Noch nicht gelaufen.
+
+## Sprachmodus mit Gemini 3.8 Live am 08.11.2026
+
+Anlass: Fälle sprechend besprechen, wenn die Hände nicht frei sind. Details in [ADR 0016](architecture/0016-voice-mode.md).
+
+Umgesetzt (Android und iOS):
+- Einmal-Token statt Key auf der Sprachverbindung; Setup mit Sparring-, Arzneimittel-, Labor- und Sprachregeln, Fallkontext und Fachwortliste; keine Websuche.
+- Echounterdrückung, sofortiges Abbrechen der Wiedergabe beim Unterbrechen, Fortsetzen nach `goAway` mit Handle, kein automatischer Neustart bei Netzverlust.
+- Einmalige Zustimmung, Kosten- und Daueranzeige, gespeichert wird nur die Mitschrift.
+
+Prüfung:
+- Android: `GeminiLiveTests` (9) und UI-Test bestanden; gesamt Kern 130 (2 übersprungen), App 51, Lint und Build grün. Screenshot 18.
+- iOS: `GeminiLiveTests` (7) mit Labor- und Online-Tests unter Linux mit Swift 6.1 gebaut und bestanden (22/22). Audio und Oberfläche nur auf Syntax geprüft. **Vor `main`:** `./scripts/test-ios.sh` auf dem Mac.
+- **Live mit echtem Gemini-Key steht aus** (Token-URL, Token-Body, Frame-Typ, deutsche Aussprache, Fortsetzen über 10 Minuten).

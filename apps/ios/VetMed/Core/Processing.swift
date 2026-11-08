@@ -11,6 +11,8 @@ struct GeminiTranscriptionConfiguration: Codable, Equatable, Sendable {
     var modelID = GeminiTranscriptionConfiguration.defaultModel
     /// When the user explicitly chose online or device transcription.
     var decidedAt: Date?
+    /// One-time consent for the voice mode (conversation audio and the chosen case context go to Gemini Live).
+    var voiceConsentAt: Date?
 }
 
 /// Online first, never a silent switch (ADR 0014). Same rules as Android's `Processing`.

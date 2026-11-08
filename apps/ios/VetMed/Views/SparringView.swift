@@ -232,6 +232,12 @@ struct ChatConversationView: View {
         }
         .safeAreaInset(edge: .bottom) { composer }
         .toolbar {
+            if app.hasGeminiKey {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Sprechen", systemImage: "waveform") { Task { await app.startVoice(caseID: caseID, encounterID: encounterID, draft: draft) } }
+                        .accessibilityIdentifier("start-voice").disabled(app.busy || app.captureInProgress)
+                }
+            }
             ToolbarItem(placement: .topBarTrailing) { NewChatButton().disabled(photoLoading) }
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
@@ -242,6 +248,13 @@ struct ChatConversationView: View {
                 .disabled(app.busy || app.captureInProgress || photoLoading)
             }
         }
+        .fullScreenCover(item: Binding(get: { app.voice.flatMap { $0.caseID == caseID && $0.encounterID == encounterID ? $0 : nil } }, set: { _ in })) { voice in
+            VoiceView(session: voice.session, audio: voice.audio)
+        }
+        .alert("Sprachmodus starten?", isPresented: Binding(get: { app.voiceQuestion?.encounterID == encounterID }, set: { if !$0 { app.voiceQuestion = nil } })) {
+            Button("Starten") { Task { await app.decideVoice(true) } }.accessibilityIdentifier("voice-consent")
+            Button("Abbrechen", role: .cancel) { Task { await app.decideVoice(false) } }
+        } message: { Text(VetAppModel.voiceConsentText) }
         .alert("Diesen Chat mit allen Nachrichten und Anhängen löschen?", isPresented: $deleting) {
             Button("Behalten", role: .cancel) {}
             Button("Chat löschen", role: .destructive) { Task { await app.deleteQuickCheck(encounterID) } }
