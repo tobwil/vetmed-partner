@@ -274,3 +274,17 @@ Prüfung:
 - Android: `GeminiLiveTests` (9) und UI-Test bestanden; gesamt Kern 130 (2 übersprungen), App 51, Lint und Build grün. Screenshot 18.
 - iOS: `GeminiLiveTests` (7) mit Labor- und Online-Tests unter Linux mit Swift 6.1 gebaut und bestanden (22/22). Audio und Oberfläche nur auf Syntax geprüft. **Vor `main`:** `./scripts/test-ios.sh` auf dem Mac.
 - **Live mit echtem Gemini-Key steht aus** (Token-URL, Token-Body, Frame-Typ, deutsche Aussprache, Fortsetzen über 10 Minuten).
+
+## Anhänge automatisch verstehen am 08.11.2026
+
+Anlass: Kein Vorab-Auswählen „Laborbefund“; jeder Brief sieht anders aus. Eine echte Rücküberweisung (nur lokal, nicht im Repo) bettet die Laborzeilen als Bilder ein. Details in [ADR 0017](architecture/0017-smart-attachments.md).
+
+Umgesetzt (Android und iOS):
+- Ein Eingang: PDFs und Dokumentfotos liest das Modell sofort im Hintergrund (Art, Titel, Absender, Text, alle Messwerte); klinische Fotos bleiben Bilder.
+- Abgleich gegen Textebene plus OCR jeder Seite; Zahlen im Text, die im Original fehlen, werden rot genannt.
+- Eine Prüfansicht für jedes gelesene Dokument; der Chat bekommt Text und Wertetabelle mit App-Bewertung.
+
+Prüfung:
+- Android: `LabReportTests` (16), UI-Tests Laborbefund und synthetische Rücküberweisung bestanden; gesamt Kern 133 (2 übersprungen), App 52, Lint und Build grün. Screenshots 17 (neu) und 19.
+- iOS: 24/24 Tests unter Linux mit Swift 6.1. Import, Seiten-OCR und Ansicht nur auf Syntax geprüft. **Vor `main`:** `./scripts/test-ios.sh` auf dem Mac.
+- Der echte Referenzbrief mit echtem Key steht aus (`scripts/eval-labs.sh`).

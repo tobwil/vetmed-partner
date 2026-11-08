@@ -1,22 +1,21 @@
 import SwiftUI
 
-/// Lab result review (ADR 0015), same flow as Android's `LabReviewSheet`: the page next to the table, every row
-/// editable, rows that could not be found in the original marked red. Only "bestätigen" makes it usable in the chat.
+/// Document review (ADR 0015, 0017), same flow as Android's `LabReviewSheet`: the page next to the reading, text and
+/// every row editable, numbers that could not be found in the original marked red. Only confirming makes it usable.
 struct LabReviewView: View {
     @EnvironmentObject private var app: VetAppModel
     @Environment(\.dismiss) private var dismiss
     let caseID: UUID?
     let encounterID: UUID
     let attachmentID: UUID
-    let autoRead: Bool
     var asText: () -> Void
     var use: (UUID) -> Void
     @State private var pages: [UIImage]?
     @State private var page = 0
     @State private var values: [LabValue] = []
+    @State private var text = ""
     @State private var editing: UUID?
     @State private var adding: LabValue?
-    @State private var started = false
     @State private var zoom: CGFloat = 1
     private var attachment: ChatAttachment? { app.analysisContext(caseID: caseID, encounterID: encounterID)?.chatAttachments?.first { $0.id == attachmentID } }
     private var stored: LabReport? { attachment?.lab }
@@ -36,19 +35,26 @@ struct LabReviewView: View {
                             Stepper("Seite \(page + 1) von \(pages.count)", value: $page, in: 0...(pages.count - 1))
                         }
                         Text("Mit zwei Fingern zoomen.").font(.caption2).foregroundStyle(.secondary)
-                    } else if pages == nil { Text("Befundseiten werden geladen …").font(.footnote).foregroundStyle(.secondary) }
+                    } else if pages == nil { Text("Seiten werden geladen …").font(.footnote).foregroundStyle(.secondary) }
                 }
                 if let stored {
                     let open = values.filter(\.needsCheck).count
                     Section {
-                        Text([stored.laboratory, stored.sampleDate.isEmpty ? "" : "Probe vom " + stored.sampleDate, stored.method].filter { !$0.isEmpty }.joined(separator: " · "))
+                        Text([stored.title, stored.laboratory, stored.sampleDate.isEmpty ? "" : "vom " + stored.sampleDate, stored.method].filter { !$0.isEmpty }.joined(separator: " · "))
                             .font(.caption).foregroundStyle(.secondary)
-                        Text(open == 0 ? "\(values.count) Werte. Bitte jede Zeile am Original vergleichen."
+                        Text(values.isEmpty ? "Bitte den Text am Original vergleichen."
+                             : open == 0 ? "\(values.count) Werte. Bitte Text und jede Zeile am Original vergleichen."
                              : "\(values.count) Werte, davon \(open) rot oder orange markiert: bitte besonders genau am Original prüfen.")
                             .font(.subheadline.weight(.semibold)).accessibilityIdentifier("lab-summary")
-                        Text("Referenz und Kennzeichnung stammen vom Labor. Die Bewertung berechnet die App nur aus dem gedruckten Referenzbereich.").font(.caption).foregroundStyle(.secondary)
+                        if !stored.unmatchedNumbers.isEmpty {
+                            Text("Diese Zahlen im Text fehlen im lokal gelesenen Original: \(stored.unmatchedNumbers.joined(separator: " · ")). Bitte am Original prüfen.")
+                                .font(.caption).foregroundStyle(.red).accessibilityIdentifier("unmatched-numbers")
+                        }
                     }
-                    Section("Werte") {
+                    if !stored.text.isEmpty || !text.isEmpty || values.isEmpty {
+                        Section("Text") { TextEditor(text: $text).frame(minHeight: 180).accessibilityIdentifier("document-text") }
+                    }
+                    Section {
                         ForEach(values) { value in
                             if editing == value.id {
                                 LabValueEditor(value: value, onCancel: { editing = nil }, onDelete: { values.removeAll { $0.id == value.id }; editing = nil }) { save($0) }
@@ -61,43 +67,43 @@ struct LabReviewView: View {
                         if let adding {
                             LabValueEditor(value: adding, onCancel: { self.adding = nil }, onDelete: nil) { save($0) }
                         } else if editing == nil {
-                            Button("Zeile hinzufügen", systemImage: "plus") { adding = LabValue(parameter: "", value: "", evidence: .edited) }.accessibilityIdentifier("lab-add-row")
+                            Button("Messwert hinzufügen", systemImage: "plus") { adding = LabValue(parameter: "", value: "", evidence: .edited) }.accessibilityIdentifier("lab-add-row")
                         }
+                    } header: {
+                        if !values.isEmpty { Text("Messwerte · Referenz und Kennzeichnung vom Labor, Bewertung durch die App") }
                     }
                     Section {
-                        Button("Tabelle am Original geprüft · bestätigen") {
-                            var report = stored; report.values = values
+                        Button("Am Original geprüft · übernehmen") {
+                            var report = stored; report.values = values; report.text = text.trimmingCharacters(in: .whitespacesAndNewlines)
                             Task { if await app.confirmLab(caseID: caseID, encounterID: encounterID, id: attachmentID, report: report) { use(attachmentID); dismiss() } }
-                        }.buttonStyle(.borderedProminent).disabled(app.busy || values.isEmpty || editing != nil || adding != nil).accessibilityIdentifier("lab-confirm")
+                        }.buttonStyle(.borderedProminent).disabled(app.busy || (values.isEmpty && text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) || editing != nil || adding != nil).accessibilityIdentifier("lab-confirm")
                         Button("Neu lesen") { app.readLab(caseID: caseID, encounterID: encounterID, id: attachmentID) }.disabled(app.busy)
                     }
                 } else {
                     Section {
-                        Text(app.busy ? (app.workStatus.isEmpty ? "Wird gelesen …" : app.workStatus) : "Die Werte sind noch nicht gelesen.")
+                        Text(app.busy ? (app.workStatus.isEmpty ? "Wird gelesen …" : app.workStatus) : "Das Dokument ist noch nicht gelesen.")
                         if !app.busy {
                             if app.labRoute == .online {
-                                Button("Werte online lesen (beste Qualität)") { app.readLab(caseID: caseID, encounterID: encounterID, id: attachmentID, route: .online) }
+                                Button("Online lesen (beste Qualität)") { app.readLab(caseID: caseID, encounterID: encounterID, id: attachmentID, route: .online) }
                                     .buttonStyle(.borderedProminent).accessibilityIdentifier("lab-read-online")
                             }
-                            Button("Auf dem Gerät lesen (jede Zeile prüfen)") { app.readLab(caseID: caseID, encounterID: encounterID, id: attachmentID, route: .device) }
+                            Button("Auf dem Gerät lesen (alles prüfen)") { app.readLab(caseID: caseID, encounterID: encounterID, id: attachmentID, route: .device) }
                                 .accessibilityIdentifier("lab-read-device")
-                            Text("Online gehen nur die Seitenbilder an deinen Anbieter. Namen von Tier und Halter auf dem Befund vorher abdecken, wenn sie nicht gesendet werden sollen.")
+                            Text("Online gehen nur die Seitenbilder an deinen Anbieter. Er überträgt Text und Werte, ohne Halter- und Tiernamen. Was vorher abgedeckt werden soll, bitte im Original schwärzen.")
                                 .font(.caption).foregroundStyle(.secondary)
                         }
                     }
                 }
                 Section { Button("Stattdessen als Text prüfen") { asText() }.disabled(app.busy) }
             }
-            .themedBackground().navigationTitle("Laborbefund prüfen").navigationBarTitleDisplayMode(.inline)
+            .themedBackground().navigationTitle(stored.map { "\($0.kind.title) prüfen" } ?? "Dokument prüfen").navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Schließen") { dismiss() } } }
             .task {
                 do { pages = try await app.labPages(caseID: caseID, encounterID: encounterID, id: attachmentID).compactMap(UIImage.init(data:)) }
                 catch { pages = [] }
             }
-            .onAppear { values = stored?.values ?? [] }
-            .onChange(of: stored?.readAt) { _, _ in values = stored?.values ?? []; editing = nil; adding = nil }
-            // A freshly added result is read right away along the default route; nothing is read twice.
-            .task(id: app.busy) { if autoRead, stored == nil, !app.busy, !started { started = true; app.readLab(caseID: caseID, encounterID: encounterID, id: attachmentID) } }
+            .onAppear { values = stored?.values ?? []; text = stored?.text ?? "" }
+            .onChange(of: stored?.readAt) { _, _ in values = stored?.values ?? []; text = stored?.text ?? ""; editing = nil; adding = nil }
             .onChange(of: attachment == nil) { _, missing in if missing { dismiss() } }
         }
     }

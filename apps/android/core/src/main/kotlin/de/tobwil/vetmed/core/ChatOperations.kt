@@ -72,7 +72,7 @@ object ChatOperations {
 
     /** The user checked the table at the original: from now on the chat receives exactly this rendered table. */
     fun confirmLab(document: VaultDocument, location: ChatLocation, id: String, report: LabReport): VaultDocument {
-        if (report.values.isEmpty()) throw AppFailure("Die Tabelle enthält keine Werte.")
+        if (report.values.isEmpty() && report.text.isBlank()) throw AppFailure("Das Dokument enthält weder Text noch Werte.")
         if (report.values.any { it.parameter.isBlank() || it.value.isBlank() }) throw AppFailure("Bitte in jeder Zeile Parameter und Wert ausfüllen oder die Zeile löschen.")
         val confirmed = report.copy(confirmedAt = now())
         val text = LabExtraction.render(confirmed)

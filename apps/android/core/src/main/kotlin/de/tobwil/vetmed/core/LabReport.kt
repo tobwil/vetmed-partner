@@ -61,19 +61,49 @@ data class LabValue(
     val needsCheck: Boolean get() = uncertain || flagConflict || evidence == LabEvidence.NOT_FOUND || evidence == LabEvidence.LOCAL
 }
 
-/** A lab result read into a table. Only a confirmed table is used in the chat. */
+/** What kind of document the reader found. Decides nothing by itself; it labels the review and the chat text. */
+@Serializable
+enum class DocumentKind(val title: String) {
+    @SerialName("lab") LAB("Laborbefund"),
+    @SerialName("letter") LETTER("Brief oder Bericht"),
+    @SerialName("imaging") IMAGING("Bildgebung oder Histologie"),
+    @SerialName("other") OTHER("Dokument"),
+}
+
+/**
+ * A document read by the app (ADR 0015, 0017): its kind, the clinical text and every measured value as a table.
+ * The name stays from the first version, which only read lab results. Only a confirmed reading reaches the chat.
+ */
 @Serializable
 data class LabReport(
+    /** Issuing clinic, practice or laboratory as printed; never owner data. */
     val laboratory: String = "",
     val sampleDate: String = "",
     val values: List<LabValue> = emptyList(),
-    /** How the table was read, e.g. "Gemini gemini-3.6-flash · Seitenbilder" or "Auf dem Gerät · Zeilenerkennung". */
+    /** How it was read, e.g. "Gemini gemini-3.6-flash · Seitenbilder" or "Auf dem Gerät · Zeilenerkennung". */
     val method: String,
     val readAt: AppleDate = now(),
     val pages: Int = 0,
     val confirmedAt: AppleDate? = null,
+    val kind: DocumentKind = DocumentKind.LAB,
+    val title: String = "",
+    /** The clinical text in reading order (anamnesis, findings, therapy …), without measurement tables. */
+    val text: String = "",
+    /** Numbers in [text] that the local reading of the original does not contain: to be checked. */
+    val unmatchedNumbers: List<String> = emptyList(),
 ) {
-    val openChecks: Int get() = values.count { it.needsCheck }
+    val openChecks: Int get() = values.count { it.needsCheck } + if (unmatchedNumbers.isEmpty()) 0 else 1
+    val heading: String get() = title.ifBlank { kind.title }
+}
+
+/** Which way an attachment goes, decided by the app instead of a menu choice (ADR 0017). */
+object DocumentRouting {
+    /** A photo whose on-device OCR finds real text is a document photo (lab printout, letter); otherwise a clinical photo. */
+    fun looksLikeDocument(ocrText: String): Boolean {
+        val letters = ocrText.count { it.isLetter() }
+        val numbers = LabMath.numbers(ocrText).size
+        return letters >= 160 || (letters >= 20 && numbers >= 6)
+    }
 }
 
 /** Numbers and reference ranges as printed on German lab reports. Deterministic; the model never assesses. */
@@ -149,22 +179,26 @@ object LabMath {
 }
 
 /**
- * Reading a lab result: page images go to the chosen model with a strict schema (transcription only, no assessment),
- * then every number is looked up again in the locally read text, and the user confirms the table at the original.
+ * Reading any clinical document: page images go to the chosen multimodal model with a strict schema (transcription
+ * only, no assessment, whatever the layout), then every number is looked up again in the locally read original, and
+ * the user confirms the reading at the original before the chat may use it.
  */
 object LabExtraction {
-    const val MAX_PAGES = 6
-    const val MAX_PAGE_BYTES = 2 * 1_048_576
+    const val MAX_PAGES = 10
+    const val MAX_PAGE_BYTES = 1_572_864
     const val MAX_VALUES = 300
-    val instructions: String by lazy { Prompts.load("lab-extraction-v1") }
+    const val MAX_TEXT = 40_000
+    private val kinds = listOf("lab", "letter", "imaging", "other")
+    val instructions: String by lazy { Prompts.load("document-reading-v1") }
     private val fields = listOf("parameter", "value", "unit", "reference", "flag", "page", "uncertain")
+    private val topFields = listOf("kind", "title", "issuer", "date", "text", "values")
 
     private fun checkPages(pages: List<ByteArray>) {
-        if (pages.isEmpty() || pages.size > MAX_PAGES) throw AppFailure("Bitte einen Befund mit 1 bis $MAX_PAGES Seiten wählen.")
-        if (pages.any { it.isEmpty() || it.size > MAX_PAGE_BYTES }) throw AppFailure("Eine Befundseite ist zu groß für den Versand.")
+        if (pages.isEmpty() || pages.size > MAX_PAGES) throw AppFailure("Bitte ein Dokument mit 1 bis $MAX_PAGES Seiten wählen.")
+        if (pages.any { it.isEmpty() || it.size > MAX_PAGE_BYTES }) throw AppFailure("Eine Dokumentseite ist zu groß für den Versand.")
     }
 
-    private fun prompt(pages: Int) = "Übertrage alle Messwerte dieses Laborbefunds ($pages ${if (pages == 1) "Seite" else "Seiten"}) in die Tabelle."
+    private fun prompt(pages: Int) = "Übertrage dieses Dokument ($pages ${if (pages == 1) "Seite" else "Seiten"})."
 
     fun openAIRequest(modelID: String, key: String, pages: List<ByteArray>): HttpRequest {
         validateApiKey(key)
@@ -195,15 +229,15 @@ object LabExtraction {
             }
             putJsonObject("text") {
                 putJsonObject("format") {
-                    put("type", "json_schema"); put("name", "veterinary_lab_table_v1"); put("strict", true)
+                    put("type", "json_schema"); put("name", "veterinary_document_v1"); put("strict", true)
                     putJsonObject("schema") {
                         put("type", "object"); put("additionalProperties", false)
                         putJsonObject("properties") {
-                            putJsonObject("laboratory") { put("type", "string") }
-                            putJsonObject("sampleDate") { put("type", "string") }
+                            putJsonObject("kind") { put("type", "string"); put("enum", JsonArray(kinds.map(::JsonPrimitive))) }
+                            listOf("title", "issuer", "date", "text").forEach { putJsonObject(it) { put("type", "string") } }
                             putJsonObject("values") { put("type", "array"); put("items", value) }
                         }
-                        putJsonArray("required") { listOf("laboratory", "sampleDate", "values").forEach { add(JsonPrimitive(it)) } }
+                        putJsonArray("required") { topFields.forEach { add(JsonPrimitive(it)) } }
                     }
                 }
             }
@@ -241,11 +275,12 @@ object LabExtraction {
                 putJsonObject("responseSchema") {
                     put("type", "OBJECT")
                     putJsonObject("properties") {
-                        putJsonObject("laboratory") { put("type", "STRING") }
-                        putJsonObject("sampleDate") { put("type", "STRING") }
+                        putJsonObject("kind") { put("type", "STRING"); put("format", "enum"); put("enum", JsonArray(kinds.map(::JsonPrimitive))) }
+                        listOf("title", "issuer", "date", "text").forEach { putJsonObject(it) { put("type", "STRING") } }
                         putJsonObject("values") { put("type", "ARRAY"); put("items", value) }
                     }
-                    putJsonArray("required") { listOf("laboratory", "sampleDate", "values").forEach { add(JsonPrimitive(it)) } }
+                    putJsonArray("required") { topFields.forEach { add(JsonPrimitive(it)) } }
+                    putJsonArray("propertyOrdering") { topFields.forEach { add(JsonPrimitive(it)) } }
                 }
             }
         }
@@ -255,11 +290,11 @@ object LabExtraction {
         )
     }
 
-    /** The model's table. Rejects anything that is not the schema; empty tables are an error, not a result. */
+    /** The model's reading. Rejects anything that is not the schema; a reading without text and values is an error. */
     fun parse(text: String, method: String, pages: Int): LabReport {
-        val root = runCatching { Json.parseToJsonElement(text).jsonObject }.getOrNull() ?: throw AppFailure("Die Tabelle des Anbieters konnte nicht gelesen werden.")
-        val rows = (root["values"] as? JsonArray) ?: throw AppFailure("Die Tabelle des Anbieters ist unvollständig.")
-        if (rows.size > MAX_VALUES) throw AppFailure("Der Befund enthält mehr als $MAX_VALUES Werte. Bitte in Teilen hinzufügen.")
+        val root = runCatching { Json.parseToJsonElement(text).jsonObject }.getOrNull() ?: throw AppFailure("Die Antwort des Anbieters konnte nicht gelesen werden.")
+        val rows = (root["values"] as? JsonArray) ?: throw AppFailure("Die Antwort des Anbieters ist unvollständig.")
+        if (rows.size > MAX_VALUES) throw AppFailure("Das Dokument enthält mehr als $MAX_VALUES Werte. Bitte in Teilen hinzufügen.")
         fun JsonObject.text(key: String) = (this[key] as? JsonPrimitive)?.contentOrNull?.trim().orEmpty().take(200)
         val values = rows.map { element ->
             val row = element as? JsonObject ?: throw AppFailure("Die Tabelle des Anbieters ist unvollständig.")
@@ -269,8 +304,14 @@ object LabExtraction {
                 uncertain = (row["uncertain"] as? JsonPrimitive)?.booleanOrNull ?: false,
             )
         }.filter { it.parameter.isNotEmpty() || it.value.isNotEmpty() }
-        if (values.isEmpty()) throw AppFailure("Im Befund wurden keine Messwerte erkannt. Du kannst den Text stattdessen als Dokument prüfen.")
-        return LabReport(laboratory = root.text("laboratory"), sampleDate = root.text("sampleDate"), values = values, method = method, pages = pages)
+        val body = (root["text"] as? JsonPrimitive)?.contentOrNull?.trim().orEmpty().take(MAX_TEXT)
+        if (values.isEmpty() && body.isEmpty()) throw AppFailure("Im Dokument wurde kein Inhalt erkannt. Du kannst den lokal gelesenen Text stattdessen prüfen.")
+        val kind = when (root.text("kind")) { "lab" -> DocumentKind.LAB; "letter" -> DocumentKind.LETTER; "imaging" -> DocumentKind.IMAGING; else -> DocumentKind.OTHER }
+        // Older schema names are still accepted, so a cached or replayed answer of the first version stays readable.
+        return LabReport(
+            laboratory = root.text("issuer").ifEmpty { root.text("laboratory") }, sampleDate = root.text("date").ifEmpty { root.text("sampleDate") },
+            values = values, method = method, pages = pages, kind = kind, title = root.text("title"), text = body,
+        )
     }
 
     /**
@@ -279,7 +320,10 @@ object LabExtraction {
      */
     fun verify(report: LabReport, localText: String): LabReport {
         val local = LabMath.numbers(localText).toSet()
-        return report.copy(values = report.values.map { value ->
+        // Numbers in the transcribed text (doses, weights, temperatures) are checked the same way as table values.
+        val unmatched = if (local.isEmpty()) emptyList() else Regex("""\d+(?:[.,]\d+)*""").findAll(report.text).map { it.value }
+            .filter { token -> LabMath.number(token)?.let { it !in local } == true }.distinct().take(20).toList()
+        return report.copy(unmatchedNumbers = unmatched, values = report.values.map { value ->
             if (value.evidence == LabEvidence.EDITED || value.evidence == LabEvidence.LOCAL) return@map value
             val numbers = LabMath.numbers(value.value) + LabMath.numbers(value.reference)
             val evidence = when {
@@ -296,6 +340,8 @@ object LabExtraction {
             """(\(?(?:\d+(?:[.,]\d+)?\s*(?:-|–|bis)\s*\d+(?:[.,]\d+)?|[<>≤≥]\s*\d+(?:[.,]\d+)?)\)?)?\s*([HLhl+\-↑↓*]{1,2})?\s*$""",
     )
 
+    private val unitPattern = Regex("""^\S*[/%µμ]\S*$|^(?:g|mg|µg|U|IU|IE|fl|fL|pg|°C|mmHg|mmol|µmol|pmol|nmol|Zellen)$""")
+
     /** Device-only fallback: one value per text line that looks like "Name Wert Einheit Referenz". Always to be checked. */
     fun parseLocal(text: String, pages: Int): LabReport {
         var page = 1
@@ -304,20 +350,29 @@ object LabExtraction {
             val match = localLine.matchEntire(line) ?: return@mapNotNull null
             val (name, value, unit, reference, flag) = match.destructured
             if (name.trim().length < 2) return@mapNotNull null
+            // A measurement has a printed range or a real unit; "Kontrolle in 7 Tagen." is text, not a value.
+            if (reference.isBlank() && !unitPattern.matches(unit.trim())) return@mapNotNull null
             LabValue(parameter = name.trim(), value = value.trim(), unit = unit.trim(), reference = reference.trim().removeSurrounding("(", ")"), flag = flag.trim(), page = page, evidence = LabEvidence.LOCAL)
         }.take(MAX_VALUES).toList()
-        if (values.isEmpty()) throw AppFailure("Auf dem Gerät wurden keine Wertezeilen erkannt. Bitte online lesen oder den Text als Dokument prüfen.")
-        return LabReport(values = values, method = "Auf dem Gerät · Zeilenerkennung", pages = pages)
+        // On the device the local text itself is the reading; value lines are offered as a table to be checked.
+        val body = text.lineSequence().filterNot { Regex("""^Seite \d+$""").matches(it.trim()) }.joinToString("\n").trim().take(MAX_TEXT)
+        if (values.isEmpty() && body.isEmpty()) throw AppFailure("Auf dem Gerät wurde kein Text erkannt.")
+        return LabReport(values = values, method = "Auf dem Gerät · Zeilenerkennung", pages = pages, kind = if (values.isEmpty()) DocumentKind.OTHER else DocumentKind.LAB,
+            text = if (values.isEmpty()) body else "")
     }
 
     private fun cell(text: String) = text.replace("|", "/").replace("\n", " ").ifEmpty { "–" }
 
-    /** The confirmed table as the chat receives it: laboratory values verbatim, the app's own assessment separate. */
+    /** The confirmed reading as the chat receives it: text and values verbatim, the app's own assessment separate. */
     fun render(report: LabReport): String = buildString {
-        append("Laborbefund")
+        append(report.kind.title)
+        if (report.title.isNotBlank() && report.title != report.kind.title) append(" · ").append(report.title)
         if (report.laboratory.isNotEmpty()) append(" · ").append(report.laboratory)
-        if (report.sampleDate.isNotEmpty()) append(" · Probe vom ").append(report.sampleDate)
-        append("\nTabelle am Original geprüft und bestätigt. Referenz und Kennzeichnung stammen vom Labor; die Bewertung berechnet die App ausschließlich aus dem gedruckten Referenzbereich.\n\n")
+        if (report.sampleDate.isNotEmpty()) append(" · vom ").append(report.sampleDate)
+        append("\nAm Original geprüft und bestätigt.")
+        if (report.text.isNotBlank()) append("\n\n").append(report.text.trim())
+        if (report.values.isEmpty()) return@buildString
+        append("\n\nMesswerte. Referenz und Kennzeichnung stammen vom Labor; die Bewertung berechnet die App ausschließlich aus dem gedruckten Referenzbereich.\n\n")
         append("| Parameter | Wert | Einheit | Referenz (Labor) | Kennz. (Labor) | Bewertung (App) |\n|---|---|---|---|---|---|\n")
         report.values.forEach { value ->
             val assessment = value.assessment

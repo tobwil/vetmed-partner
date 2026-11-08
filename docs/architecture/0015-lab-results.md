@@ -1,5 +1,7 @@
 # 0015: Laborbefunde als geprüfte Wertetabelle
 
+Erweitert durch [0017](0017-smart-attachments.md): kein eigener Menüpunkt mehr, jedes Dokument wird erkannt und gelesen.
+
 Datum: 08.11.2026
 
 ## Anlass
@@ -18,7 +20,7 @@ Vier Stufen, jede mit eigener Absicherung:
 
 1. **Lesen mit Bild (online, Standard).**
    - Die Seitenbilder gehen an das gewählte Modell, OpenAI oder Gemini, mit strengem JSON-Schema. PDFs werden mit etwa 200 dpi gerendert; erlaubt sind höchstens 6 Seiten zu je höchstens 2 MB.
-   - Die Anweisung `shared/prompts/lab-extraction-v1.txt` erlaubt nur Übertragen: nichts berechnen, nichts ergänzen, Referenzbereiche nie erfinden, keine Tier- oder Halterdaten.
+   - Die Anweisung `shared/prompts/lab-extraction-v1.txt` (seit ADR 0017 `document-reading-v1.txt`) erlaubt nur Übertragen: nichts berechnen, nichts ergänzen, Referenzbereiche nie erfinden, keine Tier- oder Halterdaten.
    - Ohne Online-Zugang oder mit „Nur auf dem Gerät“ (ADR 0014) arbeitet ein Zeilenparser auf dem lokalen Text. Jede so gelesene Zeile ist orange markiert.
 2. **Abgleich mit dem Original (immer, lokal).**
    - Jede Zahl aus Wert und Referenz muss im lokal gelesenen Text vorkommen. Lokal gelesen wird über die PDF-Textebene, den iOS-Layout-Leser oder OCR mit ML Kit bzw. Vision.

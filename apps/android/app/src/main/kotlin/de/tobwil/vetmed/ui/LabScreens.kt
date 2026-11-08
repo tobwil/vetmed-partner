@@ -76,7 +76,7 @@ private val Orange = Color(0xFFFF9F0A)
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun LabReviewSheet(
-    model: AppViewModel, location: ChatLocation, attachmentID: String, autoRead: Boolean,
+    model: AppViewModel, location: ChatLocation, attachmentID: String,
     onDismiss: () -> Unit, asText: () -> Unit, use: (String) -> Unit,
 ) {
     val colors = LocalVetColors.current
@@ -86,6 +86,7 @@ fun LabReviewSheet(
     val attachment = model.chatContext(location)?.chatAttachments?.firstOrNull { it.id == attachmentID }
     val stored = attachment?.lab
     var values by remember(stored?.readAt) { mutableStateOf(stored?.values.orEmpty()) }
+    var text by remember(stored?.readAt) { mutableStateOf(stored?.text.orEmpty()) }
     var editing by remember { mutableStateOf<LabValue?>(null) }
     var page by remember { mutableIntStateOf(0) }
     val pages by produceState<List<android.graphics.Bitmap>?>(null, attachmentID) {
@@ -93,13 +94,10 @@ fun LabReviewSheet(
     }
     val history = remember(document, attachmentID) { LabHistory.previous(document, location.caseID, attachmentID) }
     if (attachment == null) { LaunchedEffect(Unit) { onDismiss() }; return }
-    // A freshly added result is read right away along the default route; nothing is read twice.
-    var started by remember { mutableStateOf(false) }
-    LaunchedEffect(busy) { if (autoRead && stored == null && !busy && !started) { started = true; model.readLab(location, attachmentID) } }
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Laborbefund prüfen", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text(stored?.let { "${it.kind.title} prüfen" } ?: "Dokument prüfen", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.testTag("document-review-title"))
             // The original page, zoomable, so every row can be checked against it.
             pages?.let { list ->
                 if (list.isNotEmpty()) {
@@ -117,11 +115,11 @@ fun LabReviewSheet(
                     }
                     Text("Mit zwei Fingern zoomen.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-            } ?: Text("Befundseiten werden geladen …", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } ?: Text("Seiten werden geladen …", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
             if (stored == null) {
                 Text(
-                    if (busy) status.ifEmpty { "Wird gelesen …" } else "Die Werte sind noch nicht gelesen.",
+                    if (busy) status.ifEmpty { "Wird gelesen …" } else "Das Dokument ist noch nicht gelesen.",
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 if (busy) androidx.compose.material3.LinearProgressIndicator(progress = { 0.5f }, modifier = Modifier.fillMaxWidth())
@@ -129,24 +127,38 @@ fun LabReviewSheet(
                     if (model.labRoute == ProcessingRoute.ONLINE) Button(
                         onClick = { model.readLab(location, attachmentID, ProcessingRoute.ONLINE) }, shape = CircleShape, modifier = Modifier.fillMaxWidth().testTag("lab-read-online"),
                         colors = ButtonDefaults.buttonColors(containerColor = colors.primary),
-                    ) { Text("Werte online lesen (beste Qualität)") }
+                    ) { Text("Online lesen (beste Qualität)") }
                     OutlinedButton(onClick = { model.readLab(location, attachmentID, ProcessingRoute.DEVICE) }, shape = CircleShape, modifier = Modifier.fillMaxWidth().testTag("lab-read-device")) {
-                        Text("Auf dem Gerät lesen (jede Zeile prüfen)")
+                        Text("Auf dem Gerät lesen (alles prüfen)")
                     }
-                    Text("Online gehen nur die Seitenbilder an deinen Anbieter. Namen von Tier und Halter auf dem Befund vorher abdecken, wenn sie nicht gesendet werden sollen.",
+                    Text("Online gehen nur die Seitenbilder an deinen Anbieter. Er überträgt Text und Werte, ohne Halter- und Tiernamen. Was vorher abgedeckt werden soll, bitte im Original schwärzen.",
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             } else {
                 val open = values.count { it.needsCheck }
-                Text(listOfNotNull(stored.laboratory.takeIf { it.isNotEmpty() }, stored.sampleDate.takeIf { it.isNotEmpty() }?.let { "Probe vom $it" }, stored.method).joinToString(" · "),
+                Text(listOfNotNull(stored.title.takeIf { it.isNotBlank() }, stored.laboratory.takeIf { it.isNotEmpty() }, stored.sampleDate.takeIf { it.isNotEmpty() }?.let { "vom $it" }, stored.method).joinToString(" · "),
                     style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(
-                    if (open == 0) "${values.size} Werte. Bitte jede Zeile am Original vergleichen."
-                    else "${values.size} Werte, davon $open rot oder orange markiert: bitte besonders genau am Original prüfen.",
+                    when {
+                        values.isEmpty() -> "Bitte den Text am Original vergleichen."
+                        open == 0 -> "${values.size} Werte. Bitte Text und jede Zeile am Original vergleichen."
+                        else -> "${values.size} Werte, davon $open rot oder orange markiert: bitte besonders genau am Original prüfen."
+                    },
                     style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.testTag("lab-summary"),
                 )
-                Text("Referenz und Kennzeichnung stammen vom Labor. Die Bewertung berechnet die App nur aus dem gedruckten Referenzbereich.",
-                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (stored.unmatchedNumbers.isNotEmpty()) Text(
+                    "Diese Zahlen im Text fehlen im lokal gelesenen Original: ${stored.unmatchedNumbers.joinToString(" · ")}. Bitte am Original prüfen.",
+                    style = MaterialTheme.typography.bodySmall, color = Red, modifier = Modifier.testTag("unmatched-numbers"),
+                )
+                if (stored.text.isNotBlank() || text.isNotBlank() || values.isEmpty()) {
+                    Text("Text", fontWeight = FontWeight.SemiBold)
+                    OutlinedTextField(text, { text = it }, Modifier.fillMaxWidth().heightIn(min = 160.dp).testTag("document-text"), textStyle = MaterialTheme.typography.bodyMedium)
+                }
+                if (values.isNotEmpty()) {
+                    Text("Messwerte", fontWeight = FontWeight.SemiBold)
+                    Text("Referenz und Kennzeichnung stammen vom Labor. Die Bewertung berechnet die App nur aus dem gedruckten Referenzbereich.",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
                 val save: (LabValue, LabValue) -> Unit = { original, changed ->
                     val edited = changed.copy(evidence = LabEvidence.EDITED, uncertain = false)
                     values = if (values.any { it.id == original.id }) values.map { if (it.id == original.id) edited else it } else values + edited
@@ -160,13 +172,13 @@ fun LabReviewSheet(
                     LabValueEditor(added, onCancel = { editing = null }, onDelete = null) { save(added, it) }
                 }
                 if (editing == null) TextButton(onClick = { editing = LabValue(parameter = "", value = "", evidence = LabEvidence.EDITED) }, modifier = Modifier.testTag("lab-add-row")) {
-                    Icon(Icons.Rounded.Add, null); Spacer(Modifier.size(6.dp)); Text("Zeile hinzufügen")
+                    Icon(Icons.Rounded.Add, null); Spacer(Modifier.size(6.dp)); Text("Messwert hinzufügen")
                 }
                 Button(
-                    onClick = { model.confirmLab(location, attachmentID, stored.copy(values = values)) { use(attachmentID) } },
-                    enabled = !busy && values.isNotEmpty() && editing == null, shape = CircleShape, modifier = Modifier.fillMaxWidth().testTag("lab-confirm"),
+                    onClick = { model.confirmLab(location, attachmentID, stored.copy(values = values, text = text.trim())) { use(attachmentID) } },
+                    enabled = !busy && (values.isNotEmpty() || text.isNotBlank()) && editing == null, shape = CircleShape, modifier = Modifier.fillMaxWidth().testTag("lab-confirm"),
                     colors = ButtonDefaults.buttonColors(containerColor = colors.primary),
-                ) { Text("Tabelle am Original geprüft · bestätigen") }
+                ) { Text("Am Original geprüft · übernehmen") }
                 TextButton(onClick = { model.readLab(location, attachmentID) }, enabled = !busy) { Text("Neu lesen") }
             }
             TextButton(onClick = asText, enabled = !busy) { Text("Stattdessen als Text prüfen") }

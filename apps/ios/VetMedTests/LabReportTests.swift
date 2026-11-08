@@ -64,7 +64,10 @@ final class LabReportTests: XCTestCase {
         XCTAssertEqual(format?["strict"] as? Bool, true)
         let row = (((format?["schema"] as? [String: Any])?["properties"] as? [String: Any])?["values"] as? [String: Any])?["items"] as? [String: Any]
         XCTAssertEqual(row?["required"] as? [String], ["parameter", "value", "unit", "reference", "flag", "page", "uncertain"])
-        XCTAssertThrowsError(try LabExtraction.openAIRequest(modelID: "m", key: key, pages: Array(repeating: page, count: 7)))
+        XCTAssertThrowsError(try LabExtraction.openAIRequest(modelID: "m", key: key, pages: Array(repeating: page, count: LabExtraction.maxPages + 1)))
+        let schema = format?["schema"] as? [String: Any]
+        XCTAssertEqual(schema?["required"] as? [String], ["kind", "title", "issuer", "date", "text", "values"])
+        XCTAssertEqual(((schema?["properties"] as? [String: Any])?["kind"] as? [String: Any])?["enum"] as? [String], ["lab", "letter", "imaging", "other"])
         XCTAssertThrowsError(try LabExtraction.openAIRequest(modelID: "m", key: key, pages: [Data(count: LabExtraction.maxPageBytes + 1)]))
 
         let gemini = try LabExtraction.geminiRequest(modelID: "gemini-3.6-flash", key: key, pages: [page])
@@ -98,14 +101,18 @@ final class LabReportTests: XCTestCase {
         XCTAssertEqual(report.values.map(\.flag), ["", "H"])
         XCTAssertEqual(report.values.map(\.page), [1, 2])
         XCTAssertTrue(report.values.allSatisfy { $0.evidence == .local && $0.needsCheck })
-        XCTAssertThrowsError(try LabExtraction.parseLocal("Nur Fließtext ohne Werte.", pages: 1))
+        XCTAssertEqual(report.kind, .lab)
+        let letter = try LabExtraction.parseLocal("Seite 1\nBefund: Lahmheit hinten links.\nKontrolle in 7 Tagen.", pages: 1)
+        XCTAssertEqual(letter.kind, .other)
+        XCTAssertEqual(letter.text, "Befund: Lahmheit hinten links.\nKontrolle in 7 Tagen.")
+        XCTAssertThrowsError(try LabExtraction.parseLocal("  ", pages: 1))
     }
 
     func testOnlyAConfirmedTableReachesTheChatWithTheAppsOwnAssessment() throws {
         let attachment = ChatAttachment(id: UUID(), kind: .document, originalName: "Befund.pdf", originalExtension: "pdf", originalByteCount: 10,
                                         originalSHA256: String(repeating: "0", count: 64), uploadSHA256: nil, uploadByteCount: nil, width: nil, height: nil,
                                         extractedText: "x", usedOCR: false, isLab: true)
-        let read = try LabExtraction.parse(table.replacingOccurrences(of: #""1,6""#, with: #""1,9""#), method: "m", pages: 1)
+        let read = try LabExtraction.parse(table.replacingOccurrences(of: #""1,6""#, with: #""1,9""#).replacingOccurrences(of: #"{"laboratory""#, with: #"{"kind":"lab","laboratory""#), method: "m", pages: 1)
         var attachments = try LabOperations.save(read, id: attachment.id, in: [attachment])
         XCTAssertNil(attachments[0].reviewedAt)
         var blank = read; blank.values.append(LabValue(parameter: "", value: "1"))
@@ -113,13 +120,50 @@ final class LabReportTests: XCTestCase {
         attachments = try LabOperations.confirm(read, id: attachment.id, in: attachments)
         let text = try XCTUnwrap(attachments[0].reviewedText)
         XCTAssertNotNil(attachments[0].lab?.confirmedAt)
-        XCTAssertTrue(text.hasPrefix("Laborbefund · Synthetisches Labor · Probe vom 12.10.2026"))
+        XCTAssertTrue(text.hasPrefix("Laborbefund · Synthetisches Labor · vom 12.10.2026\nAm Original geprüft und bestätigt."), text)
         XCTAssertTrue(text.contains("| Kreatinin | 1,9 | mg/dl | 0,5 - 1,8 | – | ↑ hoch |"))
         XCTAssertTrue(text.contains("| ALT (GPT) | 85 | U/l | 10 - 100 | – | im Bereich |"))
         attachments = try LabOperations.save(attachments[0].lab!, id: attachment.id, in: attachments)
         XCTAssertNil(attachments[0].lab?.confirmedAt)
         XCTAssertNil(attachments[0].reviewedText)
         XCTAssertThrowsError(try LabOperations.save(read, id: UUID(), in: attachments))
+    }
+
+    func testPhotosAreRoutedByTheirContentNotByAMenuChoice() {
+        XCTAssertTrue(DocumentRouting.looksLikeDocument("Kreatinin 1,9 mg/dl 0,5 - 1,8\nHarnstoff 9,1 mmol/l 3,3 - 8,3\nALT 85 U/l 10 - 100"))
+        XCTAssertTrue(DocumentRouting.looksLikeDocument(String(repeating: "Sehr geehrte Kollegin, vielen Dank für die Überweisung. ", count: 4)))
+        XCTAssertFalse(DocumentRouting.looksLikeDocument(""))
+        XCTAssertFalse(DocumentRouting.looksLikeDocument("OP 3 links"))
+    }
+
+    private let letter = #"{"kind":"letter","title":"Rücküberweisung","issuer":"Synthetische Tierklinik","date":"01.11.2026","text":"Anamnese: seit 3 Tagen Inappetenz.\nBefunde: Temperatur 39,2 °C.\nTherapie: Meloxicam 0,1 mg/kg einmal täglich.","values":[{"parameter":"Kreatinin","value":"1,9","unit":"mg/dl","reference":"0,5 - 1,8","flag":"","page":2,"uncertain":false},{"parameter":"Harnstoff","value":"9,1","unit":"mmol/l","reference":"3,3 - 8,3","flag":"","page":2,"uncertain":false}]}"#
+
+    func testLettersAreReadAsTextAndEmbeddedValuesAndTheirNumbersAreChecked() throws {
+        let reading = try LabExtraction.parse(letter, method: "m", pages: 3)
+        XCTAssertEqual(reading.kind, .letter)
+        XCTAssertEqual(reading.heading, "Rücküberweisung")
+        XCTAssertEqual(reading.laboratory, "Synthetische Tierklinik")
+        XCTAssertEqual(reading.sampleDate, "01.11.2026")
+        let local = "Rücküberweisung 01.11.2026\nseit 3 Tagen\nTemperatur 38,2 °C\nMeloxicam 0,1 mg/kg\nKreatinin 1,9 0,5 1,8 mg/dl\nHarnstoff 9,1 3,3 8,3 mmol/l"
+        let verified = LabExtraction.verify(reading, localText: local)
+        XCTAssertEqual(verified.unmatchedNumbers, ["39,2"])
+        XCTAssertEqual(verified.values.map(\.evidence), [.found, .found])
+        XCTAssertEqual(verified.openChecks, 1)
+        XCTAssertEqual(LabExtraction.verify(reading, localText: "").unmatchedNumbers, [])
+        let text = LabExtraction.render(verified)
+        XCTAssertTrue(text.hasPrefix("Brief oder Bericht · Rücküberweisung · Synthetische Tierklinik · vom 01.11.2026\nAm Original geprüft und bestätigt.\n\nAnamnese: seit 3 Tagen"), text)
+        XCTAssertTrue(text.contains("| Kreatinin | 1,9 | mg/dl | 0,5 - 1,8 | – | ↑ hoch |"))
+        let plain = try LabExtraction.parse(#"{"kind":"imaging","title":"Röntgen Thorax","issuer":"","date":"","text":"Keine Auffälligkeiten.","values":[]}"#, method: "m", pages: 1)
+        XCTAssertEqual(LabExtraction.render(plain), "Bildgebung oder Histologie · Röntgen Thorax\nAm Original geprüft und bestätigt.\n\nKeine Auffälligkeiten.")
+        XCTAssertThrowsError(try LabExtraction.parse(#"{"kind":"other","title":"","issuer":"","date":"","text":" ","values":[]}"#, method: "m", pages: 1))
+        // A letter without values can be confirmed; one without text and values cannot.
+        let attachment = ChatAttachment(id: UUID(), kind: .document, originalName: "Brief.pdf", originalExtension: "pdf", originalByteCount: 1, originalSHA256: "0",
+                                        uploadSHA256: nil, uploadByteCount: nil, width: nil, height: nil, extractedText: "Text", usedOCR: false, isLab: true, checkText: "OCR")
+        XCTAssertEqual(attachment.localText, "Text\nOCR")
+        let confirmed = try LabOperations.confirm(plain, id: attachment.id, in: [attachment])
+        XCTAssertEqual(confirmed[0].displayName, "Röntgen Thorax")
+        var empty = plain; empty.text = " "
+        XCTAssertThrowsError(try LabOperations.confirm(empty, id: attachment.id, in: [attachment]))
     }
 
     func testEarlierConfirmedValuesOfTheSameCaseFormTheCourse() {

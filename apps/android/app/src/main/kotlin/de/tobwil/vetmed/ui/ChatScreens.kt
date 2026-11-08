@@ -252,7 +252,6 @@ fun ChatConversationScreen(model: AppViewModel, nav: NavHostController, location
     var review by remember { mutableStateOf<ChatAttachment?>(null) }
     // Lab results open the table review; "als Text prüfen" switches one of them to the plain text review.
     var labAsText by remember { mutableStateOf(setOf<String>()) }
-    var freshLab by remember { mutableStateOf<String?>(null) }
     var details by remember { mutableStateOf(false) }
     var reportsSheet by remember { mutableStateOf(false) }
     var menu by remember { mutableStateOf(false) }
@@ -300,21 +299,19 @@ fun ChatConversationScreen(model: AppViewModel, nav: NavHostController, location
     }
 
     val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
-        uri?.let { model.importAttachment(it, location) { attachment -> draft = draft.copy(attachmentIDs = draft.attachmentIDs.orEmpty() + attachment.id) } }
+        uri?.let {
+            model.importAttachment(it, location) { attachment ->
+                draft = draft.copy(attachmentIDs = draft.attachmentIDs.orEmpty() + attachment.id)
+                // A photo of a document is read like a PDF; its review opens while the reading runs.
+                if (attachment.kind == AttachmentKind.DOCUMENT) review = attachment
+            }
+        }
     }
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let {
             model.importAttachment(it, location) { attachment ->
                 draft = draft.copy(attachmentIDs = draft.attachmentIDs.orEmpty() + attachment.id)
                 if (attachment.kind == AttachmentKind.DOCUMENT) review = attachment
-            }
-        }
-    }
-    val labPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        uri?.let {
-            model.importAttachment(it, location, asLab = true) { attachment ->
-                draft = draft.copy(attachmentIDs = draft.attachmentIDs.orEmpty() + attachment.id)
-                freshLab = attachment.id; review = attachment
             }
         }
     }
@@ -361,7 +358,6 @@ fun ChatConversationScreen(model: AppViewModel, nav: NavHostController, location
                     configured = online.isEnabled && hasKey, saved = savedDraft == draft,
                     onPhoto = { photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
                     onFile = { filePicker.launch(arrayOf("application/pdf", "text/plain", "text/markdown", "image/*")) },
-                    onLab = { labPicker.launch(arrayOf("application/pdf", "image/*")) },
                     onReview = { review = it }, onReports = { reportsSheet = true }, onSetup = { details = true },
                     onTranscript = { encounter.transcripts.lastOrNull()?.let { t -> draft = draft.copy(context = t.editedText, transcriptVersionID = t.id) } },
                     onSend = {
@@ -451,11 +447,11 @@ fun ChatConversationScreen(model: AppViewModel, nav: NavHostController, location
     review?.let { attachment ->
         val use: (String) -> Unit = { id ->
             if (id !in draft.attachmentIDs.orEmpty()) draft = draft.copy(attachmentIDs = draft.attachmentIDs.orEmpty() + id)
-            review = null; freshLab = null
+            review = null
         }
         val current = attachments.firstOrNull { it.id == attachment.id } ?: attachment
         if (current.isLab == true && current.id !in labAsText) {
-            LabReviewSheet(model, location, current.id, autoRead = freshLab == current.id, onDismiss = { review = null; freshLab = null }, asText = { labAsText = labAsText + current.id }, use = use)
+            LabReviewSheet(model, location, current.id, onDismiss = { review = null }, asText = { labAsText = labAsText + current.id }, use = use)
         } else AttachmentReviewSheet(model, location, current, onDismiss = { review = null }, use = use)
     }
     if (reportsSheet && caseItem != null) ReportSelectionSheet(caseItem, draft.reportIDs.orEmpty(), onDismiss = { reportsSheet = false }) { draft = draft.copy(reportIDs = it) }
@@ -529,7 +525,7 @@ private fun Thumbnail(model: AppViewModel, location: ChatLocation, id: String, m
 private fun Composer(
     draft: SparringDraft, onDraft: (SparringDraft) -> Unit, selected: List<ChatAttachment>, attachments: List<ChatAttachment>,
     sending: Boolean, busy: Boolean, location: ChatLocation, model: AppViewModel, hasTranscript: Boolean, isCaseChat: Boolean,
-    configured: Boolean, saved: Boolean, onPhoto: () -> Unit, onFile: () -> Unit, onLab: () -> Unit, onReview: (ChatAttachment) -> Unit,
+    configured: Boolean, saved: Boolean, onPhoto: () -> Unit, onFile: () -> Unit, onReview: (ChatAttachment) -> Unit,
     onReports: () -> Unit, onSetup: () -> Unit, onTranscript: () -> Unit, onSend: () -> Unit,
 ) {
     val colors = LocalVetColors.current
@@ -579,7 +575,6 @@ private fun Composer(
                 DropdownMenu(plus, { plus = false }) {
                     DropdownMenuItem(text = { Text("Foto auswählen") }, leadingIcon = { Icon(Icons.Rounded.Image, null) }, onClick = { plus = false; onPhoto() })
                     DropdownMenuItem(text = { Text("Datei hinzufügen") }, leadingIcon = { Icon(Icons.Rounded.AttachFile, null) }, onClick = { plus = false; onFile() })
-                    DropdownMenuItem(text = { Text("Laborbefund hinzufügen") }, leadingIcon = { Icon(Icons.Rounded.Science, null) }, onClick = { plus = false; onLab() }, modifier = Modifier.testTag("chat-add-lab"))
                     attachments.filter { it.id !in draft.attachmentIDs.orEmpty() }.forEach { item ->
                         DropdownMenuItem(text = { Text("Vorhanden: " + item.displayName, maxLines = 1) }, onClick = { plus = false; onReview(item) })
                     }

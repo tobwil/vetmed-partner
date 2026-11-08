@@ -61,6 +61,26 @@ enum DocumentTextExtractor {
         return Result(sections: sections, usedOCR: usedOCR)
     }
 
+    /// OCR of every page, independent of the text layer: letters often embed value tables as images, and numbers the
+    /// model reads there must be found in the original too (ADR 0017). Only for documents of at most `maxPages` pages.
+    static func ocrPages(_ data: Data, maxPages: Int) throws -> String {
+        guard let pdf = PDFDocument(data: data), !pdf.isLocked, pdf.pageCount <= maxPages else { return "" }
+        var sections: [String] = []
+        for index in 0..<pdf.pageCount {
+            try Task.checkCancellation()
+            try autoreleasepool {
+                guard let page = pdf.page(at: index) else { return }
+                let bounds = page.bounds(for: .mediaBox)
+                guard bounds.width > 0, bounds.height > 0 else { return }
+                let scale = 2400 / max(bounds.width, bounds.height)
+                guard let image = page.thumbnail(of: CGSize(width: bounds.width * scale, height: bounds.height * scale), for: .mediaBox).cgImage else { return }
+                let text = try recognize(image)
+                if !text.isEmpty { sections.append("Seite \(index + 1)\n" + text) }
+            }
+        }
+        return sections.joined(separator: "\n\n")
+    }
+
     private static func recognize(_ image: CGImage) throws -> String {
         try Task.checkCancellation()
         let request = VNRecognizeTextRequest()

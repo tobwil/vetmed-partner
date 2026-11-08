@@ -19,9 +19,17 @@ struct ChatAttachment: Codable, Identifiable, Equatable, Sendable {
     var usedOCR: Bool
     /// Lab result read as a table (ADR 0015). The chat only uses it once `confirmedAt` is set.
     var lab: LabReport? = nil
-    /// Imported as a lab result; the table is read after import.
+    /// To be read by the model (PDF or document photo), decided by the app at import; the name stays from version 1.
     var isLab: Bool? = nil
-    var displayName: String { kind == .image ? "Bild" : (isLab == true ? "Laborbefund" : originalName) }
+    /// On-device OCR of the pages, in addition to the text layer: the original the reading's numbers are checked against.
+    var checkText: String? = nil
+    var displayName: String {
+        if kind == .image { return "Bild" }
+        if let lab { return lab.heading }
+        return isLab == true && originalExtension != "pdf" ? "Dokument (Foto)" : originalName
+    }
+    /// Everything read locally from the original: text layer and OCR.
+    var localText: String { [extractedText, checkText].compactMap { $0 }.joined(separator: "\n") }
 }
 struct ChatImageReference: Codable, Equatable, Sendable {
     let attachmentID: UUID

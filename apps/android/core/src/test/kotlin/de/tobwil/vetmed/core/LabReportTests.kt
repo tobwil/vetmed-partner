@@ -79,7 +79,10 @@ class LabReportTests {
         assertEquals("true", format.getValue("strict").jsonPrimitive.content)
         val row = format.getValue("schema").jsonObject.getValue("properties").jsonObject.getValue("values").jsonObject.getValue("items").jsonObject
         assertEquals(listOf("parameter", "value", "unit", "reference", "flag", "page", "uncertain"), row.getValue("required").jsonArray.map { it.jsonPrimitive.content })
-        fails { LabExtraction.openAIRequest("synthetic-model", key, List(7) { page }) }
+        fails { LabExtraction.openAIRequest("synthetic-model", key, List(LabExtraction.MAX_PAGES + 1) { page }) }
+        val schema = format.getValue("schema").jsonObject
+        assertEquals(listOf("kind", "title", "issuer", "date", "text", "values"), schema.getValue("required").jsonArray.map { it.jsonPrimitive.content })
+        assertEquals(listOf("lab", "letter", "imaging", "other"), schema.getValue("properties").jsonObject.getValue("kind").jsonObject.getValue("enum").jsonArray.map { it.jsonPrimitive.content })
         fails { LabExtraction.openAIRequest("synthetic-model", key, listOf(ByteArray(LabExtraction.MAX_PAGE_BYTES + 1))) }
         fails { LabExtraction.openAIRequest("synthetic-model", key, emptyList()) }
     }
@@ -133,13 +136,18 @@ class LabReportTests {
         assertEquals(listOf("", "H"), report.values.map { it.flag })
         assertEquals(listOf(1, 2), report.values.map { it.page })
         assertTrue(report.values.all { it.evidence == LabEvidence.LOCAL && it.needsCheck })
-        fails { LabExtraction.parseLocal("Nur Fließtext ohne Werte.", 1) }
+        assertEquals(DocumentKind.LAB, report.kind)
+        // Without value lines the local text itself is the reading.
+        val letter = LabExtraction.parseLocal("Seite 1\nBefund: Lahmheit hinten links.\nKontrolle in 7 Tagen.", 1)
+        assertEquals(DocumentKind.OTHER, letter.kind)
+        assertEquals("Befund: Lahmheit hinten links.\nKontrolle in 7 Tagen.", letter.text)
+        fails { LabExtraction.parseLocal("  ", 1) }
     }
 
     @Test fun theChatReceivesTheConfirmedTableWithTheAppsOwnAssessment() {
-        val report = LabExtraction.parse(table.replace("\"1,6\"", "\"1,9\"").replace("ALT (GPT)", "ALT | GPT"), "m", 1)
+        val report = LabExtraction.parse(table.replace("\"1,6\"", "\"1,9\"").replace("ALT (GPT)", "ALT | GPT").replace("{\"laboratory\"", "{\"kind\":\"lab\",\"laboratory\""), "m", 1)
         val text = LabExtraction.render(report)
-        assertTrue(text.startsWith("Laborbefund · Synthetisches Labor · Probe vom 12.10.2026"))
+        assertTrue(text, text.startsWith("Laborbefund · Synthetisches Labor · vom 12.10.2026\nAm Original geprüft und bestätigt."))
         assertTrue(text.contains("| Parameter | Wert | Einheit | Referenz (Labor) | Kennz. (Labor) | Bewertung (App) |"))
         assertTrue(text.contains("| Kreatinin | 1,9 | mg/dl | 0,5 - 1,8 | – | ↑ hoch |"))
         assertTrue(text.contains("| ALT / GPT | 85 | U/l | 10 - 100 | – | im Bereich |"))
@@ -187,6 +195,59 @@ class LabReportTests {
         assertEquals("01.10.2026", earlier.single().date)
         assertTrue(LabHistory.previous(document, null, "b").isEmpty())
         assertFalse(history.containsKey(LabHistory.key("Kreatinin", "µmol/l")))
+    }
+
+    @Test fun photosAreRoutedByTheirContentNotByAMenuChoice() {
+        assertTrue(DocumentRouting.looksLikeDocument("Kreatinin 1,9 mg/dl 0,5 - 1,8\nHarnstoff 9,1 mmol/l 3,3 - 8,3\nALT 85 U/l 10 - 100"))
+        assertTrue(DocumentRouting.looksLikeDocument("Sehr geehrte Kollegin, vielen Dank für die Überweisung. ".repeat(4)))
+        assertFalse(DocumentRouting.looksLikeDocument(""))
+        assertFalse(DocumentRouting.looksLikeDocument("OP 3 links"))
+    }
+
+    // A referral letter laid out unlike any lab sheet: narrative text, then values with the range in two columns.
+    private val letter = """{"kind":"letter","title":"Rücküberweisung","issuer":"Synthetische Tierklinik","date":"01.11.2026",
+        "text":"Anamnese: seit 3 Tagen Inappetenz.\nBefunde: Temperatur 39,2 °C.\nTherapie: Meloxicam 0,1 mg/kg einmal täglich.",
+        "values":[{"parameter":"Kreatinin","value":"1,9","unit":"mg/dl","reference":"0,5 - 1,8","flag":"","page":2,"uncertain":false},
+                  {"parameter":"Harnstoff","value":"9,1","unit":"mmol/l","reference":"3,3 - 8,3","flag":"","page":2,"uncertain":false}]}"""
+
+    @Test fun lettersAreReadAsTextAndEmbeddedValuesAndTheirNumbersAreChecked() {
+        val reading = LabExtraction.parse(letter, "m", 3)
+        assertEquals(DocumentKind.LETTER, reading.kind)
+        assertEquals("Rücküberweisung", reading.heading)
+        assertEquals("Synthetische Tierklinik", reading.laboratory)
+        assertEquals("01.11.2026", reading.sampleDate)
+        assertTrue(reading.text.startsWith("Anamnese"))
+        // OCR of the pages has every table value and the dose, but not the temperature: the model may have misread it.
+        val local = "Rücküberweisung 01.11.2026\nseit 3 Tagen\nTemperatur 38,2 °C\nMeloxicam 0,1 mg/kg\nKreatinin 1,9 0,5 1,8 mg/dl\nHarnstoff 9,1 3,3 8,3 mmol/l"
+        val verified = LabExtraction.verify(reading, local)
+        assertEquals(listOf("39,2"), verified.unmatchedNumbers)
+        assertEquals(listOf(LabEvidence.FOUND, LabEvidence.FOUND), verified.values.map { it.evidence })
+        assertEquals(1, verified.openChecks)
+        assertEquals(emptyList<String>(), LabExtraction.verify(reading, "").unmatchedNumbers)
+        val text = LabExtraction.render(verified)
+        assertTrue(text, text.startsWith("Brief oder Bericht · Rücküberweisung · Synthetische Tierklinik · vom 01.11.2026\nAm Original geprüft und bestätigt.\n\nAnamnese: seit 3 Tagen"))
+        assertTrue(text.contains("| Kreatinin | 1,9 | mg/dl | 0,5 - 1,8 | – | ↑ hoch |"))
+        assertTrue(text.contains("| Harnstoff | 9,1 | mmol/l | 3,3 - 8,3 | – | ↑ hoch |"))
+        // A letter without values is a valid reading; a reading with neither text nor values is not.
+        val plain = LabExtraction.parse("""{"kind":"imaging","title":"Röntgen Thorax","issuer":"","date":"","text":"Keine Auffälligkeiten.","values":[]}""", "m", 1)
+        assertEquals(DocumentKind.IMAGING, plain.kind)
+        assertEquals("Bildgebung oder Histologie · Röntgen Thorax\nAm Original geprüft und bestätigt.\n\nKeine Auffälligkeiten.", LabExtraction.render(plain))
+        fails { LabExtraction.parse("""{"kind":"other","title":"","issuer":"","date":"","text":" ","values":[]}""", "m", 1) }
+    }
+
+    @Test fun aLetterWithoutValuesCanBeConfirmed() {
+        var document = VaultDocument()
+        val (withCheck, chat) = ChatOperations.newQuickCheck(document)
+        val attachment = ChatAttachment(id = "doc-1", kind = AttachmentKind.DOCUMENT, originalName = "Brief.pdf", originalExtension = "pdf", originalByteCount = 10,
+            originalSHA256 = "0".repeat(64), extractedText = "Text", checkText = "OCR", isLab = true)
+        assertEquals("Text\nOCR", attachment.localText)
+        document = ChatOperations.addAttachment(withCheck, chat, attachment)
+        val reading = LabReport(method = "m", kind = DocumentKind.LETTER, title = "Rücküberweisung", text = "Kontrolle in 7 Tagen.")
+        document = ChatOperations.confirmLab(document, chat, "doc-1", reading)
+        val confirmed = ChatOperations.context(document, chat)!!.chatAttachments!!.single()
+        assertEquals("Rücküberweisung", confirmed.displayName)
+        assertTrue(confirmed.reviewedText!!.endsWith("Kontrolle in 7 Tagen."))
+        fails { ChatOperations.confirmLab(document, chat, "doc-1", reading.copy(text = " ")) }
     }
 
     @Test fun sparringPromptTellsTheModelToUseTheTableAndTheAppAssessment() {

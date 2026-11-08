@@ -42,16 +42,43 @@ struct LabValue: Codable, Equatable, Identifiable, Sendable {
     var needsCheck: Bool { uncertain || flagConflict || evidence == .notFound || evidence == .local }
 }
 
+/// What kind of document the reader found. It labels the review and the chat text; it decides nothing by itself.
+enum DocumentKind: String, Codable, Sendable {
+    case lab, letter, imaging, other
+    var title: String {
+        switch self { case .lab: "Laborbefund"; case .letter: "Brief oder Bericht"; case .imaging: "Bildgebung oder Histologie"; case .other: "Dokument" }
+    }
+}
+
+/// A document read by the app (ADR 0015, 0017): its kind, the clinical text and every measured value as a table.
+/// The name stays from the first version, which only read lab results. Only a confirmed reading reaches the chat.
 struct LabReport: Codable, Equatable, Sendable {
+    /// Issuing clinic, practice or laboratory as printed; never owner data.
     var laboratory = ""
     var sampleDate = ""
     var values: [LabValue] = []
-    /// How the table was read, e.g. "Gemini gemini-3.6-flash · Seitenbilder".
+    /// How it was read, e.g. "Gemini gemini-3.6-flash · Seitenbilder".
     var method: String
     var readAt = Date()
     var pages = 0
     var confirmedAt: Date?
-    var openChecks: Int { values.filter(\.needsCheck).count }
+    var kind: DocumentKind = .lab
+    var title = ""
+    /// The clinical text in reading order, without measurement tables.
+    var text = ""
+    /// Numbers in `text` that the local reading of the original does not contain: to be checked.
+    var unmatchedNumbers: [String] = []
+    var openChecks: Int { values.filter(\.needsCheck).count + (unmatchedNumbers.isEmpty ? 0 : 1) }
+    var heading: String { title.trimmingCharacters(in: .whitespaces).isEmpty ? kind.title : title }
+}
+
+/// Which way an attachment goes, decided by the app instead of a menu choice (ADR 0017).
+enum DocumentRouting {
+    /// A photo whose on-device OCR finds real text is a document photo; otherwise a clinical photo.
+    static func looksLikeDocument(_ ocrText: String) -> Bool {
+        let letters = ocrText.filter(\.isLetter).count
+        return letters >= 160 || (letters >= 20 && LabMath.numbers(ocrText).count >= 6)
+    }
 }
 
 /// Numbers and reference ranges as printed on German lab reports. Deterministic; the model never assesses.
@@ -126,13 +153,16 @@ enum LabMath {
     }
 }
 
-/// Reading a lab result: page images to the chosen model with a strict schema (transcription only), every number
-/// looked up again in the locally read text, and the user confirms the table at the original.
+/// Reading any clinical document: page images to the chosen multimodal model with a strict schema (transcription only,
+/// whatever the layout), every number looked up again in the locally read original, and the user confirms the reading.
 enum LabExtraction {
-    static let maxPages = 6
-    static let maxPageBytes = 2 * 1_048_576
+    static let maxPages = 10
+    static let maxPageBytes = 1_572_864
     static let maxValues = 300
+    static let maxText = 40_000
     private static let fields = ["parameter", "value", "unit", "reference", "flag", "page", "uncertain"]
+    private static let topFields = ["kind", "title", "issuer", "date", "text", "values"]
+    private static let kinds = ["lab", "letter", "imaging", "other"]
 
     static func instructions() throws -> String {
         #if SWIFT_PACKAGE
@@ -140,15 +170,15 @@ enum LabExtraction {
         #else
         let bundle = Bundle.main
         #endif
-        guard let url = bundle.url(forResource: "lab-extraction-v1", withExtension: "txt") else { throw AppFailure("Die Anweisungen zum Lesen von Laborbefunden fehlen in diesem Build.") }
+        guard let url = bundle.url(forResource: "document-reading-v1", withExtension: "txt") else { throw AppFailure("Die Anweisungen zum Lesen von Dokumenten fehlen in diesem Build.") }
         return try String(contentsOf: url, encoding: .utf8)
     }
 
     private static func check(_ pages: [Data]) throws {
-        guard (1...maxPages).contains(pages.count) else { throw AppFailure("Bitte einen Befund mit 1 bis \(maxPages) Seiten wählen.") }
-        guard pages.allSatisfy({ !$0.isEmpty && $0.count <= maxPageBytes }) else { throw AppFailure("Eine Befundseite ist zu groß für den Versand.") }
+        guard (1...maxPages).contains(pages.count) else { throw AppFailure("Bitte ein Dokument mit 1 bis \(maxPages) Seiten wählen.") }
+        guard pages.allSatisfy({ !$0.isEmpty && $0.count <= maxPageBytes }) else { throw AppFailure("Eine Dokumentseite ist zu groß für den Versand.") }
     }
-    private static func prompt(_ pages: Int) -> String { "Übertrage alle Messwerte dieses Laborbefunds (\(pages) \(pages == 1 ? "Seite" : "Seiten")) in die Tabelle." }
+    private static func prompt(_ pages: Int) -> String { "Übertrage dieses Dokument (\(pages) \(pages == 1 ? "Seite" : "Seiten"))." }
 
     static func openAIRequest(modelID: String, key: String, pages: [Data]) throws -> URLRequest {
         try OnlineReportStore.validateKey(key)
@@ -161,9 +191,10 @@ enum LabExtraction {
         for page in pages { content.append(["type": "input_image", "image_url": "data:image/jpeg;base64," + page.base64EncodedString(), "detail": "high"]) }
         let body: [String: Any] = ["model": modelID, "store": false, "stream": false, "background": false, "max_output_tokens": 16_384,
             "instructions": try instructions(), "input": [["role": "user", "content": content]],
-            "text": ["format": ["type": "json_schema", "name": "veterinary_lab_table_v1", "strict": true, "schema": [
-                "type": "object", "additionalProperties": false, "required": ["laboratory", "sampleDate", "values"],
-                "properties": ["laboratory": ["type": "string"], "sampleDate": ["type": "string"], "values": ["type": "array", "items": row]]]]]]
+            "text": ["format": ["type": "json_schema", "name": "veterinary_document_v1", "strict": true, "schema": [
+                "type": "object", "additionalProperties": false, "required": topFields,
+                "properties": ["kind": ["type": "string", "enum": kinds], "title": ["type": "string"], "issuer": ["type": "string"], "date": ["type": "string"],
+                               "text": ["type": "string"], "values": ["type": "array", "items": row]]]]]]
         var request = URLRequest(url: OpenAIReportAPI.responseURL)
         request.httpMethod = "POST"; request.timeoutInterval = 180
         request.setValue("Bearer " + key, forHTTPHeaderField: "Authorization")
@@ -185,18 +216,19 @@ enum LabExtraction {
             "systemInstruction": ["parts": [["text": try instructions()]]],
             "contents": [["role": "user", "parts": parts]],
             "generationConfig": ["maxOutputTokens": 32_768, "responseMimeType": "application/json", "responseSchema": [
-                "type": "OBJECT", "required": ["laboratory", "sampleDate", "values"],
-                "properties": ["laboratory": ["type": "STRING"], "sampleDate": ["type": "STRING"], "values": ["type": "ARRAY", "items": row]]]],
+                "type": "OBJECT", "required": topFields, "propertyOrdering": topFields,
+                "properties": ["kind": ["type": "STRING", "format": "enum", "enum": kinds], "title": ["type": "STRING"], "issuer": ["type": "STRING"], "date": ["type": "STRING"],
+                               "text": ["type": "STRING"], "values": ["type": "ARRAY", "items": row]]]],
         ])
         request.timeoutInterval = 180
         return request
     }
 
-    /// The model's table. Rejects anything that is not the schema; an empty table is an error, not a result.
+    /// The model's reading. Rejects anything that is not the schema; a reading without text and values is an error.
     static func parse(_ text: String, method: String, pages: Int) throws -> LabReport {
-        guard let root = try? JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any] else { throw AppFailure("Die Tabelle des Anbieters konnte nicht gelesen werden.") }
-        guard let rows = root["values"] as? [Any] else { throw AppFailure("Die Tabelle des Anbieters ist unvollständig.") }
-        guard rows.count <= maxValues else { throw AppFailure("Der Befund enthält mehr als \(maxValues) Werte. Bitte in Teilen hinzufügen.") }
+        guard let root = try? JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any] else { throw AppFailure("Die Antwort des Anbieters konnte nicht gelesen werden.") }
+        guard let rows = root["values"] as? [Any] else { throw AppFailure("Die Antwort des Anbieters ist unvollständig.") }
+        guard rows.count <= maxValues else { throw AppFailure("Das Dokument enthält mehr als \(maxValues) Werte. Bitte in Teilen hinzufügen.") }
         func string(_ row: [String: Any], _ key: String) -> String { String(((row[key] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines).prefix(200)) }
         var values: [LabValue] = []
         for element in rows {
@@ -205,14 +237,27 @@ enum LabExtraction {
                                  flag: string(row, "flag"), page: min(max((row["page"] as? Int) ?? 1, 1), max(pages, 1)), uncertain: (row["uncertain"] as? Bool) ?? false)
             if !value.parameter.isEmpty || !value.value.isEmpty { values.append(value) }
         }
-        guard !values.isEmpty else { throw AppFailure("Im Befund wurden keine Messwerte erkannt. Du kannst den Text stattdessen als Dokument prüfen.") }
-        return LabReport(laboratory: string(root, "laboratory"), sampleDate: string(root, "sampleDate"), values: values, method: method, pages: pages)
+        let body = String(((root["text"] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines).prefix(maxText))
+        guard !values.isEmpty || !body.isEmpty else { throw AppFailure("Im Dokument wurde kein Inhalt erkannt. Du kannst den lokal gelesenen Text stattdessen prüfen.") }
+        let issuer = string(root, "issuer"), date = string(root, "date")
+        return LabReport(laboratory: issuer.isEmpty ? string(root, "laboratory") : issuer, sampleDate: date.isEmpty ? string(root, "sampleDate") : date,
+                         values: values, method: method, pages: pages, kind: DocumentKind(rawValue: string(root, "kind")) ?? .other, title: string(root, "title"), text: body)
     }
 
     /// Every number of a value and its reference must appear in the locally read original.
     static func verify(_ report: LabReport, localText: String) -> LabReport {
         let local = Set(LabMath.numbers(localText))
         var result = report
+        // Numbers in the transcribed text (doses, weights, temperatures) are checked the same way as table values.
+        var unmatched: [String] = []
+        if !local.isEmpty {
+            for match in numberToken.matches(in: report.text, range: NSRange(report.text.startIndex..., in: report.text)) {
+                guard let range = Swift.Range(match.range, in: report.text) else { continue }
+                let token = String(report.text[range])
+                if let number = LabMath.number(token), !local.contains(number), !unmatched.contains(token) { unmatched.append(token) }
+            }
+        }
+        result.unmatchedNumbers = Array(unmatched.prefix(20))
         result.values = report.values.map { value in
             guard value.evidence != .edited, value.evidence != .local else { return value }
             var checked = value
@@ -223,6 +268,8 @@ enum LabExtraction {
         return result
     }
 
+    private static let numberToken = try! NSRegularExpression(pattern: #"\d+(?:[.,]\d+)*"#)
+    private static let unitPattern = try! NSRegularExpression(pattern: #"^\S*[/%µμ]\S*$|^(?:g|mg|µg|U|IU|IE|fl|fL|pg|°C|mmHg|mmol|µmol|pmol|nmol|Zellen)$"#)
     private static let localLine = try! NSRegularExpression(pattern:
         #"^\s*([A-Za-zÄÖÜäöüß][A-Za-zÄÖÜäöüß0-9 .,()/%+\-]*?)\s+([<>≤≥]?\s?\d+(?:[.,]\d+)?)\s*([A-Za-zµμ%/][^\s]*(?:\s?/\s?[^\s]+)?)?\s*"# +
         #"(\(?(?:\d+(?:[.,]\d+)?\s*(?:-|–|bis)\s*\d+(?:[.,]\d+)?|[<>≤≥]\s*\d+(?:[.,]\d+)?)\)?)?\s*([HLhl+\-↑↓*]{1,2})?\s*$"#)
@@ -237,13 +284,21 @@ enum LabExtraction {
             guard let parts = groups(localLine, line), parts[0].trimmingCharacters(in: .whitespaces).count >= 2 else { continue }
             var reference = parts[3].trimmingCharacters(in: .whitespaces)
             if reference.hasPrefix("("), reference.hasSuffix(")") { reference = String(reference.dropFirst().dropLast()) }
+            // A measurement has a printed range or a real unit; "Kontrolle in 7 Tagen." is text, not a value.
+            let unit = parts[2].trimmingCharacters(in: .whitespaces)
+            guard !reference.isEmpty || unitPattern.firstMatch(in: unit, range: NSRange(unit.startIndex..., in: unit)) != nil else { continue }
             values.append(LabValue(parameter: parts[0].trimmingCharacters(in: .whitespaces), value: parts[1].trimmingCharacters(in: .whitespaces),
                                    unit: parts[2].trimmingCharacters(in: .whitespaces), reference: reference, flag: parts[4].trimmingCharacters(in: .whitespaces),
                                    page: page, evidence: .local))
             if values.count == maxValues { break }
         }
-        guard !values.isEmpty else { throw AppFailure("Auf dem Gerät wurden keine Wertezeilen erkannt. Bitte online lesen oder den Text als Dokument prüfen.") }
-        return LabReport(values: values, method: "Auf dem Gerät · Zeilenerkennung", pages: pages)
+        // On the device the local text itself is the reading; value lines are offered as a table to be checked.
+        let body = String(text.components(separatedBy: "\n").filter { line in
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            return !(trimmed.hasPrefix("Seite ") && Int(trimmed.dropFirst(6)) != nil)
+        }.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines).prefix(maxText))
+        guard !values.isEmpty || !body.isEmpty else { throw AppFailure("Auf dem Gerät wurde kein Text erkannt.") }
+        return LabReport(values: values, method: "Auf dem Gerät · Zeilenerkennung", pages: pages, kind: values.isEmpty ? .other : .lab, text: values.isEmpty ? body : "")
     }
 
     private static func groups(_ regex: NSRegularExpression, _ text: String) -> [String]? {
@@ -256,12 +311,17 @@ enum LabExtraction {
         return value.isEmpty ? "–" : value
     }
 
-    /// The confirmed table as the chat receives it: laboratory values verbatim, the app's own assessment separate.
+    /// The confirmed reading as the chat receives it: text and values verbatim, the app's own assessment separate.
     static func render(_ report: LabReport) -> String {
-        var text = "Laborbefund"
+        var text = report.kind.title
+        if !report.title.trimmingCharacters(in: .whitespaces).isEmpty, report.title != report.kind.title { text += " · " + report.title }
         if !report.laboratory.isEmpty { text += " · " + report.laboratory }
-        if !report.sampleDate.isEmpty { text += " · Probe vom " + report.sampleDate }
-        text += "\nTabelle am Original geprüft und bestätigt. Referenz und Kennzeichnung stammen vom Labor; die Bewertung berechnet die App ausschließlich aus dem gedruckten Referenzbereich.\n\n"
+        if !report.sampleDate.isEmpty { text += " · vom " + report.sampleDate }
+        text += "\nAm Original geprüft und bestätigt."
+        let body = report.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !body.isEmpty { text += "\n\n" + body }
+        guard !report.values.isEmpty else { return text }
+        text += "\n\nMesswerte. Referenz und Kennzeichnung stammen vom Labor; die Bewertung berechnet die App ausschließlich aus dem gedruckten Referenzbereich.\n\n"
         text += "| Parameter | Wert | Einheit | Referenz (Labor) | Kennz. (Labor) | Bewertung (App) |\n|---|---|---|---|---|---|\n"
         for value in report.values {
             text += "| \(cell(value.parameter)) | \(cell(value.value)) | \(cell(value.unit)) | \(cell(value.reference)) | \(cell(value.flag)) | \(value.assessment.text) |\n"
@@ -303,7 +363,7 @@ enum LabOperations {
     }
     /// The user checked the table at the original: from now on the chat receives exactly this rendered table.
     static func confirm(_ report: LabReport, id: UUID, in attachments: [ChatAttachment], now: Date = Date()) throws -> [ChatAttachment] {
-        guard !report.values.isEmpty else { throw AppFailure("Die Tabelle enthält keine Werte.") }
+        guard !report.values.isEmpty || !report.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw AppFailure("Das Dokument enthält weder Text noch Werte.") }
         guard report.values.allSatisfy({ !$0.parameter.trimmingCharacters(in: .whitespaces).isEmpty && !$0.value.trimmingCharacters(in: .whitespaces).isEmpty }) else {
             throw AppFailure("Bitte in jeder Zeile Parameter und Wert ausfüllen oder die Zeile löschen.")
         }

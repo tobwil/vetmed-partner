@@ -373,7 +373,7 @@ class WalkthroughTests {
             repository().saveOnline(de.tobwil.vetmed.core.OnlineReportConfiguration("synthetic-model", de.tobwil.vetmed.core.now(), de.tobwil.vetmed.core.ReportExecutionMode.ONLINE), key)
         }
         // The provider misreads Kreatinin as 1,6; the cross-check with the original must catch that.
-        val table = """{"laboratory":"Synthetisches Labor","sampleDate":"12.10.2026","values":[{"parameter":"ALT (GPT)","value":"85","unit":"U/l","reference":"10 - 100","flag":"","page":1,"uncertain":false},{"parameter":"Kreatinin","value":"1,6","unit":"mg/dl","reference":"0,5 - 1,8","flag":"H","page":1,"uncertain":false},{"parameter":"Glukose","value":"5,1","unit":"mmol/l","reference":"3,9 - 6,1","flag":"","page":1,"uncertain":false}]}"""
+        val table = """{"kind":"lab","title":"Blutbild","laboratory":"Synthetisches Labor","sampleDate":"12.10.2026","text":"","values":[{"parameter":"ALT (GPT)","value":"85","unit":"U/l","reference":"10 - 100","flag":"","page":1,"uncertain":false},{"parameter":"Kreatinin","value":"1,6","unit":"mg/dl","reference":"0,5 - 1,8","flag":"H","page":1,"uncertain":false},{"parameter":"Glukose","value":"5,1","unit":"mmol/l","reference":"3,9 - 6,1","flag":"","page":1,"uncertain":false}]}"""
         val requests = mutableListOf<de.tobwil.vetmed.core.HttpRequest>()
         val transport = de.tobwil.vetmed.core.HttpTransport { request ->
             requests += request
@@ -389,7 +389,7 @@ class WalkthroughTests {
         compose.onNodeWithTag("chat-row-" + location.encounterID).performClick()
         compose.waitForIdle()
         compose.onNodeWithTag("chat-add-attachment").performClick()
-        compose.onNodeWithText("Vorhanden: Laborbefund").performClick()
+        compose.onNodeWithText("Vorhanden: Dokument (Foto)").performClick()
         compose.onNodeWithTag("lab-read-online").performScrollTo().performClick()
         waitFor("Tabelle gelesen", model) { model.chatContext(location)!!.chatAttachments!!.single().lab != null && !model.busy.value }
         assertEquals(1, requests.size)
@@ -404,7 +404,7 @@ class WalkthroughTests {
         compose.onNodeWithTag("lab-row-Kreatinin").performScrollTo().performClick()
         compose.onNodeWithTag("lab-edit-value").performTextClearance()
         compose.onNodeWithTag("lab-edit-value").performTextInput("1,9")
-        compose.onNodeWithTag("lab-edit-checked").performClick()
+        compose.onNodeWithTag("lab-edit-checked").performScrollTo().performClick()
         compose.onNodeWithTag("lab-edit-save").performScrollTo().performClick()
         compose.onNodeWithTag("lab-confirm").performScrollTo().performClick()
         waitFor("Tabelle bestätigt", model) { model.chatContext(location)!!.chatAttachments!!.single().lab?.confirmedAt != null }
@@ -482,6 +482,69 @@ class WalkthroughTests {
         assertEquals(null, model.voice.value)
         // The consent is asked only once.
         assertTrue(runBlocking { repository().geminiConfiguration() }.voiceConsentAt != null)
+    }
+
+    /** A synthetic referral letter: narrative text and an embedded value table, laid out unlike a lab sheet. */
+    private fun syntheticLetterPage(): ByteArray {
+        val bitmap = android.graphics.Bitmap.createBitmap(1240, 1100, android.graphics.Bitmap.Config.ARGB_8888)
+        val canvas = android.graphics.Canvas(bitmap).apply { drawColor(android.graphics.Color.WHITE) }
+        val paint = android.graphics.Paint().apply { color = android.graphics.Color.BLACK; textSize = 30f; isAntiAlias = true }
+        listOf("Synthetische Tierklinik", "Rücküberweisung vom 01.11.2026", "", "Anamnese: seit 3 Tagen Inappetenz.", "Befunde: Temperatur 38,2 °C.",
+            "Therapie: Meloxicam 0,1 mg/kg einmal täglich.", "", "Parameter        Wert     unten   oben   Einheit",
+            "Kreatinin        1,9      0,5     1,8    mg/dl", "Harnstoff        9,1      3,3     8,3    mmol/l")
+            .forEachIndexed { index, line -> canvas.drawText(line, 60f, 100f + index * 62f, paint) }
+        return java.io.ByteArrayOutputStream().also { bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 90, it) }.toByteArray()
+    }
+
+    @Test fun aReferralLetterIsReadWithItsEmbeddedValuesAndMisreadNumbersAreShown() {
+        val seeded = SyntheticCases.seed()
+        val location = de.tobwil.vetmed.core.ChatLocation(seeded.withReport.caseID, seeded.withReport.encounterID)
+        val page = syntheticLetterPage()
+        val attachment = de.tobwil.vetmed.core.ChatAttachment(
+            id = "letter-synthetic", kind = de.tobwil.vetmed.core.AttachmentKind.DOCUMENT, originalName = "Dokument (Foto)", originalExtension = "jpg",
+            originalByteCount = page.size, originalSHA256 = de.tobwil.vetmed.core.AttachmentLimits.sha256(page),
+            uploadSHA256 = de.tobwil.vetmed.core.AttachmentLimits.sha256(page), uploadByteCount = page.size, width = 1240, height = 1100,
+            extractedText = "Rücküberweisung vom 01.11.2026\nseit 3 Tagen Inappetenz\nTemperatur 38,2 °C\nMeloxicam 0,1 mg/kg\nKreatinin 1,9 0,5 1,8 mg/dl\nHarnstoff 9,1 3,3 8,3 mmol/l",
+            usedOCR = true, isLab = true,
+        )
+        val document = CaseOperations.run { seeded.document.mapEncounter(seeded.withReport) { it.copy(chatAttachments = listOf(attachment)) } }
+        runBlocking {
+            repository().storeAttachment(location.caseID, location.encounterID, attachment.id, page, page)
+            repository().saveOnline(de.tobwil.vetmed.core.OnlineReportConfiguration("synthetic-model", de.tobwil.vetmed.core.now(), de.tobwil.vetmed.core.ReportExecutionMode.ONLINE), "synthetic-openai-key-for-walkthrough")
+        }
+        // The provider misreads the temperature as 39,2; everything else is right.
+        val reading = """{"kind":"letter","title":"Rücküberweisung","issuer":"Synthetische Tierklinik","date":"01.11.2026","text":"Anamnese: seit 3 Tagen Inappetenz.\nBefunde: Temperatur 39,2 °C.\nTherapie: Meloxicam 0,1 mg/kg einmal täglich.","values":[{"parameter":"Kreatinin","value":"1,9","unit":"mg/dl","reference":"0,5 - 1,8","flag":"","page":1,"uncertain":false},{"parameter":"Harnstoff","value":"9,1","unit":"mmol/l","reference":"3,3 - 8,3","flag":"","page":1,"uncertain":false}]}"""
+        val transport = de.tobwil.vetmed.core.HttpTransport {
+            val output = kotlinx.serialization.json.buildJsonObject {
+                put("status", kotlinx.serialization.json.JsonPrimitive("completed")); put("model", kotlinx.serialization.json.JsonPrimitive("synthetic-model-1"))
+                put("output", kotlinx.serialization.json.Json.parseToJsonElement("""[{"type":"message","content":[{"type":"output_text","text":${kotlinx.serialization.json.JsonPrimitive(reading)}}]}]"""))
+            }
+            de.tobwil.vetmed.core.HttpResponse(200, output.toString().encodeToByteArray())
+        }
+        val model = launch(document, transport = transport)
+        compose.onNodeWithTag("tab-chat").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithTag("chat-row-" + location.encounterID).performClick()
+        compose.waitForIdle()
+        compose.onNodeWithTag("chat-add-attachment").performClick()
+        compose.onNodeWithText("Vorhanden: Dokument (Foto)").performClick()
+        compose.onNodeWithTag("lab-read-online").performScrollTo().performClick()
+        waitFor("Dokument gelesen", model) { model.chatContext(location)!!.chatAttachments!!.single().lab != null && !model.busy.value }
+        val read = model.chatContext(location)!!.chatAttachments!!.single().lab!!
+        assertEquals(de.tobwil.vetmed.core.DocumentKind.LETTER, read.kind)
+        assertEquals(listOf("39,2"), read.unmatchedNumbers)
+        compose.onNodeWithText("Brief oder Bericht prüfen").assertIsDisplayed()
+        compose.onNodeWithTag("unmatched-numbers").performScrollTo().assertIsDisplayed()
+        shot("19-brief-mit-werten-pruefen")
+        // Correct the temperature in the text at the original, then take the reading over.
+        compose.onNodeWithTag("document-text").performScrollTo().performTextClearance()
+        compose.onNodeWithTag("document-text").performTextInput("Anamnese: seit 3 Tagen Inappetenz.\nBefunde: Temperatur 38,2 °C.\nTherapie: Meloxicam 0,1 mg/kg einmal täglich.")
+        compose.onNodeWithTag("lab-confirm").performScrollTo().performClick()
+        waitFor("Übernommen", model) { model.chatContext(location)!!.chatAttachments!!.single().lab?.confirmedAt != null }
+        val text = model.chatContext(location)!!.chatAttachments!!.single().reviewedText!!
+        assertTrue(text, text.startsWith("Brief oder Bericht · Rücküberweisung · Synthetische Tierklinik · vom 01.11.2026"))
+        assertTrue(text.contains("Temperatur 38,2 °C") && !text.contains("39,2"))
+        assertTrue(text.contains("| Kreatinin | 1,9 | mg/dl | 0,5 - 1,8 | – | ↑ hoch |"))
     }
 
     @Test fun rotationAndLeavingTheAppKeepRecording() {

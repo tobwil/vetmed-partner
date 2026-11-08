@@ -35,7 +35,7 @@ Native App für Tierärztinnen und Tierärzte auf iPhone und Android. Du diktier
 | „Nur auf dem Gerät verarbeiten“, kein stiller Wechsel | ja | ja |
 | Bericht offline auf dem Gerät (optional) | Gemma 4 E2B über MLX | Gemma 4 E2B über LiteRT-LM |
 | Quellenprüfung (Zahlen, Einheiten, Verneinungen) | ja | ja |
-| Laborbefunde als geprüfte Wertetabelle (Abgleich mit dem Original, Bewertung aus dem gedruckten Referenzbereich) | ja | ja |
+| Anhänge automatisch verstehen: Laborbefunde, Briefe und Berichte als geprüfter Text mit Wertetabelle (Abgleich mit dem Original, Bewertung aus dem gedruckten Referenzbereich) | ja | ja |
 | Sprachmodus: Fall im Gespräch besprechen (Gemini 3.8 Live, eigener Key) | ja | ja |
 | Klinischer Sparringspartner (online): Differenzialdiagnosen und nächste Schritte, mit Bildern, Labor-PDFs und eigenen Berichten, auch ohne Fall | ja | ja |
 | Freigabe, Teilen als Text oder PDF | ja | ja |
@@ -261,12 +261,13 @@ Ja, mit eigenem Gemini-Key: im Chat auf **Sprechen** tippen ([Entscheidung 0016]
 - Die Kosten zeigt die App an, im bezahlten Kontingent ca. 0,5 Cent pro Minute Sprechen und 1,8 Cent pro Minute Antwort.
 - Vor dem ersten Gespräch fragt die App einmal um Zustimmung.
 
-**Wie liest VetMed Laborbefunde?**
-Im Chat über **+ → Laborbefund hinzufügen** (PDF oder Foto). So geht es weiter ([Entscheidung 0015](docs/architecture/0015-lab-results.md)):
-1. **Lesen:** Dein Online-Modell liest die Seitenbilder in eine Tabelle. Es überträgt nur, es bewertet nicht. Ohne Online-Zugang liest die App auf dem Gerät; dann ist jede Zeile zu prüfen.
-2. **Abgleich:** Jede Zahl wird im lokal gelesenen Original gesucht. Was dort fehlt, ist rot markiert. Widerspricht die Kennzeichnung des Labors (H/L) dem Wert, ist die Zeile orange.
-3. **Prüfen:** Du vergleichst die Tabelle neben dem Seitenbild, korrigierst Zeilen und bestätigst. Erst dann geht der Befund in den Chat.
-4. **Bewertung:** „niedrig“, „im Bereich“ oder „hoch“ berechnet die App selbst, nur aus dem gedruckten Referenzbereich des Labors. Das Modell erfindet keine Normalwerte.
+**Wie liest VetMed Laborbefunde, Briefe und Berichte?**
+Einfach im Chat anhängen, als PDF oder Foto. Du musst nichts vorab auswählen ([Entscheidungen 0015](docs/architecture/0015-lab-results.md) und [0017](docs/architecture/0017-smart-attachments.md)):
+1. **Erkennen:** Die App entscheidet selbst. Ein PDF oder das Foto eines Dokuments wird gelesen; ein klinisches Foto bleibt ein Bild.
+2. **Lesen:** Dein Online-Modell liest die Seitenbilder, egal wie das Dokument aufgebaut ist. Es liefert die Art (Laborbefund, Brief, Bildgebung), den klinischen Text und alle Messwerte als Tabelle, auch Werte mitten in einem Brief. Es überträgt nur, es bewertet nicht. Ohne Online-Zugang liest die App auf dem Gerät; dann ist alles zu prüfen.
+3. **Abgleich:** Jede Zahl, in der Tabelle wie im Text, wird im lokal gelesenen Original gesucht (Textebene und Texterkennung). Was dort fehlt, ist rot markiert. Widerspricht die Kennzeichnung des Labors (H/L) dem Wert, ist die Zeile orange.
+4. **Prüfen:** Du vergleichst Text und Tabelle neben dem Seitenbild, korrigierst und übernimmst. Erst dann geht das Dokument in den Chat.
+5. **Bewertung:** „niedrig“, „im Bereich“ oder „hoch“ berechnet die App selbst, nur aus dem gedruckten Referenzbereich des Labors. Das Modell erfindet keine Normalwerte.
 
 Frühere bestätigte Werte desselben Falls stehen als Verlauf dabei. Namen von Tier und Halter auf dem Befund vorher abdecken, wenn sie nicht an den Anbieter gehen sollen.
 

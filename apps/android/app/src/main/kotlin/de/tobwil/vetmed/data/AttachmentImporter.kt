@@ -17,6 +17,7 @@ import de.tobwil.vetmed.core.AppFailure
 import de.tobwil.vetmed.core.AttachmentKind
 import de.tobwil.vetmed.core.AttachmentLimits
 import de.tobwil.vetmed.core.ChatAttachment
+import de.tobwil.vetmed.core.DocumentRouting
 import de.tobwil.vetmed.core.LabExtraction
 import de.tobwil.vetmed.core.newId
 import kotlinx.coroutines.Dispatchers
@@ -40,7 +41,7 @@ class PreparedAttachment(val attachment: ChatAttachment, val original: ByteArray
  */
 class AttachmentImporter(private val context: Context, private val scratch: File) {
 
-    suspend fun read(uri: Uri, asLab: Boolean = false): PreparedAttachment = withContext(Dispatchers.IO) {
+    suspend fun read(uri: Uri): PreparedAttachment = withContext(Dispatchers.IO) {
         val resolver = context.contentResolver
         var name = "Anhang"; var size = -1L
         resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE), null, null, null)?.use { cursor ->
@@ -65,18 +66,31 @@ class AttachmentImporter(private val context: Context, private val scratch: File
         val extension = name.substringAfterLast('.', "").lowercase().ifEmpty {
             when (resolver.getType(uri)) { "image/jpeg" -> "jpg"; "image/png" -> "png"; "image/heic", "image/heif" -> "heic"; "application/pdf" -> "pdf"; "text/plain" -> "txt"; else -> "" }
         }
-        prepare(data, if (name.contains('.')) name else "$name.$extension", asLab)
+        prepare(data, if (name.contains('.')) name else "$name.$extension")
     }
 
-    suspend fun prepare(data: ByteArray, name: String, asLab: Boolean = false): PreparedAttachment = withContext(Dispatchers.Default) {
+    /**
+     * One way in for every file (ADR 0017): photos of documents and PDFs are marked to be read by the model, clinical
+     * photos stay images, text files are reviewed as text. The app decides from the content, not from a menu choice.
+     */
+    suspend fun prepare(data: ByteArray, name: String): PreparedAttachment = withContext(Dispatchers.Default) {
         if (data.isEmpty() || data.size > AttachmentLimits.MAXIMUM_ORIGINAL_BYTES) throw AppFailure("Die Datei ist leer oder größer als 20 MB.")
         val extension = name.substringAfterLast('.', "").lowercase()
         val hash = AttachmentLimits.sha256(data)
         val id = newId()
-        if (asLab) return@withContext prepareLab(data, name, extension, hash, id)
         when (extension) {
             "jpg", "jpeg", "png", "heic", "heif", "webp" -> {
                 val upload = uploadImage(data)
+                // A photo of a lab printout or letter is read like a PDF; a wound or an X-ray stays an image.
+                val text = runCatching { BitmapFactory.decodeByteArray(upload.bytes, 0, upload.bytes.size)?.let { recognize(it) } }.getOrNull().orEmpty()
+                if (DocumentRouting.looksLikeDocument(text)) return@withContext PreparedAttachment(
+                    ChatAttachment(
+                        id = id, kind = AttachmentKind.DOCUMENT, originalName = "Dokument (Foto)", originalExtension = extension, originalByteCount = data.size,
+                        originalSHA256 = hash, uploadSHA256 = AttachmentLimits.sha256(upload.bytes), uploadByteCount = upload.bytes.size,
+                        width = upload.width, height = upload.height, extractedText = text, usedOCR = true, isLab = true,
+                    ),
+                    data, upload.bytes,
+                )
                 PreparedAttachment(
                     ChatAttachment(
                         id = id, kind = AttachmentKind.IMAGE, originalName = name, originalExtension = extension, originalByteCount = data.size,
@@ -86,14 +100,24 @@ class AttachmentImporter(private val context: Context, private val scratch: File
                     data, upload.bytes,
                 )
             }
-            "pdf", "txt", "text", "md" -> {
-                val (text, ocr) = if (extension == "pdf") pdfText(data) else utf8(data) to false
-                if (text.isBlank()) throw AppFailure("Im Dokument wurde kein Text gefunden.")
+            "pdf" -> {
+                val read = pdfText(data)
+                if (read.text.isBlank() && read.check.isBlank()) throw AppFailure("Im Dokument wurde kein Text gefunden.")
                 PreparedAttachment(
                     ChatAttachment(
                         id = id, kind = AttachmentKind.DOCUMENT, originalName = name, originalExtension = extension, originalByteCount = data.size,
-                        originalSHA256 = hash, extractedText = text, usedOCR = ocr,
+                        originalSHA256 = hash, extractedText = read.text.ifBlank { read.check }, usedOCR = read.ocr, checkText = read.check.ifBlank { null },
+                        // Longer documents are reviewed as local text; the model reads at most LabExtraction.MAX_PAGES pages.
+                        isLab = read.pages <= LabExtraction.MAX_PAGES,
                     ),
+                    data, null,
+                )
+            }
+            "txt", "text", "md" -> {
+                val text = utf8(data)
+                if (text.isBlank()) throw AppFailure("Im Dokument wurde kein Text gefunden.")
+                PreparedAttachment(
+                    ChatAttachment(id = id, kind = AttachmentKind.DOCUMENT, originalName = name, originalExtension = extension, originalByteCount = data.size, originalSHA256 = hash, extractedText = text),
                     data, null,
                 )
             }
@@ -101,37 +125,7 @@ class AttachmentImporter(private val context: Context, private val scratch: File
         }
     }
 
-    /**
-     * A lab result is kept as a document: the chat later receives the confirmed table, never the photo. A photo keeps a
-     * cleaned JPEG as its page image; its local OCR text is only used to cross-check the numbers the model reads.
-     */
-    private suspend fun prepareLab(data: ByteArray, name: String, extension: String, hash: String, id: String): PreparedAttachment = when (extension) {
-        "jpg", "jpeg", "png", "heic", "heif", "webp" -> {
-            val upload = uploadImage(data)
-            val text = BitmapFactory.decodeByteArray(upload.bytes, 0, upload.bytes.size)?.let { recognize(it) }.orEmpty()
-            PreparedAttachment(
-                ChatAttachment(
-                    id = id, kind = AttachmentKind.DOCUMENT, originalName = "Laborbefund (Foto)", originalExtension = extension, originalByteCount = data.size,
-                    originalSHA256 = hash, uploadSHA256 = AttachmentLimits.sha256(upload.bytes), uploadByteCount = upload.bytes.size,
-                    width = upload.width, height = upload.height, extractedText = text, usedOCR = true, isLab = true,
-                ),
-                data, upload.bytes,
-            )
-        }
-        "pdf" -> {
-            val (text, ocr) = pdfText(data)
-            PreparedAttachment(
-                ChatAttachment(
-                    id = id, kind = AttachmentKind.DOCUMENT, originalName = name, originalExtension = extension, originalByteCount = data.size,
-                    originalSHA256 = hash, extractedText = text, usedOCR = ocr, isLab = true,
-                ),
-                data, null,
-            )
-        }
-        else -> throw AppFailure("Bitte den Laborbefund als PDF oder Foto auswählen.")
-    }
-
-    /** Page images for reading a lab result: rendered PDF pages or the cleaned photo, JPEG, each at most 2 MB. */
+    /** Page images for the model: rendered PDF pages or the cleaned photo, JPEG, each within LabExtraction.MAX_PAGE_BYTES. */
     suspend fun labPages(attachment: ChatAttachment, original: ByteArray, upload: ByteArray?): List<ByteArray> = withContext(Dispatchers.Default) {
         if (attachment.originalExtension != "pdf") return@withContext listOf(upload ?: throw AppFailure("Das Befundfoto ist nicht verfügbar."))
         scratch.mkdirs()
@@ -139,12 +133,12 @@ class AttachmentImporter(private val context: Context, private val scratch: File
         try {
             file.writeBytes(original)
             PdfRenderer(ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)).use { renderer ->
-                if (renderer.pageCount > LabExtraction.MAX_PAGES) throw AppFailure("Der Befund hat ${renderer.pageCount} Seiten. Bitte höchstens ${LabExtraction.MAX_PAGES} Seiten auf einmal hinzufügen.")
+                if (renderer.pageCount > LabExtraction.MAX_PAGES) throw AppFailure("Das Dokument hat ${renderer.pageCount} Seiten. Gelesen werden höchstens ${LabExtraction.MAX_PAGES} Seiten; bitte den lokalen Text prüfen.")
                 (0 until renderer.pageCount).map { index ->
                     currentCoroutineContext().ensureActive()
                     val bitmap = renderer.openPage(index).use { page ->
                         // About 200 dpi for A4: small print and decimal commas stay legible.
-                        val scale = (2200f / maxOf(page.width, page.height)).coerceIn(1f, 4f)
+                        val scale = (2000f / maxOf(page.width, page.height)).coerceIn(1f, 4f)
                         Bitmap.createBitmap((page.width * scale).toInt(), (page.height * scale).toInt(), Bitmap.Config.ARGB_8888).also {
                             it.eraseColor(Color.WHITE); page.render(it, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
                         }
@@ -158,12 +152,12 @@ class AttachmentImporter(private val context: Context, private val scratch: File
     }
 
     private fun jpeg(bitmap: Bitmap): ByteArray {
-        for (quality in listOf(88, 78, 66)) {
+        for (quality in listOf(85, 75, 62, 50)) {
             val output = ByteArrayOutputStream()
             bitmap.compress(Bitmap.CompressFormat.JPEG, quality, output)
             if (output.size() <= LabExtraction.MAX_PAGE_BYTES) return output.toByteArray()
         }
-        throw AppFailure("Eine Befundseite ist zu groß für den Versand.")
+        throw AppFailure("Eine Dokumentseite ist zu groß für den Versand.")
     }
 
     private class Upload(val bytes: ByteArray, val width: Int, val height: Int)
@@ -209,8 +203,14 @@ class AttachmentImporter(private val context: Context, private val scratch: File
         throw AppFailure("Die Textdatei ist nicht als UTF-8 lesbar.")
     }
 
-    /** Text layer where Android can read it (Android 15+), otherwise on-device OCR of the rendered page. */
-    private suspend fun pdfText(data: ByteArray): Pair<String, Boolean> {
+    private class PdfText(val text: String, val ocr: Boolean, val check: String, val pages: Int)
+
+    /**
+     * Text layer where Android can read it (Android 15+), otherwise OCR of the rendered page. In addition, the first
+     * pages that the model may read are always run through OCR: letters often embed value tables as images, and the
+     * numbers the model reads there must be found in the original too.
+     */
+    private suspend fun pdfText(data: ByteArray): PdfText {
         scratch.mkdirs()
         val file = File(scratch, "pdf-import-" + newId() + ".pdf")
         try {
@@ -220,13 +220,17 @@ class AttachmentImporter(private val context: Context, private val scratch: File
             renderer.use {
                 var usedOCR = false
                 val sections = StringBuilder()
+                val check = StringBuilder()
                 val pages = minOf(renderer.pageCount, MAX_PAGES)
+                val readable = renderer.pageCount <= LabExtraction.MAX_PAGES
                 for (index in 0 until pages) {
                     currentCoroutineContext().ensureActive()
                     var text = renderer.openPage(index).use { page ->
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM) page.textContents.joinToString("\n") { it.text }.trim() else ""
                     }
-                    if (text.isEmpty()) { text = ocr(renderer, index); if (text.isNotEmpty()) usedOCR = true }
+                    val recognized = if (text.isEmpty() || readable) ocr(renderer, index) else ""
+                    if (readable && recognized.isNotEmpty()) check.append("Seite ${index + 1}\n").append(recognized).append("\n\n")
+                    if (text.isEmpty()) { text = recognized; if (text.isNotEmpty()) usedOCR = true }
                     if (text.isNotEmpty()) {
                         if (sections.isNotEmpty()) sections.append("\n\n")
                         sections.append("Seite ${index + 1}\n").append(text)
@@ -236,7 +240,7 @@ class AttachmentImporter(private val context: Context, private val scratch: File
                 var text = sections.toString()
                 if (text.length > MAX_CHARACTERS) text = text.take(MAX_CHARACTERS) + "\n\n[Text nach $MAX_CHARACTERS Zeichen abgeschnitten. Bitte das Original prüfen.]"
                 if (renderer.pageCount > MAX_PAGES) text += "\n\n[Nur die ersten $MAX_PAGES von ${renderer.pageCount} Seiten wurden gelesen. Bitte das Original prüfen.]"
-                return text to usedOCR
+                return PdfText(text, usedOCR, check.toString().trim().take(MAX_CHARACTERS), renderer.pageCount)
             }
         } finally {
             file.delete()
