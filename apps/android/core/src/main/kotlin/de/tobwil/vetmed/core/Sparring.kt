@@ -69,8 +69,12 @@ data class ChatAttachment(
     val reviewedText: String? = null,
     val reviewedAt: AppleDate? = null,
     val usedOCR: Boolean = false,
+    /** Lab result read as a table (ADR 0015). The chat only uses it once [LabReport.confirmedAt] is set. */
+    val lab: LabReport? = null,
+    /** Imported as a lab result; the table is read after import. */
+    val isLab: Boolean? = null,
 ) {
-    val displayName: String get() = if (kind == AttachmentKind.IMAGE) "Bild" else originalName
+    val displayName: String get() = if (kind == AttachmentKind.IMAGE) "Bild" else if (isLab == true) "Laborbefund" else originalName
 }
 
 @Serializable

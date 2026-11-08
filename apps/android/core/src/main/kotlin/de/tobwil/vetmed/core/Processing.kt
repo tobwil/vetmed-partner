@@ -21,6 +21,10 @@ object Processing {
     fun reportMode(online: OnlineReportConfiguration, hasKey: Boolean): ReportExecutionMode =
         if (online.deviceOnly != true && online.isEnabled && hasKey) ReportExecutionMode.ONLINE else ReportExecutionMode.OFFLINE
 
+    /** Lab results: page images to the chosen model, unless "Nur auf dem Gerät" or no online access. */
+    fun labRoute(online: OnlineReportConfiguration, hasKey: Boolean): ProcessingRoute =
+        if (online.deviceOnly != true && online.isEnabled && hasKey) ProcessingRoute.ONLINE else ProcessingRoute.DEVICE
+
     /** One sentence for settings: what runs where right now. */
     fun summary(online: OnlineReportConfiguration, hasKey: Boolean, transcription: ProcessingRoute): String = when {
         online.deviceOnly == true -> "Nur auf dem Gerät: Transkription und Berichte bleiben auf diesem Gerät. Die Qualität ist geringer."

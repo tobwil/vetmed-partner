@@ -58,6 +58,29 @@ object ChatOperations {
         }
     }
 
+    /** Stores a read but not yet confirmed table. A changed table is unconfirmed again and must be checked anew. */
+    fun saveLab(document: VaultDocument, location: ChatLocation, id: String, report: LabReport): VaultDocument {
+        val chat = context(document, location) ?: throw AppFailure("Dieser Chat ist nicht mehr vorhanden.")
+        if (chat.chatAttachments.orEmpty().none { it.id == id && it.isLab == true }) throw AppFailure("Dieser Laborbefund ist nicht mehr vorhanden.")
+        if (report.values.size > LabExtraction.MAX_VALUES) throw AppFailure("Der Befund enthält zu viele Werte.")
+        return mapChat(document, location) { encounter ->
+            encounter.copy(chatAttachments = encounter.chatAttachments?.map {
+                if (it.id == id) it.copy(lab = report.copy(confirmedAt = null), reviewedText = null, reviewedAt = null) else it
+            })
+        }
+    }
+
+    /** The user checked the table at the original: from now on the chat receives exactly this rendered table. */
+    fun confirmLab(document: VaultDocument, location: ChatLocation, id: String, report: LabReport): VaultDocument {
+        if (report.values.isEmpty()) throw AppFailure("Die Tabelle enthält keine Werte.")
+        if (report.values.any { it.parameter.isBlank() || it.value.isBlank() }) throw AppFailure("Bitte in jeder Zeile Parameter und Wert ausfüllen oder die Zeile löschen.")
+        val confirmed = report.copy(confirmedAt = now())
+        val text = LabExtraction.render(confirmed)
+        return mapChat(saveLab(document, location, id, report), location) { encounter ->
+            encounter.copy(chatAttachments = encounter.chatAttachments?.map { if (it.id == id) it.copy(lab = confirmed, reviewedText = text, reviewedAt = now()) else it })
+        }
+    }
+
     fun checkAnalysisBudget(document: VaultDocument, location: ChatLocation) {
         val total = document.cases.flatMap { it.encounters }.sumOf { it.analysisRuns.orEmpty().size } + document.quickChecks.orEmpty().sumOf { it.runs.size }
         if (total >= MAX_RUNS_TOTAL || (context(document, location)?.analysisRuns?.size ?: 0) >= MAX_RUNS_PER_CHAT) {

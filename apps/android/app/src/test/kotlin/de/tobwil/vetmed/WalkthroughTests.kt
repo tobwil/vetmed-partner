@@ -15,6 +15,7 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.printToString
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.test.core.app.ApplicationProvider
@@ -63,10 +64,11 @@ class WalkthroughTests {
         microphone: AudioSourceFactory = SyntheticMicrophone(0), transcriber: Transcriber = SyntheticTranscriber(),
         localModel: de.tobwil.vetmed.data.LocalReportModel = syntheticLocalModel(folder.root, SyntheticModelServer(), SyntheticRuntime("Befunde")),
         gemini: de.tobwil.vetmed.core.GeminiTranscriptionApi = de.tobwil.vetmed.core.GeminiTranscriptionApi(transport = { throw AssertionError("Unerwarteter Netzaufruf") }),
+        transport: de.tobwil.vetmed.core.HttpTransport = de.tobwil.vetmed.core.HttpTransport { throw AssertionError("Unerwarteter Netzaufruf") },
     ): AppViewModel {
         AppearanceStore(application).apply { this.mode = mode; this.theme = theme }
         if (document != null) runBlocking { repository().save(document) }
-        val model = AppViewModel(application, repository(), microphone, transcriber, localModel, gemini)
+        val model = AppViewModel(application, repository(), microphone, transcriber, localModel, gemini, transport)
         compose.setContent { VetMedApp(model) }
         waitFor("App geöffnet", model) { model.ready.value }
         compose.waitForIdle()
@@ -338,6 +340,75 @@ class WalkthroughTests {
         assertEquals(true, runBlocking { repository().onlineConfiguration() }.deviceOnly)
         compose.onNodeWithTag("processing-summary", useUnmergedTree = true).assertIsDisplayed()
         shot("16-verarbeitung-einstellungen")
+    }
+
+    /** A synthetic lab page, drawn like a printed result. No real animal, owner or laboratory. */
+    private fun syntheticLabPage(): ByteArray {
+        val bitmap = android.graphics.Bitmap.createBitmap(1240, 900, android.graphics.Bitmap.Config.ARGB_8888)
+        val canvas = android.graphics.Canvas(bitmap).apply { drawColor(android.graphics.Color.WHITE) }
+        val paint = android.graphics.Paint().apply { color = android.graphics.Color.BLACK; textSize = 34f; isAntiAlias = true }
+        val lines = listOf("Synthetisches Labor · Probe vom 12.10.2026", "", "Parameter      Wert    Einheit   Referenz",
+            "ALT (GPT)      85      U/l       10 - 100", "Kreatinin      1,9     mg/dl     0,5 - 1,8   H", "Glukose        5,1     mmol/l    3,9 - 6,1")
+        lines.forEachIndexed { index, line -> canvas.drawText(line, 60f, 110f + index * 70f, paint) }
+        return java.io.ByteArrayOutputStream().also { bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 90, it) }.toByteArray()
+    }
+
+    @Test fun aLabResultIsReadCheckedAgainstTheOriginalAndConfirmedAsTable() {
+        val seeded = SyntheticCases.seed()
+        val location = de.tobwil.vetmed.core.ChatLocation(seeded.withReport.caseID, seeded.withReport.encounterID)
+        val page = syntheticLabPage()
+        val attachment = de.tobwil.vetmed.core.ChatAttachment(
+            id = "lab-synthetic", kind = de.tobwil.vetmed.core.AttachmentKind.DOCUMENT, originalName = "Laborbefund (Foto)", originalExtension = "jpg",
+            originalByteCount = page.size, originalSHA256 = de.tobwil.vetmed.core.AttachmentLimits.sha256(page),
+            uploadSHA256 = de.tobwil.vetmed.core.AttachmentLimits.sha256(page), uploadByteCount = page.size, width = 1240, height = 900,
+            // What the on-device OCR read: the true value 1,9.
+            extractedText = "Synthetisches Labor\nALT (GPT) 85 U/l 10 - 100\nKreatinin 1,9 mg/dl 0,5 - 1,8 H\nGlukose 5,1 mmol/l 3,9 - 6,1", usedOCR = true, isLab = true,
+        )
+        val document = CaseOperations.run { seeded.document.mapEncounter(seeded.withReport) { it.copy(chatAttachments = listOf(attachment)) } }
+        val key = "synthetic-openai-key-for-walkthrough"
+        runBlocking {
+            repository().storeAttachment(location.caseID, location.encounterID, attachment.id, page, page)
+            repository().saveOnline(de.tobwil.vetmed.core.OnlineReportConfiguration("synthetic-model", de.tobwil.vetmed.core.now(), de.tobwil.vetmed.core.ReportExecutionMode.ONLINE), key)
+        }
+        // The provider misreads Kreatinin as 1,6; the cross-check with the original must catch that.
+        val table = """{"laboratory":"Synthetisches Labor","sampleDate":"12.10.2026","values":[{"parameter":"ALT (GPT)","value":"85","unit":"U/l","reference":"10 - 100","flag":"","page":1,"uncertain":false},{"parameter":"Kreatinin","value":"1,6","unit":"mg/dl","reference":"0,5 - 1,8","flag":"H","page":1,"uncertain":false},{"parameter":"Glukose","value":"5,1","unit":"mmol/l","reference":"3,9 - 6,1","flag":"","page":1,"uncertain":false}]}"""
+        val requests = mutableListOf<de.tobwil.vetmed.core.HttpRequest>()
+        val transport = de.tobwil.vetmed.core.HttpTransport { request ->
+            requests += request
+            val output = kotlinx.serialization.json.buildJsonObject {
+                put("status", kotlinx.serialization.json.JsonPrimitive("completed")); put("model", kotlinx.serialization.json.JsonPrimitive("synthetic-model-1"))
+                put("output", kotlinx.serialization.json.Json.parseToJsonElement("""[{"type":"message","content":[{"type":"output_text","text":${kotlinx.serialization.json.JsonPrimitive(table)}}]}]"""))
+            }
+            de.tobwil.vetmed.core.HttpResponse(200, output.toString().encodeToByteArray())
+        }
+        val model = launch(document, transport = transport)
+        compose.onNodeWithTag("tab-chat").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithTag("chat-row-" + location.encounterID).performClick()
+        compose.waitForIdle()
+        compose.onNodeWithTag("chat-add-attachment").performClick()
+        compose.onNodeWithText("Vorhanden: Laborbefund").performClick()
+        compose.onNodeWithTag("lab-read-online").performScrollTo().performClick()
+        waitFor("Tabelle gelesen", model) { model.chatContext(location)!!.chatAttachments!!.single().lab != null && !model.busy.value }
+        assertEquals(1, requests.size)
+        assertTrue("Key nur im Header", !requests.single().body!!.decodeToString().contains(key))
+        assertTrue(requests.single().body!!.decodeToString().contains("data:image/jpeg;base64,"))
+        val read = model.chatContext(location)!!.chatAttachments!!.single().lab!!
+        assertEquals(listOf(de.tobwil.vetmed.core.LabEvidence.FOUND, de.tobwil.vetmed.core.LabEvidence.NOT_FOUND, de.tobwil.vetmed.core.LabEvidence.FOUND), read.values.map { it.evidence })
+        compose.onNodeWithText("Nicht im Original gefunden. Bitte am Befund prüfen.").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("lab-summary").performScrollTo()
+        shot("17-laborbefund-pruefen")
+        // Correct the misread value at the original, then confirm.
+        compose.onNodeWithTag("lab-row-Kreatinin").performScrollTo().performClick()
+        compose.onNodeWithTag("lab-edit-value").performTextClearance()
+        compose.onNodeWithTag("lab-edit-value").performTextInput("1,9")
+        compose.onNodeWithTag("lab-edit-checked").performClick()
+        compose.onNodeWithTag("lab-edit-save").performScrollTo().performClick()
+        compose.onNodeWithTag("lab-confirm").performScrollTo().performClick()
+        waitFor("Tabelle bestätigt", model) { model.chatContext(location)!!.chatAttachments!!.single().lab?.confirmedAt != null }
+        val confirmed = model.chatContext(location)!!.chatAttachments!!.single()
+        assertTrue(confirmed.reviewedText!!.contains("| Kreatinin | 1,9 | mg/dl | 0,5 - 1,8 | H | ↑ hoch |"))
+        assertEquals(de.tobwil.vetmed.core.LabEvidence.EDITED, confirmed.lab!!.values[1].evidence)
     }
 
     @Test fun rotationAndLeavingTheAppKeepRecording() {

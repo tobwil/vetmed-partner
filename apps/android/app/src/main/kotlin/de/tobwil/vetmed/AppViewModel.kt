@@ -78,6 +78,8 @@ class AppViewModel(
     transcriber: Transcriber? = null,
     localModel: LocalReportModel? = null,
     private val gemini: GeminiTranscriptionApi = GeminiTranscriptionApi(),
+    /** Network for reading lab results; replaced by a fake in tests. */
+    private val transport: de.tobwil.vetmed.core.HttpTransport = de.tobwil.vetmed.core.EphemeralHttpTransport,
 ) : AndroidViewModel(application) {
     /** Used by the default view model factory: SQLCipher case database and sealed secrets under separate Keystore keys, outside backups. */
     constructor(application: Application) : this(
@@ -515,13 +517,13 @@ class AppViewModel(
     /** Saves a draft left in a closing chat; runs in the view model so it outlives the screen. */
     fun flushDraft(draft: SparringDraft, location: ChatLocation) { viewModelScope.launch { saveSparringDraft(draft, location) } }
 
-    fun importAttachment(uri: Uri, location: ChatLocation, then: (ChatAttachment) -> Unit) {
+    fun importAttachment(uri: Uri, location: ChatLocation, asLab: Boolean = false, then: (ChatAttachment) -> Unit) {
         if (_busy.value) return
         _busy.value = true; _error.value = null; _workStatus.value = "Anhang wird lokal vorbereitet"
         work = viewModelScope.launch {
             try {
                 if (chatContext(location) == null) throw AppFailure("Dieser Chat ist nicht mehr vorhanden.")
-                val prepared = importer.read(uri)
+                val prepared = importer.read(uri, asLab)
                 repository.storeAttachment(location.caseID, location.encounterID, prepared.attachment.id, prepared.original, prepared.upload)
                 if (commit { ChatOperations.addAttachment(it, location, prepared.attachment) }) then(prepared.attachment)
                 else repository.removeAttachment(location.caseID, location.encounterID, prepared.attachment.id)
@@ -538,6 +540,56 @@ class AppViewModel(
     suspend fun attachmentData(location: ChatLocation, id: String, upload: Boolean): ByteArray {
         if (chatContext(location)?.chatAttachments?.any { it.id == id } != true) throw AppFailure("Dieser Anhang ist nicht verfügbar.")
         return repository.attachmentData(location.caseID, location.encounterID, id, upload)
+    }
+
+    /** Where the next lab result is read: online first, on the device with "Nur auf dem Gerät" or without access. */
+    val labRoute: ProcessingRoute get() = Processing.labRoute(_online.value, hasKey.value)
+
+    /** Page images of a lab result for the review next to the table. */
+    suspend fun labPages(location: ChatLocation, id: String): List<ByteArray> {
+        val attachment = chatContext(location)?.chatAttachments?.firstOrNull { it.id == id && it.isLab == true } ?: throw AppFailure("Dieser Laborbefund ist nicht verfügbar.")
+        val original = repository.attachmentData(location.caseID, location.encounterID, id, false)
+        val upload = if (attachment.uploadByteCount != null) repository.attachmentData(location.caseID, location.encounterID, id, true) else null
+        return importer.labPages(attachment, original, upload)
+    }
+
+    /**
+     * Reads a lab result into a table (ADR 0015). Online: the page images go to the chosen model with a strict schema,
+     * then every number is looked up in the locally read text. On the device: a line parser, every row to be checked.
+     * The result is stored unconfirmed; only the user's confirmation makes it usable in the chat.
+     */
+    fun readLab(location: ChatLocation, id: String, route: ProcessingRoute = labRoute) {
+        if (_busy.value) return
+        val configuration = _online.value
+        _busy.value = true; _error.value = null
+        _workStatus.value = if (route == ProcessingRoute.ONLINE) "Laborbefund · ${configuration.provider.title} liest die Seiten" else "Laborbefund · auf dem Gerät"
+        work = viewModelScope.launch {
+            try {
+                val attachment = chatContext(location)?.chatAttachments?.firstOrNull { it.id == id && it.isLab == true } ?: throw AppFailure("Dieser Laborbefund ist nicht mehr vorhanden.")
+                val localText = attachment.extractedText.orEmpty()
+                val report = if (route == ProcessingRoute.ONLINE) {
+                    val key = onlineKey(configuration.provider)
+                    if (!configuration.isEnabled || key == null) throw AppFailure("Bitte zuerst den Online-Zugang einrichten oder auf dem Gerät lesen.")
+                    val pages = labPages(location, id)
+                    val method = "${configuration.provider.title} ${configuration.modelID} · Seitenbilder"
+                    val text = if (configuration.provider == OnlineProvider.GEMINI) {
+                        GeminiOnlineApi.reportResult(transport.send(de.tobwil.vetmed.core.LabExtraction.geminiRequest(configuration.modelID, key, pages)), configuration.modelID).text
+                    } else OpenAIReportApi.result(transport.send(de.tobwil.vetmed.core.LabExtraction.openAIRequest(configuration.modelID, key, pages))).text
+                    de.tobwil.vetmed.core.LabExtraction.verify(de.tobwil.vetmed.core.LabExtraction.parse(text, method, pages.size), localText)
+                } else de.tobwil.vetmed.core.LabExtraction.parseLocal(localText, localText.lines().count { it.startsWith("Seite ") }.coerceAtLeast(1))
+                commit("Die Tabelle konnte nicht gespeichert werden: ") { ChatOperations.saveLab(it, location, id, report) }
+            } catch (error: CancellationException) {
+                _error.value = "Lesen abgebrochen. Es wurde nichts übernommen."
+            } catch (error: Exception) {
+                _error.value = error.message ?: "Der Laborbefund konnte nicht gelesen werden."
+            } finally {
+                _busy.value = false; _workStatus.value = ""; work = null
+            }
+        }
+    }
+
+    fun confirmLab(location: ChatLocation, id: String, report: de.tobwil.vetmed.core.LabReport, then: () -> Unit) {
+        viewModelScope.launch { if (commit("Die Tabelle konnte nicht gespeichert werden: ") { ChatOperations.confirmLab(it, location, id, report) }) then() }
     }
 
     fun reviewDocument(location: ChatLocation, id: String, text: String, then: () -> Unit) {

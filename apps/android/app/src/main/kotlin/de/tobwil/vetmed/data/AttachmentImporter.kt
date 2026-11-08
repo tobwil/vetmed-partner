@@ -17,6 +17,7 @@ import de.tobwil.vetmed.core.AppFailure
 import de.tobwil.vetmed.core.AttachmentKind
 import de.tobwil.vetmed.core.AttachmentLimits
 import de.tobwil.vetmed.core.ChatAttachment
+import de.tobwil.vetmed.core.LabExtraction
 import de.tobwil.vetmed.core.newId
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
@@ -39,7 +40,7 @@ class PreparedAttachment(val attachment: ChatAttachment, val original: ByteArray
  */
 class AttachmentImporter(private val context: Context, private val scratch: File) {
 
-    suspend fun read(uri: Uri): PreparedAttachment = withContext(Dispatchers.IO) {
+    suspend fun read(uri: Uri, asLab: Boolean = false): PreparedAttachment = withContext(Dispatchers.IO) {
         val resolver = context.contentResolver
         var name = "Anhang"; var size = -1L
         resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE), null, null, null)?.use { cursor ->
@@ -64,14 +65,15 @@ class AttachmentImporter(private val context: Context, private val scratch: File
         val extension = name.substringAfterLast('.', "").lowercase().ifEmpty {
             when (resolver.getType(uri)) { "image/jpeg" -> "jpg"; "image/png" -> "png"; "image/heic", "image/heif" -> "heic"; "application/pdf" -> "pdf"; "text/plain" -> "txt"; else -> "" }
         }
-        prepare(data, if (name.contains('.')) name else "$name.$extension")
+        prepare(data, if (name.contains('.')) name else "$name.$extension", asLab)
     }
 
-    suspend fun prepare(data: ByteArray, name: String): PreparedAttachment = withContext(Dispatchers.Default) {
+    suspend fun prepare(data: ByteArray, name: String, asLab: Boolean = false): PreparedAttachment = withContext(Dispatchers.Default) {
         if (data.isEmpty() || data.size > AttachmentLimits.MAXIMUM_ORIGINAL_BYTES) throw AppFailure("Die Datei ist leer oder größer als 20 MB.")
         val extension = name.substringAfterLast('.', "").lowercase()
         val hash = AttachmentLimits.sha256(data)
         val id = newId()
+        if (asLab) return@withContext prepareLab(data, name, extension, hash, id)
         when (extension) {
             "jpg", "jpeg", "png", "heic", "heif", "webp" -> {
                 val upload = uploadImage(data)
@@ -97,6 +99,71 @@ class AttachmentImporter(private val context: Context, private val scratch: File
             }
             else -> throw AppFailure("Bitte ein Bild, PDF oder eine UTF-8-Textdatei auswählen.")
         }
+    }
+
+    /**
+     * A lab result is kept as a document: the chat later receives the confirmed table, never the photo. A photo keeps a
+     * cleaned JPEG as its page image; its local OCR text is only used to cross-check the numbers the model reads.
+     */
+    private suspend fun prepareLab(data: ByteArray, name: String, extension: String, hash: String, id: String): PreparedAttachment = when (extension) {
+        "jpg", "jpeg", "png", "heic", "heif", "webp" -> {
+            val upload = uploadImage(data)
+            val text = BitmapFactory.decodeByteArray(upload.bytes, 0, upload.bytes.size)?.let { recognize(it) }.orEmpty()
+            PreparedAttachment(
+                ChatAttachment(
+                    id = id, kind = AttachmentKind.DOCUMENT, originalName = "Laborbefund (Foto)", originalExtension = extension, originalByteCount = data.size,
+                    originalSHA256 = hash, uploadSHA256 = AttachmentLimits.sha256(upload.bytes), uploadByteCount = upload.bytes.size,
+                    width = upload.width, height = upload.height, extractedText = text, usedOCR = true, isLab = true,
+                ),
+                data, upload.bytes,
+            )
+        }
+        "pdf" -> {
+            val (text, ocr) = pdfText(data)
+            PreparedAttachment(
+                ChatAttachment(
+                    id = id, kind = AttachmentKind.DOCUMENT, originalName = name, originalExtension = extension, originalByteCount = data.size,
+                    originalSHA256 = hash, extractedText = text, usedOCR = ocr, isLab = true,
+                ),
+                data, null,
+            )
+        }
+        else -> throw AppFailure("Bitte den Laborbefund als PDF oder Foto auswählen.")
+    }
+
+    /** Page images for reading a lab result: rendered PDF pages or the cleaned photo, JPEG, each at most 2 MB. */
+    suspend fun labPages(attachment: ChatAttachment, original: ByteArray, upload: ByteArray?): List<ByteArray> = withContext(Dispatchers.Default) {
+        if (attachment.originalExtension != "pdf") return@withContext listOf(upload ?: throw AppFailure("Das Befundfoto ist nicht verfügbar."))
+        scratch.mkdirs()
+        val file = File(scratch, "pdf-import-" + newId() + ".pdf")
+        try {
+            file.writeBytes(original)
+            PdfRenderer(ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)).use { renderer ->
+                if (renderer.pageCount > LabExtraction.MAX_PAGES) throw AppFailure("Der Befund hat ${renderer.pageCount} Seiten. Bitte höchstens ${LabExtraction.MAX_PAGES} Seiten auf einmal hinzufügen.")
+                (0 until renderer.pageCount).map { index ->
+                    currentCoroutineContext().ensureActive()
+                    val bitmap = renderer.openPage(index).use { page ->
+                        // About 200 dpi for A4: small print and decimal commas stay legible.
+                        val scale = (2200f / maxOf(page.width, page.height)).coerceIn(1f, 4f)
+                        Bitmap.createBitmap((page.width * scale).toInt(), (page.height * scale).toInt(), Bitmap.Config.ARGB_8888).also {
+                            it.eraseColor(Color.WHITE); page.render(it, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                        }
+                    }
+                    try { jpeg(bitmap) } finally { bitmap.recycle() }
+                }
+            }
+        } catch (error: AppFailure) { throw error }
+        catch (error: Exception) { throw AppFailure("Das PDF konnte nicht als Bild gelesen werden.") }
+        finally { file.delete() }
+    }
+
+    private fun jpeg(bitmap: Bitmap): ByteArray {
+        for (quality in listOf(88, 78, 66)) {
+            val output = ByteArrayOutputStream()
+            bitmap.compress(Bitmap.CompressFormat.JPEG, quality, output)
+            if (output.size() <= LabExtraction.MAX_PAGE_BYTES) return output.toByteArray()
+        }
+        throw AppFailure("Eine Befundseite ist zu groß für den Versand.")
     }
 
     private class Upload(val bytes: ByteArray, val width: Int, val height: Int)
@@ -184,6 +251,11 @@ class AttachmentImporter(private val context: Context, private val scratch: File
                 page.render(it, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
             }
         }
+        return recognize(bitmap)
+    }
+
+    /** On-device text recognition (ML Kit); recycles the bitmap. */
+    private suspend fun recognize(bitmap: Bitmap): String {
         val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
         return try {
             suspendCancellableCoroutine { continuation ->
