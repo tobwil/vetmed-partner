@@ -24,7 +24,9 @@ import androidx.compose.material.icons.automirrored.rounded.Chat
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Calculate
 import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.ShowChart
 import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Folder
@@ -185,6 +187,18 @@ fun CaseDetailScreen(model: AppViewModel, nav: NavHostController, caseID: String
                             Text(if (item.animalName.isEmpty()) item.species else "${item.species} · ${item.label}", color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         IconButton(onClick = { editing = true }) { Icon(Icons.Rounded.Edit, "Falldaten bearbeiten", tint = colors.primary) }
+                    }
+                }
+                item {
+                    // Tools for this case (ADR 0020): species and confirmed lab values of the case are used.
+                    val trends = remember(document, item.id) { de.tobwil.vetmed.core.LabTrend.series(document, item.id) }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TextButton(onClick = { nav.navigate(DoseRoute(item.id)) }, modifier = Modifier.testTag("case-dose")) {
+                            Icon(Icons.Rounded.Calculate, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Dosis berechnen")
+                        }
+                        if (trends.isNotEmpty()) TextButton(onClick = { nav.navigate(LabTrendRoute(item.id)) }, modifier = Modifier.testTag("case-lab-trend")) {
+                            Icon(Icons.Rounded.ShowChart, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Laborverlauf")
+                        }
                     }
                 }
                 item { SectionTitle("Vorgänge") }

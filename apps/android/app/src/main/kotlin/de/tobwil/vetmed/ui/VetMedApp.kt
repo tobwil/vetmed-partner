@@ -85,6 +85,8 @@ import kotlinx.serialization.Serializable
 @Serializable object VocabularyRoute
 @Serializable object GeminiRoute
 @Serializable object BackupRoute
+@Serializable data class DoseRoute(val caseID: String? = null)
+@Serializable data class LabTrendRoute(val caseID: String)
 
 /** Day/night and theme actions shared by the toggle on Start and the settings screen. */
 class AppearanceController(
@@ -172,6 +174,8 @@ private fun AppContent(model: AppViewModel) {
                     composable<VocabularyRoute> { VocabularyScreen(model, navController) }
                     composable<GeminiRoute> { GeminiSettingsScreen(model, navController) }
                     composable<BackupRoute> { BackupScreen(model, navController) }
+                    composable<DoseRoute> { DoseScreen(model, navController, it.toRoute<DoseRoute>().caseID) }
+                    composable<LabTrendRoute> { LabTrendScreen(model, navController, it.toRoute<LabTrendRoute>().caseID) }
                 }
                 androidx.compose.animation.AnimatedVisibility(
                     busy, Modifier.align(Alignment.BottomCenter),

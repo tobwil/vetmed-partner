@@ -40,6 +40,8 @@ Native App für Tierärztinnen und Tierärzte auf iPhone und Android. Du diktier
 | Klinischer Sparringspartner (online): Differenzialdiagnosen und nächste Schritte, mit Bildern, Labor-PDFs und eigenen Berichten, auch ohne Fall | ja | ja |
 | Freigabe, Teilen als Text oder PDF | ja | ja |
 | Verschlüsselte Sicherung aller Fälle in eine Datei, auch zwischen iPhone und Android | ja | ja |
+| Dosisrechner mit ausgeschriebenem Rechenweg und festen Warnregeln (Katze, MDR1, NSAID bei erhöhtem Kreatinin) | ja | ja |
+| Laborverlauf als Grafik mit Referenzbereich des Labors | ja | ja |
 | Tag/Nacht und sechs Farbthemen | ja | ja |
 
 Was auf welchem Gerät geprüft ist und was noch offen ist, steht ehrlich im [Prüfstand](docs/test-status.md).
@@ -99,6 +101,11 @@ Gerendert aus den Compose-UI-Tests (Robolectric, Bildschirmgröße wie Pixel 9),
     <td align="center"><img src="docs/evidence/android/18-sprachmodus.png" width="180" alt="Android: Sprachmodus"><br><sub>Sprachmodus</sub></td>
     <td align="center"><img src="docs/evidence/android/19-brief-mit-werten-pruefen.png" width="180" alt="Android: Brief mit eingebetteten Werten prüfen"><br><sub>Brief mit Werten</sub></td>
     <td align="center"><img src="docs/evidence/android/20-sicherung.png" width="180" alt="Android: verschlüsselte Sicherung"><br><sub>Sicherung</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/evidence/android/21-dosis-warnregeln.png" width="180" alt="Android: Dosisrechner mit Warnung bei erhöhtem Kreatinin"><br><sub>Dosis · Warnregeln</sub></td>
+    <td align="center"><img src="docs/evidence/android/22-laborverlauf.png" width="180" alt="Android: Laborverlauf als Grafik"><br><sub>Laborverlauf</sub></td>
+    <td></td><td></td>
   </tr>
 </table>
 
@@ -288,6 +295,12 @@ Ja ([Entscheidung 0018](docs/architecture/0018-conversation-reports.md)). Begrü
 
 **Landen meine Fälle in der Cloud?**
 Nein. Fälle, Aufnahmen und Berichte liegen verschlüsselt nur auf dem Gerät. Es gibt keine Synchronisation; eine Sicherung legst du selbst an (siehe unten). Etwas verlässt das Gerät nur über deinen eigenen API-Key: „Bericht online erstellen“ sendet das geprüfte Transkript, „Senden“ im Chat die Frage, die angehängten Inhalte und den Verlauf dieses Chats. Die Online-Transkription sendet die Audioteile an Google (Gemini), aber erst nach deiner einmaligen Zustimmung. Mit „Nur auf dem Gerät verarbeiten“ bleiben Aufnahme, Transkription und Berichte lokal.
+
+**Gibt es einen Dosisrechner oder eine Arzneimitteldatenbank?**
+Einen Dosisrechner ja, eine Datenbank nein ([Entscheidung 0020](docs/architecture/0020-dose-rules-lab-course.md)):
+- **Rechner:** Gewicht, Dosis pro kg und Stärke gibst du aus der Fachinformation ein. Die App rechnet und schreibt den Rechenweg aus, etwa „12,5 kg × 0,1 mg/kg = 1,25 mg → 0,83 ml“. Sie schlägt selbst keine Dosis vor.
+- **Feste Warnregeln:** Paracetamol oder Permethrin bei der Katze, MDR1-Substrate wie Ivermectin beim Hund, NSAIDs, wenn der letzte bestätigte Kreatinin- oder SDMA-Wert im Fall erhöht ist, humane NSAIDs bei Hund und Katze. Fehlt eine Warnung, ist das Mittel deshalb nicht unbedenklich.
+- **Keine Datenbank:** Für Tierarzneimittel gibt es keine frei nutzbare amtliche Schnittstelle mit Dosierungen. Eine selbst gepflegte Liste wäre ungeprüft. Im Chat gelten weiter die Regeln für Arzneimittelangaben ([Entscheidung 0013](docs/architecture/0013-medication-safety.md)).
 
 **Wie sichere ich meine Fälle?**
 Unter **Einstellungen → Lokale Daten → Sicherung** ([Entscheidung 0019](docs/architecture/0019-backup.md)):

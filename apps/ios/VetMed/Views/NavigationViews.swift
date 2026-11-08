@@ -59,6 +59,20 @@ struct StartHome: View {
                 .buttonStyle(PressableButtonStyle())
                 .accessibilityIdentifier("start-chat").disabled(app.busy || app.captureInProgress)
                 .appearEffect(delay: 0.15)
+                NavigationLink { DoseView(caseID: nil) } label: {
+                    HStack(spacing: 16) {
+                        GradientIcon(systemName: "function", size: 56)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Dosis berechnen").font(.title3.bold()).foregroundStyle(.primary)
+                            Text("Gewicht × Dosis ÷ Stärke · mit festen Warnregeln").font(.subheadline).foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Image(systemName: "arrow.right").font(.headline).foregroundStyle(.tint).accessibilityHidden(true)
+                    }.card(cornerRadius: 26, inset: 20)
+                }
+                .buttonStyle(PressableButtonStyle())
+                .accessibilityIdentifier("start-dose")
+                .appearEffect(delay: 0.18)
                 Text("Weiterarbeiten").font(.title3.bold()).padding(.top, 10).appearEffect(delay: 0.2)
                 if recent.isEmpty {
                     HStack(spacing: 14) {
@@ -208,6 +222,11 @@ struct CaseDetailView: View {
                         }
                     }.padding(.vertical, 6)
                     Button("Falldaten bearbeiten", systemImage: "pencil") { editingCase = true }
+                    // Tools for this case (ADR 0020): species and confirmed lab values of the case are used.
+                    NavigationLink { DoseView(caseID: item.id) } label: { Label("Dosis berechnen", systemImage: "function") }.accessibilityIdentifier("case-dose")
+                    if !LabTrend.series(app.document, caseID: item.id).isEmpty {
+                        NavigationLink { LabTrendView(caseID: item.id) } label: { Label("Laborverlauf", systemImage: "chart.xyaxis.line") }.accessibilityIdentifier("case-lab-trend")
+                    }
                 }
                 Section("Vorgänge") {
                     ForEach(item.encounters) { encounter in

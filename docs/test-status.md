@@ -316,3 +316,17 @@ Prüfung:
 - Android: `BackupTests` (9), `BackupStorageTests` (1) und UI-Test mit Dateidialog-Ersatz bestanden; gesamt Kern 147 (2 übersprungen), App 54, Lint und Build grün. Screenshot 20.
 - iOS: `BackupTests.swift` (5) unter Linux mit Swift 6.1, darunter das Öffnen der von Android geschriebenen Testdatei; zusammen 34/34. Speicher, Modell und Ansicht nur auf Syntax geprüft. **Vor `main`:** `./scripts/test-ios.sh` auf dem Mac.
 - Auf echten Geräten steht aus: Sicherung und Übertragung in beide Richtungen, Dauer der Schlüsselableitung.
+
+## Dosisrechner, Warnregeln und Laborverlauf am 08.11.2026
+
+Anlass: Werkzeuge für den Praxisalltag; eine freie amtliche Arzneimittelschnittstelle mit Dosierungen gibt es nicht. Details in [ADR 0020](architecture/0020-dose-rules-lab-course.md).
+
+Umgesetzt (Android und iOS, ohne Sprachmodell):
+- Dosisrechner aus eigenen Eingaben mit ausgeschriebenem Rechenweg, Vierteltabletten-Hinweis und Plausibilitätsgrenzen.
+- Feste Warnregeln: Paracetamol und Permethrin bei der Katze, MDR1-Substrate beim Hund, NSAIDs bei erhöhtem bestätigtem Kreatinin/SDMA, humane NSAIDs.
+- Laborverlauf je Parameter als Grafik mit gedrucktem Referenzbereich, aus bestätigten Befunden des Falls.
+
+Prüfung:
+- Android: `DosingTests` (8) und UI-Test bestanden; gesamt Kern 155 (2 übersprungen), App 55, Lint und Build grün. Screenshots 21 und 22.
+- iOS: `DosingTests.swift` (6) unter Linux mit Swift 6.1, zusammen 40/40. Ansichten mit Swift Charts nur auf Syntax geprüft. **Vor `main`:** `./scripts/test-ios.sh` auf dem Mac.
+- Fachliche Durchsicht der Regeltexte durch eine Tierärztin steht aus.

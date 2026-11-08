@@ -34,6 +34,7 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowForward
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Bedtime
+import androidx.compose.material.icons.rounded.Calculate
 import androidx.compose.material.icons.rounded.ChatBubble
 import androidx.compose.material.icons.rounded.DarkMode
 import androidx.compose.material.icons.rounded.Folder
@@ -140,6 +141,11 @@ fun StartScreen(model: AppViewModel, nav: NavHostController) {
                         ActionCard("Frage stellen", "Mit Bildern oder Befunden · auch ohne Fall", Icons.Rounded.ChatBubble, tag = "start-chat") {
                             if (!busy) model.newQuickCheck { nav.navigate(ChatConversationRoute(it.caseID, it.encounterID)) }
                         }
+                    }
+                }
+                item {
+                    Appear(3) {
+                        ActionCard("Dosis berechnen", "Gewicht × Dosis ÷ Stärke · mit festen Warnregeln", Icons.Rounded.Calculate, tag = "start-dose") { nav.navigate(DoseRoute()) }
                     }
                 }
                 item { Appear(4) { Text("Weiterarbeiten", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp)) } }

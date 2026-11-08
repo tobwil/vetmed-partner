@@ -3,6 +3,8 @@ package de.tobwil.vetmed
 import android.app.Application
 import android.os.Looper
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertTextContains
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -22,6 +24,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.github.takahirom.roborazzi.RoborazziOptions
 import com.github.takahirom.roborazzi.captureRoboImage
 import de.tobwil.vetmed.core.CaseOperations
+import de.tobwil.vetmed.core.CaseOperations.mapEncounter
 import de.tobwil.vetmed.core.TranscriptSegment
 import de.tobwil.vetmed.core.Wav
 import de.tobwil.vetmed.data.AudioSourceFactory
@@ -194,6 +197,53 @@ class WalkthroughTests {
         assertEquals(seeded.document.cases.map { it.id }.toSet(), model.document.value.cases.map { it.id }.toSet())
         assertEquals(seeded.document.cases.first { it.id == seeded.withReport.caseID }, model.document.value.cases.first { it.id == seeded.withReport.caseID })
         compose.onNodeWithTag("backup-result").assertIsDisplayed()
+    }
+
+    @Test fun theDoseIsCalculatedWithFixedWarningsAndTheLabCourseIsDrawn() {
+        val seeded = SyntheticCases.seed()
+        fun lab(id: String, date: String, confirmed: Long, creatinine: String, alt: String) = de.tobwil.vetmed.core.ChatAttachment(
+            id = id, kind = de.tobwil.vetmed.core.AttachmentKind.DOCUMENT, originalName = "$id.pdf", originalExtension = "pdf", originalByteCount = 1, originalSHA256 = id,
+            lab = de.tobwil.vetmed.core.LabReport(sampleDate = date, method = "Synthetisch", confirmedAt = java.time.Instant.ofEpochSecond(confirmed), values = listOf(
+                de.tobwil.vetmed.core.LabValue(parameter = "Kreatinin", value = creatinine, unit = "µmol/l", reference = "40 - 130"),
+                de.tobwil.vetmed.core.LabValue(parameter = "ALT", value = alt, unit = "U/l", reference = "10 - 100"),
+            )),
+        )
+        val document = seeded.document.mapEncounter(seeded.withReport) {
+            it.copy(chatAttachments = listOf(lab("L1", "01.09.2026", 1_788_000_000, "98", "45"), lab("L2", "01.10.2026", 1_790_000_000, "121", "52"), lab("L3", "29.10.2026", 1_792_000_000, "164", "61")))
+        }
+        val model = launch(document, theme = AccentTheme.WALD)
+        compose.onNodeWithTag("tab-cases").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithTag("case-row-" + seeded.withReport.caseID).performClick()
+        compose.waitForIdle()
+        compose.onNodeWithTag("case-dose").performClick()
+        compose.waitForIdle()
+        // Species comes from the case; the creatinine of the newest confirmed report is above the printed range.
+        compose.onNodeWithTag("dose-species").assertTextContains("Hund")
+        compose.onNodeWithTag("dose-drug").performTextInput("Meloxicam")
+        compose.onNodeWithTag("dose-weight").performTextInput("12,5")
+        compose.onNodeWithTag("dose-per-kg").performTextInput("0,1")
+        compose.onNodeWithTag("dose-strength").performTextInput("1,5")
+        compose.waitForIdle()
+        compose.onNodeWithTag("dose-amount").assertTextEquals("0,83 ml")
+        compose.onNodeWithText("12,5 kg × 0,1 mg/kg = 1,25 mg").assertIsDisplayed()
+        compose.onNodeWithTag("dose-warning-caution").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Kreatinin 164 µmol/l (Ref. 40 - 130) am 29.10.2026", substring = true).assertIsDisplayed()
+        shot("21-dosis-warnregeln")
+        // The same screen for a cat with paracetamol: a stop warning, whatever the numbers.
+        compose.onNodeWithTag("dose-species").performTextClearance(); compose.onNodeWithTag("dose-species").performTextInput("Katze")
+        compose.onNodeWithTag("dose-drug").performTextClearance(); compose.onNodeWithTag("dose-drug").performTextInput("Paracetamol")
+        compose.waitForIdle()
+        compose.onNodeWithTag("dose-warning-stop").performScrollTo().assertIsDisplayed()
+
+        compose.onNodeWithContentDescription("Zurück").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithTag("case-lab-trend").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithTag("trend-Kreatinin").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Verlauf Kreatinin: 01.09.2026 98, 01.10.2026 121, 29.10.2026 164").assertExists()
+        shot("22-laborverlauf")
+        assertEquals(null, model.error.value)
     }
 
     @Test fun typedTextAutosavesAndSurvivesRelaunch() {
