@@ -3,6 +3,7 @@ import ImageIO
 import UniformTypeIdentifiers
 import CryptoKit
 import Darwin
+import PDFKit
 
 actor ChatAttachmentImporter {
     static let maximumOriginalBytes = 20 * 1_048_576
@@ -11,7 +12,7 @@ actor ChatAttachmentImporter {
     static let maximumSourcePixels = 64_000_000
     static func digest(_ data: Data) -> String { SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined() }
 
-    func read(url: URL) throws -> PreparedChatAttachment {
+    func read(url: URL, asLab: Bool = false) throws -> PreparedChatAttachment {
         let access = url.startAccessingSecurityScopedResource()
         defer { if access { url.stopAccessingSecurityScopedResource() } }
         try Task.checkCancellation()
@@ -29,31 +30,19 @@ actor ChatAttachmentImporter {
             guard data.count + chunk.count <= Self.maximumOriginalBytes else { throw AppFailure("Die Datei überschreitet 20 MB.") }
             data.append(chunk)
         }
-        return try prepare(data: data, name: url.lastPathComponent)
+        return try prepare(data: data, name: url.lastPathComponent, asLab: asLab)
     }
-    func prepare(data: Data, name: String) throws -> PreparedChatAttachment {
+    func prepare(data: Data, name: String, asLab: Bool = false) throws -> PreparedChatAttachment {
         try Task.checkCancellation()
         guard !data.isEmpty, data.count <= Self.maximumOriginalBytes else { throw AppFailure("Die Datei ist leer oder größer als 20 MB.") }
         let ext = URL(fileURLWithPath: name).pathExtension.lowercased()
         let hash = Self.digest(data), id = UUID()
+        if asLab { return try prepareLab(data: data, name: name, ext: ext, hash: hash, id: id) }
         if ["jpg", "jpeg", "png", "heic", "heif"].contains(ext) {
-            guard let source = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary), CGImageSourceGetCount(source) == 1,
-                  let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
-                  let width = properties[kCGImagePropertyPixelWidth] as? Int, let height = properties[kCGImagePropertyPixelHeight] as? Int,
-                  width > 0, height > 0, width <= 50_000, height <= 50_000, width * height <= Self.maximumSourcePixels,
-                  let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [kCGImageSourceCreateThumbnailFromImageAlways: true,
-                        kCGImageSourceThumbnailMaxPixelSize: Self.maximumImageEdge, kCGImageSourceCreateThumbnailWithTransform: true,
-                        kCGImageSourceShouldCacheImmediately: true] as CFDictionary) else { throw AppFailure("Das Bild konnte nicht geöffnet werden. Bitte ein einzelnes JPG, PNG oder HEIC mit höchstens 64 Megapixeln wählen.") }
-            let output = NSMutableData()
-            guard let destination = CGImageDestinationCreateWithData(output, UTType.jpeg.identifier as CFString, 1, nil) else { throw AppFailure("Das Versandbild konnte nicht vorbereitet werden.") }
-            // Encode pixels only: orientation is applied above; EXIF/GPS and original filenames are not copied.
-            CGImageDestinationAddImage(destination, image, [kCGImageDestinationLossyCompressionQuality: 0.88] as CFDictionary)
-            guard CGImageDestinationFinalize(destination) else { throw AppFailure("Das Versandbild konnte nicht gespeichert werden.") }
-            let upload = output as Data
-            guard upload.count <= Self.maximumImageBytes else { throw AppFailure("Das vorbereitete Bild ist zu groß. Bitte einen passenden Ausschnitt als eigenes Bild wählen. Das Original wird nicht still weiter verkleinert.") }
+            let (upload, width, height) = try Self.jpegUpload(data)
             let attachment = ChatAttachment(id: id, kind: .image, originalName: name, originalExtension: ext, originalByteCount: data.count,
                 originalSHA256: hash, uploadSHA256: Self.digest(upload), uploadByteCount: upload.count,
-                width: image.width, height: image.height, usedOCR: false)
+                width: width, height: height, usedOCR: false)
             return PreparedChatAttachment(attachment: attachment, original: data, upload: upload)
         }
         guard ["pdf", "txt", "text", "md"].contains(ext) else { throw AppFailure("Bitte ein Bild, PDF oder eine UTF-8-Textdatei auswählen.") }
@@ -63,5 +52,69 @@ actor ChatAttachmentImporter {
             originalSHA256: hash, uploadSHA256: nil, uploadByteCount: nil, width: nil, height: nil,
             extractedText: text, usedOCR: result.usedOCR)
         return PreparedChatAttachment(attachment: attachment, original: data, upload: nil)
+    }
+
+    /// A lab result is kept as a document: the chat later receives the confirmed table, never the photo. A photo keeps
+    /// a cleaned JPEG as its page image; the local text (layout reader or Vision OCR) only cross-checks the numbers.
+    private func prepareLab(data: Data, name: String, ext: String, hash: String, id: UUID) throws -> PreparedChatAttachment {
+        if ["jpg", "jpeg", "png", "heic", "heif"].contains(ext) {
+            let (upload, width, height) = try Self.jpegUpload(data)
+            let text = (try? DocumentTextExtractor.extract(upload, extension: "jpg", allowImageWithoutText: true))?.sections.map(\.text).joined(separator: "\n") ?? ""
+            let attachment = ChatAttachment(id: id, kind: .document, originalName: "Laborbefund (Foto)", originalExtension: ext, originalByteCount: data.count,
+                originalSHA256: hash, uploadSHA256: Self.digest(upload), uploadByteCount: upload.count, width: width, height: height,
+                extractedText: text, usedOCR: true, isLab: true)
+            return PreparedChatAttachment(attachment: attachment, original: data, upload: upload)
+        }
+        guard ext == "pdf" else { throw AppFailure("Bitte den Laborbefund als PDF oder Foto auswählen.") }
+        let result = try DocumentTextExtractor.extract(data, extension: ext, maxPages: LabExtraction.maxPages, maxCharacters: 100_000, preservePDFText: false)
+        let text = result.sections.map { section in (section.page.map { "Seite \($0)\n" } ?? "") + section.text }.joined(separator: "\n\n")
+        let attachment = ChatAttachment(id: id, kind: .document, originalName: name, originalExtension: ext, originalByteCount: data.count,
+            originalSHA256: hash, uploadSHA256: nil, uploadByteCount: nil, width: nil, height: nil, extractedText: text, usedOCR: result.usedOCR, isLab: true)
+        return PreparedChatAttachment(attachment: attachment, original: data, upload: nil)
+    }
+
+    /// Page images for reading a lab result: rendered PDF pages (about 200 dpi) or the cleaned photo, JPEG ≤ 2 MB each.
+    static func labPages(_ attachment: ChatAttachment, original: Data, upload: Data?) throws -> [Data] {
+        guard attachment.originalExtension == "pdf" else {
+            guard let upload else { throw AppFailure("Das Befundfoto ist nicht verfügbar.") }
+            return [upload]
+        }
+        guard let pdf = PDFDocument(data: original), !pdf.isLocked else { throw AppFailure("PDF ist beschädigt oder passwortgeschützt.") }
+        guard pdf.pageCount <= LabExtraction.maxPages else { throw AppFailure("Der Befund hat \(pdf.pageCount) Seiten. Bitte höchstens \(LabExtraction.maxPages) Seiten auf einmal hinzufügen.") }
+        return try (0..<pdf.pageCount).map { index in
+            try Task.checkCancellation()
+            guard let page = pdf.page(at: index) else { throw AppFailure("Eine PDF-Seite konnte nicht gelesen werden.") }
+            let bounds = page.bounds(for: .mediaBox)
+            let scale = 2200 / max(bounds.width, bounds.height, 1)
+            guard let image = page.thumbnail(of: CGSize(width: bounds.width * scale, height: bounds.height * scale), for: .mediaBox).cgImage else {
+                throw AppFailure("Eine PDF-Seite konnte nicht als Bild gelesen werden.")
+            }
+            for quality in [0.88, 0.78, 0.66] {
+                let output = NSMutableData()
+                guard let destination = CGImageDestinationCreateWithData(output, UTType.jpeg.identifier as CFString, 1, nil) else { break }
+                CGImageDestinationAddImage(destination, image, [kCGImageDestinationLossyCompressionQuality: quality] as CFDictionary)
+                if CGImageDestinationFinalize(destination), output.length <= LabExtraction.maxPageBytes { return output as Data }
+            }
+            throw AppFailure("Eine Befundseite ist zu groß für den Versand.")
+        }
+    }
+
+    /// Pixels only: orientation applied, EXIF/GPS and original filenames not copied.
+    private static func jpegUpload(_ data: Data) throws -> (Data, Int, Int) {
+        guard let source = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary), CGImageSourceGetCount(source) == 1,
+              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+              let width = properties[kCGImagePropertyPixelWidth] as? Int, let height = properties[kCGImagePropertyPixelHeight] as? Int,
+              width > 0, height > 0, width <= 50_000, height <= 50_000, width * height <= Self.maximumSourcePixels,
+              let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [kCGImageSourceCreateThumbnailFromImageAlways: true,
+                    kCGImageSourceThumbnailMaxPixelSize: Self.maximumImageEdge, kCGImageSourceCreateThumbnailWithTransform: true,
+                    kCGImageSourceShouldCacheImmediately: true] as CFDictionary) else { throw AppFailure("Das Bild konnte nicht geöffnet werden. Bitte ein einzelnes JPG, PNG oder HEIC mit höchstens 64 Megapixeln wählen.") }
+        let output = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(output, UTType.jpeg.identifier as CFString, 1, nil) else { throw AppFailure("Das Versandbild konnte nicht vorbereitet werden.") }
+        // Encode pixels only: orientation is applied above; EXIF/GPS and original filenames are not copied.
+        CGImageDestinationAddImage(destination, image, [kCGImageDestinationLossyCompressionQuality: 0.88] as CFDictionary)
+        guard CGImageDestinationFinalize(destination) else { throw AppFailure("Das Versandbild konnte nicht gespeichert werden.") }
+        let upload = output as Data
+        guard upload.count <= Self.maximumImageBytes else { throw AppFailure("Das vorbereitete Bild ist zu groß. Bitte einen passenden Ausschnitt als eigenes Bild wählen. Das Original wird nicht still weiter verkleinert.") }
+        return (upload, image.width, image.height)
     }
 }

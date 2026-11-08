@@ -100,6 +100,10 @@ struct ChatConversationView: View {
     @State private var photoLoading = false
     @State private var filePicker = false
     @State private var review: ChatAttachment?
+    /// Lab results open the table review; "als Text prüfen" switches one of them to the plain text review.
+    @State private var labAsText: Set<UUID> = []
+    @State private var freshLab: UUID?
+    @State private var importAsLab = false
     @State private var details = false
     @State private var reportPicker = false
     @State private var share: SharePayload?
@@ -271,12 +275,20 @@ struct ChatConversationView: View {
                 } catch { app.error = error.localizedDescription }
             }
         }
-        .fileImporter(isPresented: $filePicker, allowedContentTypes: [.pdf, .plainText, .image, UTType(filenameExtension: "md") ?? .plainText]) { result in
-            switch result { case .success(let url): importFile(url); case .failure(let error): app.error = error.localizedDescription }
+        // One importer for files and lab results: several fileImporter modifiers on one view do not work reliably.
+        .fileImporter(isPresented: $filePicker, allowedContentTypes: importAsLab ? [.pdf, .image] : [.pdf, .plainText, .image, UTType(filenameExtension: "md") ?? .plainText]) { result in
+            let asLab = importAsLab; importAsLab = false
+            switch result { case .success(let url): importFile(url, asLab: asLab); case .failure(let error): app.error = error.localizedDescription }
         }
-        .sheet(item: $review) { attachment in
-            ChatAttachmentReview(caseID: caseID, encounterID: encounterID, attachment: attachment) { id in
+        .sheet(item: $review, onDismiss: { freshLab = nil }) { attachment in
+            let use: (UUID) -> Void = { id in
                 if !(draft.attachmentIDs ?? []).contains(id) { draft.attachmentIDs = (draft.attachmentIDs ?? []) + [id] }
+            }
+            if attachment.isLab == true && !labAsText.contains(attachment.id) {
+                LabReviewView(caseID: caseID, encounterID: encounterID, attachmentID: attachment.id, autoRead: freshLab == attachment.id,
+                              asText: { labAsText.insert(attachment.id) }, use: use)
+            } else {
+                ChatAttachmentReview(caseID: caseID, encounterID: encounterID, attachment: attachments.first { $0.id == attachment.id } ?? attachment, use: use)
             }
         }
         .sheet(item: $share) { payload in
@@ -359,7 +371,8 @@ struct ChatConversationView: View {
                         Button("Fallberichte auswählen", systemImage: "doc.text") { focused = false; reportPicker = true }
                     }
                     Button("Foto auswählen", systemImage: "photo") { focused = false; photoPicker = true }
-                    Button("Datei hinzufügen", systemImage: "paperclip") { focused = false; filePicker = true }
+                    Button("Datei hinzufügen", systemImage: "paperclip") { focused = false; importAsLab = false; filePicker = true }
+                    Button("Laborbefund hinzufügen", systemImage: "testtube.2") { focused = false; importAsLab = true; filePicker = true }.accessibilityIdentifier("chat-add-lab")
                     if !attachments.isEmpty {
                         Menu("Vorhandene Anhänge") { ForEach(attachments) { item in Button(item.displayName) { review = item } } }
                     }
@@ -463,9 +476,10 @@ struct ChatConversationView: View {
         let value = draft
         Task { if await app.saveSparringDraft(value, caseID: caseID, encounterID: encounterID) { savedDraft = value } }
     }
-    private func importFile(_ url: URL, temporary: Bool = false) {
-        app.importChatAttachment(url: url, caseID: caseID, encounterID: encounterID, removeAfterImport: temporary) { attachment in
+    private func importFile(_ url: URL, temporary: Bool = false, asLab: Bool = false) {
+        app.importChatAttachment(url: url, caseID: caseID, encounterID: encounterID, removeAfterImport: temporary, asLab: asLab) { attachment in
             draft.attachmentIDs = (draft.attachmentIDs ?? []) + [attachment.id]
+            if attachment.isLab == true { freshLab = attachment.id }
             if attachment.kind == .document { review = attachment }
             save()
         }

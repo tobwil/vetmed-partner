@@ -29,6 +29,11 @@ enum Processing {
         online.deviceOnly != true && online.isEnabled && hasKey ? .online : .offline
     }
 
+    /// Lab results: page images to the chosen model, unless "Nur auf dem Gerät" or no online access.
+    static func labRoute(online: OnlineReportConfiguration, hasKey: Bool) -> ProcessingRoute {
+        online.deviceOnly != true && online.isEnabled && hasKey ? .online : .device
+    }
+
     static func summary(online: OnlineReportConfiguration, hasKey: Bool, transcription: ProcessingRoute) -> String {
         if online.deviceOnly == true { return "Nur auf dem Gerät: Transkription und Berichte bleiben auf diesem Gerät. Die Qualität ist geringer." }
         guard online.isEnabled, hasKey else { return "Kein Online-Zugang eingerichtet: Es wird auf dem Gerät verarbeitet. Mit eigenem API-Key wird Online der Standard." }

@@ -245,3 +245,18 @@ Prüfung:
 - Android: `ProcessingTests` (4) und drei neue UI-Tests bestanden; gesamt Kern 107 (1 übersprungen), App 49, Lint und Build grün. Screenshots 07 (neu aufgenommen), 15 und 16.
 - iOS: `OnlineFirstTests` (6 Tests) und die Logik unter Linux mit Swift 6.1 im Swift-6-Modus gebaut und bestanden. `VetAppModel` und SwiftUI nur auf Syntax geprüft. **Vor `main`:** `./scripts/test-ios.sh` auf dem Mac.
 - Live mit echtem Gemini-Key steht auf beiden Geräten aus: Zustimmung, lange Aufnahme, Fehler ohne Netz, Bericht und Chat mit Gemini auf dem iPhone.
+
+## Laborbefunde als geprüfte Wertetabelle am 08.11.2026
+
+Anlass: Blutwerte und andere Tabellen gingen bisher als Fließtext an den Chat; OCR und Spaltenverlust machen das fehleranfällig. Details in [ADR 0015](architecture/0015-lab-results.md).
+
+Umgesetzt (Android und iOS):
+- Laborbefund als PDF oder Foto im Chat; online liest das Modell die Seitenbilder mit strengem Schema, auf dem Gerät ein Zeilenparser.
+- Abgleich jeder Zahl mit dem lokal gelesenen Original (rot), Widerspruch zur Labor-Kennzeichnung (orange).
+- Prüfansicht mit Seitenbild, Zeilen bearbeiten, Bestätigung als Pflicht; der Chat bekommt nur die bestätigte Tabelle.
+- Bewertung allein durch die App aus dem gedruckten Referenzbereich; Verlauf früherer Werte im selben Fall.
+
+Prüfung:
+- Android: `LabReportTests` (13) und UI-Test mit synthetischem Befund bestanden; gesamt Kern 120 (1 übersprungen), App 50, Lint und Build grün. Screenshot 17.
+- iOS: `LabReportTests` (9) und `OnlineFirstTests` (6) unter Linux mit Swift 6.1 im Swift-6-Modus gebaut und bestanden (15/15). Dabei einen Namenskonflikt (`Range`) gefunden und behoben. Prüfansicht, PDFKit-Rendering und Vision-OCR nur auf Syntax geprüft. **Vor `main`:** `./scripts/test-ios.sh` auf dem Mac.
+- Echte Befunde: `scripts/eval-labs.sh` steht bereit, wartet auf anonymisierte Beispielbefunde und einen Key. Noch nicht gelaufen.

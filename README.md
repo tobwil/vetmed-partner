@@ -35,6 +35,7 @@ Native App für Tierärztinnen und Tierärzte auf iPhone und Android. Du diktier
 | „Nur auf dem Gerät verarbeiten“, kein stiller Wechsel | ja | ja |
 | Bericht offline auf dem Gerät (optional) | Gemma 4 E2B über MLX | Gemma 4 E2B über LiteRT-LM |
 | Quellenprüfung (Zahlen, Einheiten, Verneinungen) | ja | ja |
+| Laborbefunde als geprüfte Wertetabelle (Abgleich mit dem Original, Bewertung aus dem gedruckten Referenzbereich) | ja | ja |
 | Klinischer Sparringspartner (online): Differenzialdiagnosen und nächste Schritte, mit Bildern, Labor-PDFs und eigenen Berichten, auch ohne Fall | ja | ja |
 | Freigabe, Teilen als Text oder PDF | ja | ja |
 | Tag/Nacht und sechs Farbthemen | ja | ja |
@@ -232,7 +233,7 @@ Du besprichst einen Fall wie mit einer erfahrenen Kollegin, die fachübergreifen
 - **Differenzialdiagnosen, gewichtet:** Was passt am ehesten, was ist gefährlich und darf nicht übersehen werden, und welcher Befund würde die Entscheidung ändern?
 - **Kritische Nachfragen:** Er hinterfragt Annahmen, statt nur zuzustimmen, und stellt gezielte Rückfragen.
 - **Nächste Schritte:** Er schlägt praktikable Untersuchungen und Maßnahmen vor.
-- **Kontext:** Fotos, Laborbefunde als PDF (Text wird vorher auf dem Gerät gelesen und von dir bestätigt) und die eigenen Berichte des Falls kannst du einbeziehen. Für einen kurzen Check geht es auch ohne Fall.
+- **Kontext:** Fotos, Dokumente, Laborbefunde als geprüfte Wertetabelle und die eigenen Berichte des Falls kannst du einbeziehen. Für einen kurzen Check geht es auch ohne Fall.
 
 Die Grenzen:
 - Er stellt keine endgültige Diagnose und ersetzt keine Untersuchung.
@@ -250,6 +251,15 @@ Ja, das kann bei jedem Sprachmodell passieren. Vor allem verwechseln Sprachmodel
 Prüfe Wirkstoffe und Dosierungen vor jeder Anwendung in der Fachinformation.
 
 Die Anweisungen an das Modell sind offen einsehbar: [`shared/prompts/sparring-v1.txt`](shared/prompts/sparring-v1.txt).
+
+**Wie liest VetMed Laborbefunde?**
+Im Chat über **+ → Laborbefund hinzufügen** (PDF oder Foto). So geht es weiter ([Entscheidung 0015](docs/architecture/0015-lab-results.md)):
+1. **Lesen:** Dein Online-Modell liest die Seitenbilder in eine Tabelle. Es überträgt nur, es bewertet nicht. Ohne Online-Zugang liest die App auf dem Gerät; dann ist jede Zeile zu prüfen.
+2. **Abgleich:** Jede Zahl wird im lokal gelesenen Original gesucht. Was dort fehlt, ist rot markiert. Widerspricht die Kennzeichnung des Labors (H/L) dem Wert, ist die Zeile orange.
+3. **Prüfen:** Du vergleichst die Tabelle neben dem Seitenbild, korrigierst Zeilen und bestätigst. Erst dann geht der Befund in den Chat.
+4. **Bewertung:** „niedrig“, „im Bereich“ oder „hoch“ berechnet die App selbst, nur aus dem gedruckten Referenzbereich des Labors. Das Modell erfindet keine Normalwerte.
+
+Frühere bestätigte Werte desselben Falls stehen als Verlauf dabei. Namen von Tier und Halter auf dem Befund vorher abdecken, wenn sie nicht an den Anbieter gehen sollen.
 
 **Landen meine Fälle in der Cloud?**
 Nein. Fälle, Aufnahmen und Berichte liegen verschlüsselt nur auf dem Gerät. Es gibt keine Synchronisation und kein Backup. Etwas verlässt das Gerät nur über deinen eigenen API-Key: „Bericht online erstellen“ sendet das geprüfte Transkript, „Senden“ im Chat die Frage, die angehängten Inhalte und den Verlauf dieses Chats. Die Online-Transkription sendet die Audioteile an Google (Gemini), aber erst nach deiner einmaligen Zustimmung. Mit „Nur auf dem Gerät verarbeiten“ bleiben Aufnahme, Transkription und Berichte lokal.

@@ -426,7 +426,7 @@ final class VetAppModel: ObservableObject {
             try await persist(); return true
         } catch { self.error = "Entwurf konnte nicht gespeichert werden: " + error.localizedDescription; return false }
     }
-    func importChatAttachment(url: URL, caseID: UUID?, encounterID: UUID, removeAfterImport: Bool = false, completion: @escaping @MainActor (ChatAttachment) -> Void) {
+    func importChatAttachment(url: URL, caseID: UUID?, encounterID: UUID, removeAfterImport: Bool = false, asLab: Bool = false, completion: @escaping @MainActor (ChatAttachment) -> Void) {
         var importStarted = false
         defer { if removeAfterImport && !importStarted { try? FileManager.default.removeItem(at: url) } }
         guard !busy, !captureInProgress, let repository, let context = analysisContext(caseID: caseID, encounterID: encounterID) else { return }
@@ -437,7 +437,7 @@ final class VetAppModel: ObservableObject {
         importStarted = true
         run(onFinish: { if removeAfterImport { try? FileManager.default.removeItem(at: url) } }) { [self] in
             try model.unload(); workStatus = "Anhang wird lokal vorbereitet"
-            let prepared = try await attachmentImporter.read(url: url)
+            let prepared = try await attachmentImporter.read(url: url, asLab: asLab)
             try Task.checkCancellation()
             try await repository.storeAttachment(prepared, caseID: caseID, encounterID: encounterID)
             mutateAnalysis(caseID: caseID, encounterID: encounterID) { $0.chatAttachments = ($0.chatAttachments ?? []) + [prepared.attachment] }
@@ -455,6 +455,68 @@ final class VetAppModel: ObservableObject {
         if !model.isBusy { try model.unload() }
         return try await repository.attachmentData(caseID: caseID, encounterID: encounterID, id: id, upload: upload)
     }
+    /// Where the next lab result is read: online first, on the device with "Nur auf dem Gerät" or without access.
+    var labRoute: ProcessingRoute { Processing.labRoute(online: onlineConfiguration, hasKey: hasOnlineKey) }
+
+    /// Page images of a lab result for the review next to the table.
+    func labPages(caseID: UUID?, encounterID: UUID, id: UUID) async throws -> [Data] {
+        guard let repository, let attachment = analysisContext(caseID: caseID, encounterID: encounterID)?.chatAttachments?.first(where: { $0.id == id && $0.isLab == true }) else {
+            throw AppFailure("Dieser Laborbefund ist nicht verfügbar.")
+        }
+        let original = try await repository.attachmentData(caseID: caseID, encounterID: encounterID, id: id, upload: false)
+        let upload = attachment.uploadByteCount != nil ? try await repository.attachmentData(caseID: caseID, encounterID: encounterID, id: id, upload: true) : nil
+        return try await Task.detached(priority: .userInitiated) { try ChatAttachmentImporter.labPages(attachment, original: original, upload: upload) }.value
+    }
+
+    /// Reads a lab result into a table (ADR 0015): online the page images go to the chosen model with a strict schema
+    /// and every number is looked up in the locally read text; on the device a line parser. Stored unconfirmed.
+    func readLab(caseID: UUID?, encounterID: UUID, id: UUID, route: ProcessingRoute? = nil) {
+        let configuration = onlineConfiguration
+        let chosen = route ?? labRoute
+        run { [self] in
+            workStatus = chosen == .online ? "Laborbefund · \(configuration.activeProvider.title) liest die Seiten" : "Laborbefund · auf dem Gerät"
+            guard let attachment = analysisContext(caseID: caseID, encounterID: encounterID)?.chatAttachments?.first(where: { $0.id == id && $0.isLab == true }) else {
+                throw AppFailure("Dieser Laborbefund ist nicht mehr vorhanden.")
+            }
+            let localText = attachment.extractedText ?? ""
+            let report: LabReport
+            if chosen == .online {
+                guard configuration.isEnabled, let key = try onlineStore.key(for: configuration.activeProvider) else { throw AppFailure("Bitte zuerst den Online-Zugang einrichten oder auf dem Gerät lesen.") }
+                try model.unload()
+                let pages = try await labPages(caseID: caseID, encounterID: encounterID, id: id)
+                let method = "\(configuration.activeProvider.title) \(configuration.modelID) · Seitenbilder"
+                let text: String
+                if configuration.activeProvider == .gemini {
+                    text = try GeminiOnlineAPI.reportResult(try await EphemeralReportHTTP().send(try LabExtraction.geminiRequest(modelID: configuration.modelID, key: key, pages: pages)), requestedModel: configuration.modelID).text
+                } else {
+                    text = try OpenAIReportAPI.result(try await EphemeralReportHTTP().send(try LabExtraction.openAIRequest(modelID: configuration.modelID, key: key, pages: pages))).text
+                }
+                report = LabExtraction.verify(try LabExtraction.parse(text, method: method, pages: pages.count), localText: localText)
+            } else {
+                report = try LabExtraction.parseLocal(localText, pages: max(1, localText.components(separatedBy: "\n").filter { $0.hasPrefix("Seite ") }.count))
+            }
+            let previous = analysisContext(caseID: caseID, encounterID: encounterID)?.chatAttachments ?? []
+            let next = try LabOperations.save(report, id: id, in: previous)
+            mutateAnalysis(caseID: caseID, encounterID: encounterID) { $0.chatAttachments = next }
+            do { try await persist() }
+            catch { mutateAnalysis(caseID: caseID, encounterID: encounterID) { $0.chatAttachments = previous }; throw error }
+        }
+    }
+
+    @discardableResult
+    func confirmLab(caseID: UUID?, encounterID: UUID, id: UUID, report: LabReport) async -> Bool {
+        guard !deletingRecords else { return false }
+        let previous = analysisContext(caseID: caseID, encounterID: encounterID)?.chatAttachments ?? []
+        do {
+            let next = try LabOperations.confirm(report, id: id, in: previous)
+            mutateAnalysis(caseID: caseID, encounterID: encounterID) { $0.chatAttachments = next }
+            try await persist(); return true
+        } catch {
+            mutateAnalysis(caseID: caseID, encounterID: encounterID) { $0.chatAttachments = previous }
+            self.error = "Die Tabelle konnte nicht gespeichert werden: " + error.localizedDescription; return false
+        }
+    }
+
     @discardableResult
     func reviewChatDocument(caseID: UUID?, encounterID: UUID, id: UUID, text: String) async -> Bool {
         guard !deletingRecords, text.utf8.count <= 400_000,

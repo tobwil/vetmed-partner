@@ -17,7 +17,11 @@ struct ChatAttachment: Codable, Identifiable, Equatable, Sendable {
     var reviewedText: String?
     var reviewedAt: Date?
     var usedOCR: Bool
-    var displayName: String { kind == .image ? "Bild" : originalName }
+    /// Lab result read as a table (ADR 0015). The chat only uses it once `confirmedAt` is set.
+    var lab: LabReport? = nil
+    /// Imported as a lab result; the table is read after import.
+    var isLab: Bool? = nil
+    var displayName: String { kind == .image ? "Bild" : (isLab == true ? "Laborbefund" : originalName) }
 }
 struct ChatImageReference: Codable, Equatable, Sendable {
     let attachmentID: UUID
