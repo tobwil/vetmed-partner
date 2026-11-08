@@ -33,7 +33,19 @@ final class VetAppModel: ObservableObject {
     @Published var speechStatus = "Wird geprüft"
     @Published private(set) var vocabulary: [VocabularyEntry] = []
     @Published private(set) var onlineConfiguration = OnlineReportConfiguration()
-    @Published private(set) var hasOnlineKey = false
+    @Published private(set) var hasOpenAIKey = false
+    @Published private(set) var hasGeminiKey = false
+    @Published private(set) var geminiConfiguration = GeminiTranscriptionConfiguration()
+    /// A key exists for the provider chosen for reports and chat. Gemini's key is shared with transcription.
+    var hasOnlineKey: Bool { onlineConfiguration.activeProvider == .gemini ? hasGeminiKey : hasOpenAIKey }
+    /// Where the next transcription runs: online first, unless the user chose the device or has not agreed yet.
+    var transcriptionRoute: ProcessingRoute { Processing.transcription(online: onlineConfiguration, gemini: geminiConfiguration, hasGeminiKey: hasGeminiKey) }
+    /// Preselected report mode: online with a configured key, offline with "Nur auf dem Gerät" or without key.
+    var reportMode: ReportExecutionMode { Processing.reportMode(online: onlineConfiguration, hasKey: hasOnlineKey) }
+    /// A transcription waiting for the one-time answer whether audio may go to Gemini.
+    @Published var transcriptionQuestion: EncounterLocation?
+    /// After an online step failed: the device route, offered as a button. Never taken automatically.
+    @Published private(set) var deviceOffer: DeviceOffer?
     @Published var onlineModels: [String] = []
     @Published var onlineSettingsStatus: String?
     @Published private(set) var testedOnlineModel: String?
@@ -115,9 +127,11 @@ final class VetAppModel: ObservableObject {
                 vocabulary = try await repository.vocabulary()
                 do {
                     onlineConfiguration = try onlineStore.configuration()
-                    hasOnlineKey = try onlineStore.key() != nil
+                    hasOpenAIKey = try onlineStore.key() != nil
+                    hasGeminiKey = try onlineStore.geminiKey() != nil
+                    geminiConfiguration = try onlineStore.geminiConfiguration()
                 } catch {
-                    onlineConfiguration = .init(); hasOnlineKey = false
+                    onlineConfiguration = .init(); hasOpenAIKey = false; hasGeminiKey = false; geminiConfiguration = .init()
                     self.error = "Lokale Fälle wurden geöffnet. Online-Einstellungen konnten nicht gelesen werden; bitte den API-Zugang neu einrichten."
                 }
                 for c in document.cases.indices {
@@ -233,48 +247,106 @@ final class VetAppModel: ObservableObject {
         mutate(caseID: c, encounterID: e) { $0.state = .interrupted; $0.lastError = recorder.error }
         await saveOrReport()
     }
-    func transcribe(at location: EncounterLocation) {
+    /// Speech recognition of all audio without transcript: with Gemini when its key exists and the user agreed once,
+    /// otherwise on the device. `route` overrides that for one run (the "auf dem Gerät" button after a failure).
+    /// Recognized text is saved even when a later batch fails, so a retry continues with the remaining segments.
+    func transcribe(at location: EncounterLocation, route: ProcessingRoute? = nil) {
         guard !busy, !captureInProgress, let e = encounter(at: location), let repository else { return }
         let c = location.caseID
         let existingAudio = Set(e.transcripts.flatMap(\.segments).compactMap(\.audioID))
         let pending = e.audio.filter { !existingAudio.contains($0.id) }
         guard !pending.isEmpty else { error = "Keine neuen Audiosegmente vorhanden."; return }
+        let chosen = route ?? transcriptionRoute
+        if chosen == .ask { transcriptionQuestion = location; return }
+        deviceOffer = nil
+        let online = chosen == .online ? geminiConfiguration : nil
+        let terms = Array(Set(self.vocabulary.map(\.preferred))).sorted()
+        let size = chosen == .online ? GeminiTranscriptionAPI.batchSize : 1
+        let batches = stride(from: 0, to: pending.count, by: size).map { Array(pending[$0..<min($0 + size, pending.count)]) }
         run(state: .transcribing, location: location) { [self] in
             try model.unload()
+            var key: String?
+            if online != nil {
+                guard let value = try onlineStore.geminiKey() else { throw AppFailure("Der Gemini-API-Key fehlt. Bitte in den Einstellungen hinterlegen.") }
+                key = value
+            }
+            let engine = online.map { "Gemini \($0.modelID) · online" } ?? "Apple SpeechAnalyzer · de-DE · offline"
             var newSegments: [TranscriptSegment] = []
-            for (index, segment) in pending.enumerated() {
-                try Task.checkCancellation(); workStatus = "Transkription \(index + 1) von \(pending.count) · auf diesem Gerät"
-                let data = try await repository.audio(caseID: c, encounterID: e.id, segmentID: segment.id)
-                let file = AppPaths.scratch.appendingPathComponent("transcribe-\(segment.id).caf")
-                try data.write(to: file, options: [.atomic, .completeFileProtection])
-                defer { try? FileManager.default.removeItem(at: file) }
-                newSegments += TranscriptBuilder.audioSentences(try await AppleOfflineTranscriber().transcribe(file: file, audioID: segment.id))
+            do {
+                var finished = 0
+                for batch in batches {
+                    try Task.checkCancellation()
+                    if let online, let key {
+                        workStatus = "Transkription \(finished + 1)–\(finished + batch.count) von \(pending.count) · online mit Gemini"
+                        var wavs: [Data] = []
+                        for segment in batch { wavs.append(try CAFAudio.wav(fromCAF: try await repository.audio(caseID: c, encounterID: e.id, segmentID: segment.id))) }
+                        let texts = try await GeminiTranscriptionAPI.transcribe(key: key, modelID: online.modelID, wavs: wavs, vocabulary: terms)
+                        let segments = zip(texts, batch).filter { !$0.0.isEmpty }.map { TranscriptSegment(id: "\($0.1.id)-0", text: $0.0, audioID: $0.1.id) }
+                        newSegments += TranscriptBuilder.audioSentences(segments)
+                    } else {
+                        let segment = batch[0]
+                        workStatus = "Transkription \(finished + 1) von \(pending.count) · auf diesem Gerät"
+                        let data = try await repository.audio(caseID: c, encounterID: e.id, segmentID: segment.id)
+                        let file = AppPaths.scratch.appendingPathComponent("transcribe-\(segment.id).caf")
+                        try data.write(to: file, options: [.atomic, .completeFileProtection])
+                        defer { try? FileManager.default.removeItem(at: file) }
+                        newSegments += TranscriptBuilder.audioSentences(try await AppleOfflineTranscriber().transcribe(file: file, audioID: segment.id))
+                    }
+                    finished += batch.count
+                }
+            } catch {
+                if !newSegments.isEmpty { saveRecognized(newSegments, caseID: c, encounterID: e.id, engine: engine); await saveOrReport() }
+                if online != nil, !Task.isCancelled { deviceOffer = DeviceOffer(location: location, kind: .transcription) }
+                throw error
             }
             guard !newSegments.isEmpty else { throw AppFailure("Kein verständlicher Text erkannt. Die Aufnahme bleibt erhalten.") }
-            let previous = e.transcripts.last
+            saveRecognized(newSegments, caseID: c, encounterID: e.id, engine: engine)
+            try await persist()
+        }
+    }
+    private func saveRecognized(_ newSegments: [TranscriptSegment], caseID: UUID, encounterID: UUID, engine: String) {
+        mutate(caseID: caseID, encounterID: encounterID) { encounter in
+            let previous = encounter.transcripts.last
             let segments = (previous?.segments ?? []) + newSegments
             let text = segments.map(\.text).joined(separator: "\n")
             let raw = [previous?.rawText ?? "", newSegments.map(\.text).joined(separator: "\n")].filter { !$0.isEmpty }.joined(separator: "\n")
-            let version = TranscriptVersion(parentID: previous?.id, rawText: raw, editedText: text, segments: segments, engine: "Apple SpeechAnalyzer · de-DE · offline")
-            mutate(caseID: c, encounterID: e.id) { $0.transcripts.append(version); $0.state = .transcriptReady }
-            try await persist()
+            encounter.transcripts.append(TranscriptVersion(parentID: previous?.id, rawText: raw, editedText: text, segments: segments, engine: engine))
+            encounter.state = .transcriptReady
         }
+    }
+    /// The one-time answer: `online` allows Gemini for this and future recordings; otherwise the device is used.
+    func decideTranscription(online: Bool) {
+        let location = transcriptionQuestion
+        transcriptionQuestion = nil
+        do {
+            var next = geminiConfiguration; next.enabled = online; next.decidedAt = Date()
+            try onlineStore.saveGemini(next); geminiConfiguration = next
+            if let location { transcribe(at: location, route: online ? .online : .device) }
+        } catch { self.error = error.localizedDescription }
+    }
+    /// "Nur auf dem Gerät verarbeiten" for transcription and reports. Chat needs an online access either way.
+    func setDeviceOnly(_ enabled: Bool) {
+        do {
+            var configuration = onlineConfiguration; configuration.deviceOnly = enabled
+            try onlineStore.save(configuration); onlineConfiguration = configuration
+        } catch { self.error = error.localizedDescription }
     }
     func generate(at location: EncounterLocation, template: ReportTemplate, length: ReportLength, mode: ReportExecutionMode) {
         let c = location.caseID, e = location.encounterID
         let audience = template.audience
         guard let transcript = encounter(at: location)?.transcripts.last else { error = "Bitte zuerst das Transkript speichern."; return }
         let configuration = onlineConfiguration
+        deviceOffer = nil
         run(state: .generating, location: location) { [self] in
             let engine: any ReportTextEngine
             switch mode {
             case .offline:
                 try await model.load(); engine = model
             case .online:
-                guard configuration.isEnabled, let key = try onlineStore.key() else { throw AppFailure("Bitte Online-Berichte in Einstellungen mit deinem API-Key aktivieren oder ausdrücklich Offline wählen.") }
+                guard configuration.isEnabled, let key = try onlineStore.key(for: configuration.activeProvider) else { throw AppFailure("Bitte Online-Berichte in Einstellungen mit deinem API-Key aktivieren oder ausdrücklich Offline wählen.") }
                 try model.unload()
-                engine = OpenAIReportEngine(configuration: configuration, key: key, sections: template.sections, record: { [self] payload, modelID in
-                    let value = CloudReportRequest(modelID: modelID, transcriptVersionID: transcript.id, payload: payload)
+                engine = onlineReportEngine(configuration: configuration, key: key, sections: template.sections, record: { [self] payload, modelID in
+                    let value = CloudReportRequest(provider: configuration.activeProvider.title, modelID: modelID, transcriptVersionID: transcript.id, payload: payload)
                     mutate(caseID: c, encounterID: e) { $0.cloudReportRequests = ($0.cloudReportRequests ?? []) + [value] }
                     try await persist()
                     return value.id
@@ -288,10 +360,16 @@ final class VetAppModel: ObservableObject {
                     try await persist()
                 })
             }
-            let report = try await ReportPipeline(engine: engine).run(transcript: transcript, template: template, length: length, audience: audience, checkpoint: { [self] value in
-                mutate(caseID: c, encounterID: e) { $0.reportCheckpoint = value }
-                try await persist()
-            }) { workStatus = $0 }
+            let report: ReportVersion
+            do {
+                report = try await ReportPipeline(engine: engine).run(transcript: transcript, template: template, length: length, audience: audience, checkpoint: { [self] value in
+                    mutate(caseID: c, encounterID: e) { $0.reportCheckpoint = value }
+                    try await persist()
+                }) { workStatus = $0 }
+            } catch {
+                if mode == .online, !Task.isCancelled { deviceOffer = DeviceOffer(location: location, kind: .report) }
+                throw error
+            }
             mutate(caseID: c, encounterID: e) { $0.reports.append(report); $0.reportCheckpoint = nil; $0.state = .reviewRequired }
             try await persist()
         }
@@ -404,10 +482,11 @@ final class VetAppModel: ObservableObject {
         guard existing.count < 250, (analysisContext(caseID: snapshot.caseID, encounterID: snapshot.encounterID)?.analysisRuns?.count ?? 0) < 100 else {
             error = "Das lokale Analysebudget ist erreicht. Bitte nicht mehr benötigte Fälle exportieren und löschen oder einen neuen Vorgang verwenden."; return
         }
+        let provider = onlineConfiguration.activeProvider
         run { [self] in
-            workStatus = "Sparring · OpenAI · Antwort wird angefordert"
+            workStatus = "Sparring · \(provider.title) · Antwort wird angefordert"
             try model.unload()
-            guard let key = try onlineStore.key() else { throw AppFailure("Der API-Key fehlt.") }
+            guard let key = try onlineStore.key(for: provider) else { throw AppFailure("Der API-Key fehlt.") }
             let analysis = AnalysisRun(snapshot: snapshot)
             activeAnalysisID = analysis.id
             defer { activeAnalysisID = nil }
@@ -424,7 +503,7 @@ final class VetAppModel: ObservableObject {
             var checkpoint = Date.distantPast
             var checkpointBytes = 0
             do {
-                try await SparringService().run(snapshot: snapshot, key: key, imageData: imageData, beforeSending: { [self] in
+                try await SparringService(provider: provider).run(snapshot: snapshot, key: key, imageData: imageData, beforeSending: { [self] in
                     mutateAnalysis(caseID: snapshot.caseID, encounterID: snapshot.encounterID) {
                         $0.analysisRuns = ($0.analysisRuns ?? []) + [analysis]
                     }
@@ -465,22 +544,29 @@ final class VetAppModel: ObservableObject {
             }
         }
     }
-    func saveOnlineConfiguration(modelID: String, keyDraft: String) {
+    func saveOnlineConfiguration(provider: OnlineProvider, modelID: String, keyDraft: String) {
         guard !busy else { return }
         error = nil
         do {
             let id = modelID.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !id.isEmpty else { throw AppFailure("Bitte eine Modell-ID auswählen.") }
             let key = keyDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-            let storedKey = try onlineStore.key()
-            guard !key.isEmpty || storedKey != nil else { throw AppFailure("Bitte deinen API-Key eintragen.") }
+            if !key.isEmpty { try OnlineReportStore.validateKey(key) }
+            guard !key.isEmpty || (try onlineStore.key(for: provider)) != nil else { throw AppFailure("Bitte deinen API-Key eintragen.") }
             var configuration = onlineConfiguration
-            configuration.modelID = id; configuration.consentDate = Date(); configuration.preferredMode = .online
+            configuration.modelID = id; configuration.consentDate = Date(); configuration.preferredMode = .online; configuration.provider = provider
             configuration.verifiedModelID = testedOnlineModel == id ? id : nil
             configuration.verifiedAt = testedOnlineModel == id ? Date() : nil
-            try onlineStore.save(configuration, key: key.isEmpty ? nil : key)
-            onlineConfiguration = configuration; hasOnlineKey = true
-            onlineSettingsStatus = "Der Online-Zugang ist bereit. Inhalte werden erst beim Senden im Chat oder beim Erstellen eines Online-Berichts übertragen."
+            if provider == .gemini {
+                // One Gemini key for reports, chat and transcription.
+                if !key.isEmpty { try onlineStore.saveGemini(geminiConfiguration, key: key); hasGeminiKey = true }
+                try onlineStore.save(configuration)
+            } else {
+                try onlineStore.save(configuration, key: key.isEmpty ? nil : key)
+                if !key.isEmpty { hasOpenAIKey = true }
+            }
+            onlineConfiguration = configuration
+            onlineSettingsStatus = "Online mit \(provider.title) ist Standard für neue Berichte und den Chat. Inhalte werden erst beim Senden im Chat oder beim Erstellen eines Online-Berichts übertragen."
         } catch { self.error = error.localizedDescription }
     }
     func resetOnlineModelVerification() { testedOnlineModel = nil }
@@ -494,31 +580,51 @@ final class VetAppModel: ObservableObject {
             onlineConfiguration = configuration
         } catch { self.error = error.localizedDescription }
     }
-    func removeOnlineKey() {
+    /// Removes the key of `provider`. Removing the Gemini key also ends online transcription with Gemini.
+    func removeOnlineKey(_ provider: OnlineProvider) {
         guard !busy else { return }
         do {
-            try onlineStore.removeKey(); onlineConfiguration = try onlineStore.configuration(); hasOnlineKey = false
-            testedOnlineModel = nil; onlineModels = []; onlineSettingsStatus = "API-Key entfernt."
+            if provider == .gemini { try onlineStore.removeGeminiKey(); hasGeminiKey = false; geminiConfiguration = .init() }
+            else { try onlineStore.removeKey(); hasOpenAIKey = false }
+            let active = onlineConfiguration.activeProvider == provider
+            onlineConfiguration = try onlineStore.configuration()
+            testedOnlineModel = nil; onlineModels = []
+            onlineSettingsStatus = "\(provider.title)-API-Key entfernt." + (active ? " Online ist deaktiviert." : "")
         } catch { self.error = error.localizedDescription }
     }
-    func loadOnlineModels(keyDraft: String) {
+    func saveGeminiConfiguration(enabled: Bool, modelID: String, keyDraft: String) {
+        guard !busy else { return }
+        error = nil
+        do {
+            let model = modelID.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !model.isEmpty else { throw AppFailure("Bitte eine Gemini-Modell-ID eingeben.") }
+            let key = keyDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !enabled || !key.isEmpty || hasGeminiKey else { throw AppFailure("Bitte einen Gemini-API-Key eingeben.") }
+            let next = GeminiTranscriptionConfiguration(enabled: enabled, modelID: model, decidedAt: Date())
+            try onlineStore.saveGemini(next, key: key.isEmpty ? nil : key)
+            geminiConfiguration = next
+            if !key.isEmpty { hasGeminiKey = true }
+            onlineSettingsStatus = enabled ? "Online-Transkription mit Gemini ist aktiv." : "Gemini gespeichert; transkribiert wird auf dem Gerät."
+        } catch { self.error = error.localizedDescription }
+    }
+    func loadOnlineModels(provider: OnlineProvider, keyDraft: String) {
         run { [self] in
             workStatus = "Anbietermodelle laden · keine Falldaten"
             let key = keyDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard let value = key.isEmpty ? try onlineStore.key() : key else { throw AppFailure("Bitte API-Key eintragen.") }
-            onlineModels = try await OpenAIReportAPI.models(key: value)
+            guard let value = key.isEmpty ? try onlineStore.key(for: provider) : key else { throw AppFailure("Bitte API-Key eintragen.") }
+            onlineModels = provider == .gemini ? try await GeminiOnlineAPI.models(key: value) : try await OpenAIReportAPI.models(key: value)
             onlineSettingsStatus = "Modellliste geladen. Die Liste bestätigt noch nicht die Eignung für strukturierte Berichte. Bitte das ausgewählte Modell testen."
         }
     }
-    func testOnlineModel(modelID: String, keyDraft: String) {
+    func testOnlineModel(provider: OnlineProvider, modelID: String, keyDraft: String) {
         run { [self] in
             workStatus = "Synthetischer Anbietertest · keine Falldaten"
             testedOnlineModel = nil
             let key = keyDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard let value = key.isEmpty ? try onlineStore.key() : key else { throw AppFailure("Bitte API-Key eintragen.") }
+            guard let value = key.isEmpty ? try onlineStore.key(for: provider) : key else { throw AppFailure("Bitte API-Key eintragen.") }
             let id = modelID.trimmingCharacters(in: .whitespacesAndNewlines)
-            let config = OnlineReportConfiguration(modelID: id, consentDate: Date(), preferredMode: .online)
-            let engine = OpenAIReportEngine(configuration: config, key: value, sections: ReportTemplate.treatment_report.sections)
+            let config = OnlineReportConfiguration(modelID: id, consentDate: Date(), preferredMode: .online, provider: provider)
+            let engine = onlineReportEngine(configuration: config, key: value, sections: ReportTemplate.treatment_report.sections)
             let transcript = TranscriptBuilder.edited("Hund 12,5 kg. Kein Fieber. Temperatur nicht gemessen.", previous: nil)
             _ = try await ReportPipeline(engine: engine).run(transcript: transcript, template: .treatment_report, length: .medium, audience: .veterinarian) { workStatus = $0 }
             testedOnlineModel = id; onlineSettingsStatus = "Synthetischer Verbindungstest bestanden: " + engine.engineRevision + ". Keine fachliche Freigabe."

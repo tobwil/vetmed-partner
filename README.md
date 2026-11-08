@@ -13,11 +13,11 @@ Native App für Tierärztinnen und Tierärzte auf iPhone und Android. Du diktier
 
 **VetMed** is an open-source (MIT) iOS and Android app for veterinarians:
 
-- **Dictation:** record a consultation and transcribe it on the device.
+- **Dictation:** record a consultation and transcribe it, online with your own Gemini key for the best quality or on the device.
 - **Reports:** turn the transcript into a structured report in which every statement is checked against its source sentence.
 - **Clinical sparring partner:** discuss a case as you would with an experienced colleague. It gives weighted differentials (most likely, must-not-miss, which finding would change the decision), suggests next steps and asks critical follow-up questions. Images, lab PDFs and your own case reports can serve as context; quick checks also work without a case.
 
-**Privacy:** Clinical data stays encrypted on the device (SQLCipher, Keychain or Android Keystore). There is no cloud sync. Data leaves the device only when you explicitly start an online report or chat with your own OpenAI API key (on Android alternatively Gemini), or when you switch on online transcription with your own Gemini key on Android. Alternatively, reports run fully offline with Gemma 4 E2B (MLX on iOS, LiteRT-LM on Android).
+**Privacy:** Clinical data stays encrypted on the device (SQLCipher, Keychain or Android Keystore). There is no cloud sync. Data leaves the device only through your own API key (OpenAI or Gemini): when you start an online report or a chat, or for online transcription after a one-time consent. With a key, online is the default for quality; "device only" keeps transcription and reports on the device, and the app never switches silently between the two. Offline reports use Gemma 4 E2B (MLX on iOS, LiteRT-LM on Android).
 
 **Quickstart:** iOS needs macOS, Xcode 27 and XcodeGen. Android needs JDK 21 and Android SDK 37.2. Then follow the [step-by-step guide](#schritt-für-schritt-vetmed-selbst-bauen-und-nutzen) below; it is in German, but the shell commands are the same in any language. On iOS, first set your own `DEVELOPMENT_TEAM` and `PRODUCT_BUNDLE_IDENTIFIER` in `apps/ios/project.yml`. The user interface is in German.
 
@@ -29,9 +29,10 @@ Native App für Tierärztinnen und Tierärzte auf iPhone und Android. Du diktier
 | --- | --- | --- |
 | Fälle und Diktat: Aufnehmen, Text prüfen, Bericht | ja | ja |
 | Spracherkennung auf dem Gerät (Deutsch) | Apple SpeechAnalyzer | Android On-Device-Erkenner |
-| Online-Transkription mit eigenem Gemini-Key (optional) | – | ja |
+| Online-Transkription mit eigenem Gemini-Key (Standard nach einmaliger Zustimmung) | ja | ja |
 | Aufnahme läuft im Hintergrund weiter | – | ja (Hinweis in der Statusleiste) |
-| Bericht online mit eigenem Key | OpenAI | OpenAI oder Gemini |
+| Bericht online mit eigenem Key (Standard, sobald eingerichtet) | OpenAI oder Gemini | OpenAI oder Gemini |
+| „Nur auf dem Gerät verarbeiten“, kein stiller Wechsel | ja | ja |
 | Bericht offline auf dem Gerät (optional) | Gemma 4 E2B über MLX | Gemma 4 E2B über LiteRT-LM |
 | Quellenprüfung (Zahlen, Einheiten, Verneinungen) | ja | ja |
 | Klinischer Sparringspartner (online): Differenzialdiagnosen und nächste Schritte, mit Bildern, Labor-PDFs und eigenen Berichten, auch ohne Fall | ja | ja |
@@ -167,11 +168,12 @@ Für den ersten Versuch brauchst du weder Key noch Modell. Diktat, Spracherkennu
    - Unter Einstellungen (Zahnrad auf Start) → Spracherkennung prüfen, ob Deutsch als bereit angezeigt wird.
    - Wenn nicht, auf **Deutsche Sprachressourcen installieren** tippen.
    - Ohne Sprachdaten kannst du den Text auch selbst eingeben oder einfügen.
-4. **Optional: Online-Berichte und Chat**
-   1. Auf [platform.openai.com/api-keys](https://platform.openai.com/api-keys) einen API-Key anlegen. Dein OpenAI-Konto braucht Guthaben.
-   2. In VetMed: Einstellungen → **API-Key & Modell** → Key einfügen → **Modelle laden** (iPhone: „Verfügbare Modelle laden“) → Modell wählen.
+4. **Empfohlen: Online-Zugang (beste Qualität)**
+   1. Einen API-Key anlegen: bei [Google AI Studio](https://aistudio.google.com/apikey) für Gemini (gilt für Transkription, Berichte und Chat) oder bei [OpenAI](https://platform.openai.com/api-keys). Für Patientendaten bei Gemini die Abrechnung aktivieren; im kostenlosen Kontingent darf Google Eingaben nutzen.
+   2. In VetMed: Einstellungen → Verarbeitung → **API-Key & Modell** → Anbieter wählen → Key einfügen → **Modelle laden** → Modell wählen.
    3. **Modell mit synthetischem Text testen.** Dabei wird nur ein fester Testsatz gesendet.
-   4. **Online aktivieren.** Ab dann ist Online der Standard für Berichte.
+   4. **Online aktivieren.** Ab dann ist Online der Standard für Berichte und Chat. Mit Gemini fragt die App vor der ersten Transkription einmal, ob Audio an Google gehen darf.
+   5. Wer nichts senden will, schaltet unter Einstellungen → Verarbeitung **Nur auf dem Gerät verarbeiten** ein.
 5. **Optional: Offline-Berichte**
    - Einstellungen → Offline-Modell → **Modell herunterladen**. Das sind ca. 3,6 GB auf iOS bzw. 2,6 GB auf Android, am besten im WLAN.
    - Danach im Bericht unter „Anpassen“ **Offline** wählen.
@@ -236,7 +238,7 @@ Die Grenzen:
 - Er stellt keine endgültige Diagnose und ersetzt keine Untersuchung.
 - Er erfindet keine Quellen und keine Prozent-Wahrscheinlichkeiten.
 - Er behauptet keine eigene Approbation.
-- Er läuft nur online mit deinem eigenen Key (OpenAI, auf Android auch Gemini).
+- Er läuft nur online mit deinem eigenen Key (OpenAI oder Gemini).
 - Jede Antwort ist fachlich zu prüfen.
 
 **Kann der Sparringspartner falsche Medikamentenangaben machen?**
@@ -250,19 +252,22 @@ Prüfe Wirkstoffe und Dosierungen vor jeder Anwendung in der Fachinformation.
 Die Anweisungen an das Modell sind offen einsehbar: [`shared/prompts/sparring-v1.txt`](shared/prompts/sparring-v1.txt).
 
 **Landen meine Fälle in der Cloud?**
-Nein. Fälle, Aufnahmen und Berichte liegen verschlüsselt nur auf dem Gerät. Es gibt keine Synchronisation und kein Backup. Etwas verlässt das Gerät nur, wenn du es ausdrücklich startest: „Bericht online erstellen“ sendet das geprüfte Transkript, „Senden“ im Chat die Frage, die angehängten Inhalte und den Verlauf dieses Chats. Aufnahme und Transkription bleiben lokal.
+Nein. Fälle, Aufnahmen und Berichte liegen verschlüsselt nur auf dem Gerät. Es gibt keine Synchronisation und kein Backup. Etwas verlässt das Gerät nur über deinen eigenen API-Key: „Bericht online erstellen“ sendet das geprüfte Transkript, „Senden“ im Chat die Frage, die angehängten Inhalte und den Verlauf dieses Chats. Die Online-Transkription sendet die Audioteile an Google (Gemini), aber erst nach deiner einmaligen Zustimmung. Mit „Nur auf dem Gerät verarbeiten“ bleiben Aufnahme, Transkription und Berichte lokal.
 
 **Wie sind die Daten geschützt?**
 Auf dem iPhone mit SQLCipher und der Dateischutzklasse von iOS; der Schlüssel liegt im Schlüsselbund. Auf Android mit Room und SQLCipher; der Schlüssel ist über den Android Keystore gesichert. API-Keys liegen jeweils getrennt davon. Eine zusätzliche Face-ID-Sperre gibt es auf Wunsch nicht. Wer die App löscht oder das Gerät verliert, verliert auch die Daten.
 
+**Warum ist Online der Standard?**
+Weil die Ergebnisse deutlich besser sind: Die Spracherkennung auf dem Gerät versteht Fachsprache oft schlecht, und lokale Berichte brauchen viel Speicher und Zeit. Online ist deshalb Standard, sobald du einen Key eingerichtet hast ([Entscheidung 0014](docs/architecture/0014-online-first.md)). Die App wechselt aber nie still: Scheitert ein Online-Schritt, siehst du den Fehler und kannst bewusst „auf dem Gerät“ wählen. Mit „Nur auf dem Gerät verarbeiten“ bleibt alles lokal.
+
 **Brauche ich einen API-Key, und was kostet das?**
-Für Online-Berichte und den Chat brauchst du einen eigenen OpenAI-API-Key. Die Kosten laufen über dein OpenAI-Konto. Der Modelltest in den Einstellungen sendet nur einen festen synthetischen Satz. Anfragen werden mit `store=false` gestellt; was OpenAI darüber hinaus aufbewahrt, regelt dein API-Vertrag.
+Für Online-Transkription, Online-Berichte und den Chat brauchst du einen eigenen Key, von Google (Gemini) oder OpenAI. Die Kosten laufen über dein Konto beim Anbieter. Der Modelltest in den Einstellungen sendet nur einen festen synthetischen Satz. Anfragen werden mit `store=false` gestellt; was OpenAI darüber hinaus aufbewahrt, regelt dein API-Vertrag.
 
 **Geht es auch ohne Internet?**
 Auf dem iPhone optional: Das lokale Modell (Gemma 4 E2B, einmalig ca. 3,6 GB) braucht ein iPhone mit mindestens 8 GB RAM. Es wird nie still als Ersatz genutzt; du wählst Offline ausdrücklich. Ein vollständiger Offline-Lauf mit langem Diktat ist noch nicht erfolgreich abgenommen, siehe [Prüfstand](docs/test-status.md). Auf Android genauso, mit Gemma 4 E2B im LiteRT-LM-Format (einmalig ca. 2,6 GB, mindestens 8 GB RAM). Revision und Prüfsumme sind fest hinterlegt; vor jedem Laden wird die Datei geprüft. Mit echten Gewichten ist das auf Android noch nicht erprobt.
 
 **Was passiert, wenn die Spracherkennung auf meinem Android-Gerät fehlt?**
-VetMed nutzt nur den Offline-Erkenner, den Android selbst mitbringt (auf Pixel-Geräten vorhanden, bei anderen Herstellern nicht immer). Fehlen die deutschen Sprachdaten, bietet die App unter Einstellungen → Spracherkennung die Installation an. Ohne sie bleibt die Aufnahme verschlüsselt gespeichert, und du kannst den Text selbst eingeben. Einen Cloud-Erkenner als Ausweichweg gibt es nicht.
+Mit Gemini-Key transkribiert VetMed online und braucht den Erkenner nicht. Auf dem Gerät nutzt VetMed nur den Offline-Erkenner, den Android selbst mitbringt (auf Pixel-Geräten vorhanden, bei anderen Herstellern nicht immer). Fehlen die deutschen Sprachdaten, bietet die App unter Einstellungen → Spracherkennung die Installation an. Ohne sie bleibt die Aufnahme verschlüsselt gespeichert, und du kannst den Text selbst eingeben. Die App wechselt nie von selbst zwischen Online und Gerät.
 
 **Kann ich einen Bericht direkt verwenden?**
 Nein. Jeder Bericht ist ein Entwurf. Die App prüft, dass jede Aussage auf eine Stelle im Diktat verweist und dass Zahlen, Einheiten, Vergleichszeichen und Verneinungen übereinstimmen. Erfundene Werte werden abgewiesen, Abweichungen als Warnung angezeigt. Erst wenn du eine konkrete Version am Original geprüft und freigegeben hast, verschwindet die Entwurfskennzeichnung beim Export.

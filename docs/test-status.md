@@ -230,3 +230,18 @@ Prüfung:
 
 Eine eigene Arzneimitteldatenbank (EU-UPD, AMIce, Vetidata) ist recherchiert, aber mangels freier Schnittstelle bzw. Lizenz noch nicht angebunden.
 
+
+## Online zuerst am 08.11.2026
+
+Anlass: Die Qualität auf dem Gerät reicht im Alltag nicht. Online ist jetzt Standard, sobald ein Key eingerichtet ist; lokal bleibt wählbar. Details in [ADR 0014](architecture/0014-online-first.md).
+
+Umgesetzt:
+- Regel `Processing` auf beiden Plattformen: Online zuerst, „Nur auf dem Gerät verarbeiten“ hat Vorrang, kein stiller Wechsel.
+- Gemini-Transkription als Standard nach einmaliger Zustimmung; ältere Speicherstände werden einmal gefragt.
+- Nach einem Online-Fehler bietet die App „Auf dem Gerät transkribieren“ bzw. „Offline-Bericht erstellen“ als Knopf an.
+- iOS hat jetzt Gemini für Berichte, Chat und Transkription (CAF wird für den Versand zu WAV umgesetzt).
+
+Prüfung:
+- Android: `ProcessingTests` (4) und drei neue UI-Tests bestanden; gesamt Kern 107 (1 übersprungen), App 49, Lint und Build grün. Screenshots 07 (neu aufgenommen), 15 und 16.
+- iOS: `OnlineFirstTests` (6 Tests) und die Logik unter Linux mit Swift 6.1 im Swift-6-Modus gebaut und bestanden. `VetAppModel` und SwiftUI nur auf Syntax geprüft. **Vor `main`:** `./scripts/test-ios.sh` auf dem Mac.
+- Live mit echtem Gemini-Key steht auf beiden Geräten aus: Zustimmung, lange Aufnahme, Fehler ohne Netz, Bericht und Chat mit Gemini auf dem iPhone.

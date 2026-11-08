@@ -126,7 +126,7 @@ struct ChatConversationView: View {
         Result {
             guard let encounter else { throw AppFailure("Dieser Chat ist nicht mehr vorhanden.") }
             return try SparringRequestBuilder.prepare(caseID: caseID, encounter: encounter, draft: preparedDraft, modelID: app.onlineConfiguration.modelID, caseContext: caseContext,
-                                                      sourceSearch: app.onlineConfiguration.sourceSearch == true)
+                                                      sourceSearch: app.onlineConfiguration.usesSourceSearch)
         }
     }
     var body: some View {
@@ -289,10 +289,10 @@ struct ChatConversationView: View {
             NavigationStack {
                 List {
                     Section("Verbindung") {
-                        Text("OpenAI · \(app.onlineConfiguration.modelID.isEmpty ? "Noch nicht eingerichtet" : app.onlineConfiguration.modelID)")
+                        Text("\(app.onlineConfiguration.activeProvider.title) · \(app.onlineConfiguration.modelID.isEmpty ? "Noch nicht eingerichtet" : app.onlineConfiguration.modelID)")
                         NavigationLink("API-Key & Modell") { OnlineReportSettingsView() }
                         Text("Nur beim Senden wird dein Chat übertragen. Kein automatischer Neuversand.").font(.footnote)
-                        Text(app.onlineConfiguration.sourceSearch == true
+                        Text(app.onlineConfiguration.usesSourceSearch
                              ? "Quellensuche: an, nur amtliche Arzneimittelquellen (EU, EMA, PharmNet.Bund, BVL, BASG)."
                              : "Quellensuche: aus. Präparatangaben sind dann nur aus deiner Frage oder Anhängen belegbar.").font(.footnote)
                     }

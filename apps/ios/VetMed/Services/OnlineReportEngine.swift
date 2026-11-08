@@ -6,6 +6,14 @@ enum ReportExecutionMode: String, Codable, CaseIterable, Identifiable, Sendable 
     var title: String { self == .online ? "Online" : "Offline · optional" }
 }
 
+/// Online provider for reports and chat. Gemini shares its key with the online transcription (as on Android).
+enum OnlineProvider: String, Codable, CaseIterable, Identifiable, Sendable {
+    case openai, gemini
+    var id: String { rawValue }
+    var title: String { self == .openai ? "OpenAI" : "Gemini" }
+    var defaultModel: String { self == .openai ? "" : GeminiTranscriptionConfiguration.defaultModel }
+}
+
 struct OnlineReportConfiguration: Codable, Equatable, Sendable {
     var modelID = ""
     var consentDate: Date?
@@ -14,7 +22,14 @@ struct OnlineReportConfiguration: Codable, Equatable, Sendable {
     var verifiedAt: Date?
     /// Chat: let OpenAI search official medicine sources for medication statements (costs per search).
     var sourceSearch: Bool?
+    /// Missing in stores written before Gemini existed on iOS; those were OpenAI.
+    var provider: OnlineProvider?
+    /// "Nur auf dem Gerät verarbeiten": transcription and reports stay on the device even with a key (ADR 0014).
+    var deviceOnly: Bool?
     var isEnabled: Bool { consentDate != nil && !modelID.isEmpty }
+    var activeProvider: OnlineProvider { provider ?? .openai }
+    /// Source search exists only with OpenAI's domain-limited web search; Gemini offers no domain restriction.
+    var usesSourceSearch: Bool { sourceSearch == true && activeProvider == .openai }
 }
 
 struct CloudReportRequest: Codable, Identifiable, Equatable, Sendable {
@@ -36,12 +51,31 @@ struct OnlineReportStore: Sendable {
         return try JSONDecoder().decode(OnlineReportConfiguration.self, from: data)
     }
     func key() throws -> String? { try secure.read("provider.openai.api-key").flatMap { String(data: $0, encoding: .utf8) } }
+    func geminiKey() throws -> String? { try secure.read("provider.gemini.api-key").flatMap { String(data: $0, encoding: .utf8) } }
+    /// The key of the provider chosen for reports and chat.
+    func key(for provider: OnlineProvider) throws -> String? { provider == .gemini ? try geminiKey() : try key() }
+    func geminiConfiguration() throws -> GeminiTranscriptionConfiguration {
+        guard let data = try secure.read("gemini-transcription-configuration-v1") else { return .init() }
+        return try JSONDecoder().decode(GeminiTranscriptionConfiguration.self, from: data)
+    }
+    func saveGemini(_ configuration: GeminiTranscriptionConfiguration, key: String? = nil) throws {
+        if let key { try Self.validateKey(key); try secure.write(Data(key.utf8), account: "provider.gemini.api-key") }
+        try secure.write(try JSONEncoder().encode(configuration), account: "gemini-transcription-configuration-v1")
+    }
+    /// Removing the Gemini key also ends online transcription and, if Gemini was chosen, online reports and chat.
+    func removeGeminiKey() throws {
+        var configuration = try configuration()
+        if configuration.activeProvider == .gemini { configuration.preferredMode = .offline; configuration.consentDate = nil; try save(configuration) }
+        try secure.write(try JSONEncoder().encode(GeminiTranscriptionConfiguration()), account: "gemini-transcription-configuration-v1")
+        try secure.delete("provider.gemini.api-key")
+    }
     func save(_ configuration: OnlineReportConfiguration, key: String? = nil) throws {
         if let key { try Self.validateKey(key); try secure.write(Data(key.utf8), account: "provider.openai.api-key") }
         try secure.write(try JSONEncoder().encode(configuration), account: "online-report-configuration-v1")
     }
     func removeKey() throws {
-        var configuration = try configuration(); configuration.preferredMode = .offline; configuration.consentDate = nil
+        var configuration = try configuration()
+        if configuration.activeProvider == .openai { configuration.preferredMode = .offline; configuration.consentDate = nil }
         try save(configuration); try secure.delete("provider.openai.api-key")
     }
     static func validateKey(_ key: String) throws {

@@ -66,6 +66,7 @@ struct EncounterEditor: View {
             case .transcript: transcriptContent
             case .report: reportContent
             }
+            processingContent
             Section { DeleteCaseButton(caseID: location.caseID) { dismiss() } }
         }.themedBackground().navigationTitle(item?.label ?? "Diktat").navigationBarTitleDisplayMode(.inline)
             .scrollDismissesKeyboard(.interactively)
@@ -79,13 +80,18 @@ struct EncounterEditor: View {
             .safeAreaInset(edge: .bottom) { primaryAction }
             .sheet(isPresented: $editingCase) { CaseEditor(caseID: location.caseID) }
             .sheet(isPresented: $options) { reportOptions }
+            .alert("Online transkribieren?", isPresented: Binding(get: { app.transcriptionQuestion == location }, set: { if !$0 && app.transcriptionQuestion == location { app.transcriptionQuestion = nil } })) {
+                Button("Online mit Gemini") { app.decideTranscription(online: true) }.accessibilityIdentifier("consent-online")
+                Button("Auf dem Gerät") { app.decideTranscription(online: false) }.accessibilityIdentifier("consent-device")
+                Button("Abbrechen", role: .cancel) { app.transcriptionQuestion = nil }
+            } message: { Text(Processing.transcriptionConsent) }
             .navigationDestination(isPresented: Binding(get: { reportID != nil }, set: { if !$0 { reportID = nil } })) {
                 if let reportID { ReportReview(reportID: reportID, location: location) }
             }
             .onAppear {
                 guard !loaded else { return }
                 transcript = encounter?.transcripts.last?.editedText ?? ""; lastSavedTranscript = transcript
-                step = encounter?.suggestedStep ?? .recording; mode = app.onlineConfiguration.preferredMode; loaded = true
+                step = encounter?.suggestedStep ?? .recording; mode = app.reportMode; loaded = true
             }
             .onChange(of: encounter == nil) { _, missing in if missing { dismiss() } }
             .onChange(of: encounter?.transcripts.last?.id) { _, _ in
@@ -199,6 +205,30 @@ struct EncounterEditor: View {
                     Spacer(); Button("Anpassen") { options = true }.accessibilityIdentifier("report-options")
                 }
             }
+        }
+    }
+    /// Online failed: the device route is offered, never taken by itself (ADR 0014).
+    @ViewBuilder private var processingContent: some View {
+        if let offer = app.deviceOffer, offer.location == location, !app.busy, !recording {
+            Section {
+                Text("Es wird nicht automatisch gewechselt. Du kannst es erneut online versuchen oder bewusst auf dem Gerät verarbeiten (geringere Qualität).").font(.footnote).foregroundStyle(.secondary)
+                if offer.kind == .transcription {
+                    Button("Erneut online", systemImage: "arrow.clockwise") { app.transcribe(at: location, route: .online) }
+                    Button("Auf dem Gerät transkribieren", systemImage: "iphone") { app.transcribe(at: location, route: .device) }.accessibilityIdentifier("transcribe-on-device")
+                } else {
+                    Button("Offline-Bericht erstellen", systemImage: "iphone") {
+                        mode = .offline
+                        Task {
+                            let value = transcript
+                            guard await app.saveTranscript(value, at: location) else { return }
+                            lastSavedTranscript = value
+                            app.generate(at: location, template: template, length: length, mode: .offline)
+                        }
+                    }.accessibilityIdentifier("report-on-device")
+                }
+            } header: { Text(offer.kind == .transcription ? "Online-Transkription fehlgeschlagen" : "Online-Bericht fehlgeschlagen") }
+        } else if step == .transcript, encounter?.hasPendingAudio == true, !app.busy, !recording {
+            Section { Button("Ausstehende Aufnahmeteile transkribieren", systemImage: "waveform") { app.transcribe(at: location) }.accessibilityIdentifier("transcribe-pending") }
         }
     }
     private var reportContent: some View {

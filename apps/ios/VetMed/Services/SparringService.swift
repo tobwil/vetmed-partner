@@ -134,8 +134,14 @@ enum AnalysisStreamUpdate: Sendable {
     case terminal(AnalysisStatus, String, String?, AnalysisUsage?, String?, [AnswerSource])
 }
 
+/// One provider's streaming events. Only its terminal event can mark a response complete.
+protocol AnalysisEventDecoder {
+    var terminal: Bool { get }
+    mutating func consume(_ data: Data) throws -> AnalysisStreamUpdate?
+}
+
 /// Only the provider's terminal event can mark a response complete. EOF never implies completion.
-struct OpenAIAnalysisDecoder {
+struct OpenAIAnalysisDecoder: AnalysisEventDecoder {
     private(set) var text = ""
     private(set) var terminal = false
     private var lastSequence: Int?
@@ -209,7 +215,8 @@ struct OpenAIAnalysisHTTP: AnalysisStreamingTransport {
         do {
             let (bytes, response) = try await session.bytes(for: request)
             guard let http = response as? HTTPURLResponse else { throw AppFailure("Keine gültige Anbieterantwort.") }
-            try OpenAIReportAPI.checkStatus(http.statusCode)
+            if request.value(forHTTPHeaderField: "x-goog-api-key") != nil { try GeminiOnlineAPI.checkStatus(http.statusCode) }
+            else { try OpenAIReportAPI.checkStatus(http.statusCode) }
             guard http.mimeType == "text/event-stream" else { throw AppFailure("Das Modell liefert keinen unterstützten Antwortstream. Bitte ein anderes Textmodell auswählen.") }
             var decoder = BoundedSSEDecoder()
             var read = 0
@@ -232,12 +239,18 @@ struct OpenAIAnalysisHTTP: AnalysisStreamingTransport {
 
 @MainActor
 final class SparringService {
-    private var decoder = OpenAIAnalysisDecoder()
+    private var decoder: any AnalysisEventDecoder
+    private let provider: OnlineProvider
     private let transport: any AnalysisStreamingTransport
-    init(transport: any AnalysisStreamingTransport = OpenAIAnalysisHTTP()) { self.transport = transport }
+    init(provider: OnlineProvider = .openai, transport: any AnalysisStreamingTransport = OpenAIAnalysisHTTP()) {
+        self.provider = provider; self.transport = transport
+        decoder = provider == .gemini ? GeminiAnalysisDecoder() : OpenAIAnalysisDecoder()
+    }
     func run(snapshot: SparringSnapshot, key: String, imageData: [UUID: Data] = [:], beforeSending: @escaping @MainActor () async throws -> Void, receive: @escaping @MainActor (AnalysisStreamUpdate) async throws -> Void) async throws {
         try Task.checkCancellation()
-        let request = try SparringRequestBuilder.request(snapshot: snapshot, key: key, imageData: imageData)
+        let request = provider == .gemini
+            ? try GeminiOnlineAPI.sparringRequest(snapshot: snapshot, key: key, imageData: imageData)
+            : try SparringRequestBuilder.request(snapshot: snapshot, key: key, imageData: imageData)
         try await beforeSending()
         try Task.checkCancellation()
         try await transport.stream(request) { [self] event in

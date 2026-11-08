@@ -188,12 +188,21 @@ struct SettingsView: View {
     @ObservedObject var model: MLXLocalReportEngine
     var body: some View {
         Form {
-            AppearanceSettingsSection()
-            Section("Online-Zugang") {
+            Section("Verarbeitung") {
+                Text(app.reportMode == .online ? "Online · beste Qualität" : "Auf dem Gerät").font(.headline)
+                Text(Processing.summary(online: app.onlineConfiguration, hasKey: app.hasOnlineKey, transcription: app.transcriptionRoute))
+                    .font(.caption).foregroundStyle(.secondary).accessibilityIdentifier("processing-summary")
+                Toggle(isOn: Binding(get: { app.onlineConfiguration.deviceOnly == true }, set: { app.setDeviceOnly($0) })) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Nur auf dem Gerät verarbeiten")
+                        Text("Transkription und Berichte ohne Internet. Der Chat braucht weiterhin den Online-Zugang.").font(.caption).foregroundStyle(.secondary)
+                    }
+                }.accessibilityIdentifier("device-only")
                 NavigationLink("API-Key & Modell") { OnlineReportSettingsView() }
-                Text(app.hasOnlineKey ? "OpenAI · " + app.onlineConfiguration.modelID : "Noch kein API-Key hinterlegt").font(.caption).foregroundStyle(.secondary)
-                Text("Mit aktivierter Konfiguration ist Online der Standard. Offline kannst du pro Bericht ausdrücklich auswählen.").font(.caption).foregroundStyle(.secondary)
+                Text(app.hasOnlineKey ? app.onlineConfiguration.activeProvider.title + " · " + app.onlineConfiguration.modelID : "Noch kein API-Key hinterlegt").font(.caption).foregroundStyle(.secondary)
+                Text("Fällt Online aus, zeigt die App den Fehler und bietet die Verarbeitung auf dem Gerät als Knopf an. Sie wechselt nie von selbst und sendet später nichts automatisch nach.").font(.caption).foregroundStyle(.secondary)
             }
+            AppearanceSettingsSection()
             Section("Optionales Offline-Modell") {
                 Label("Gemma 4 E2B · 4 Bit", systemImage: "cpu")
                 Text(model.status).font(.subheadline).foregroundStyle(.secondary)
@@ -203,8 +212,14 @@ struct SettingsView: View {
                 if model.installed { Button("Modell entladen") { do { try model.unload() } catch { app.error = error.localizedDescription } }.disabled(app.busy); Button("Modell löschen", role: .destructive) { do { try model.delete() } catch { app.error = error.localizedDescription } }.disabled(app.busy) }
                 if let seconds = model.lastSeconds { LabeledContent("Letzte Modellantwort", value: String(format: "%.1f s", seconds)) }
             }
-            Section("Lokale Spracherkennung") {
-                Text(app.speechStatus)
+            Section("Spracherkennung") {
+                switch app.transcriptionRoute {
+                case .online: Text("Aktiv: Online-Transkription mit Gemini (\(app.geminiConfiguration.modelID)). Die Audioteile werden dafür an Google gesendet.").font(.caption)
+                case .ask: Text("Gemini ist eingerichtet. Vor der ersten Transkription fragt die App einmal, ob Audio an Google gehen darf.").font(.caption)
+                case .device: Text(app.hasGeminiKey && app.onlineConfiguration.deviceOnly != true ? "Transkribiert wird auf dem Gerät, wie von dir gewählt. Gemini erkennt Fachsprache meist deutlich besser." : "Transkribiert wird auf dem Gerät. Mit einem Gemini-Key wird die genauere Online-Transkription der Standard.").font(.caption)
+                }
+                NavigationLink("Online-Transkription (Gemini)") { GeminiSettingsView() }
+                LabeledContent("Auf dem Gerät", value: app.speechStatus)
                 Button("Deutsche Sprachressourcen installieren") { app.installSpeech() }.disabled(app.busy)
                 NavigationLink("Eigene Fachwortkorrekturen") { VocabularyView() }
             }
@@ -217,7 +232,7 @@ struct SettingsView: View {
                 NavigationLink("Drittanbieter-Lizenzen") {
                     ScrollView { Text(Bundle.main.url(forResource: "ThirdPartyNotices", withExtension: "txt").flatMap { try? String(contentsOf: $0, encoding: .utf8) } ?? "Lizenztexte fehlen.").font(.footnote).textSelection(.enabled).padding() }.navigationTitle("Lizenzen")
                 }
-                Text("Online-Berichte mit OpenAI und ein optionaler lokaler Berichtspfad. Chat mit Bildern und Befunden ist verbunden. Fachliche Freigabe, vollständige Offline-Prüfung, weitere Anbieter und Android stehen noch aus.").font(.caption).foregroundStyle(.secondary)
+                Text("Online-Berichte und Chat mit OpenAI oder Gemini, Online-Transkription mit Gemini, optionaler lokaler Berichtspfad. Fachliche Freigabe und vollständige Offline-Prüfung stehen noch aus.").font(.caption).foregroundStyle(.secondary)
             }
             #if DEBUG
             Section("Synthetischer Gerätetest") {
@@ -231,45 +246,101 @@ struct SettingsView: View {
 }
 struct OnlineReportSettingsView: View {
     @EnvironmentObject private var app: VetAppModel
+    @State private var provider: OnlineProvider = .openai
     @State private var keyDraft = ""
     @State private var modelID = ""
+    private var hasKey: Bool { provider == .gemini ? app.hasGeminiKey : app.hasOpenAIKey }
     var body: some View {
         Form {
-            Section("OpenAI") {
-                SecureField(app.hasOnlineKey ? "API-Key ersetzen (optional)" : "Eigenen API-Key eingeben", text: $keyDraft)
+            Section("Anbieter") {
+                Picker("Anbieter", selection: $provider) { ForEach(OnlineProvider.allCases) { Text($0.title).tag($0) } }
+                    .pickerStyle(.segmented).accessibilityIdentifier("provider")
+                Text(provider == .gemini ? "Der Gemini-Key gilt auch für die Online-Transkription." : "OpenAI wird nur für Berichte und Chat verwendet.").font(.caption).foregroundStyle(.secondary)
+            }.disabled(app.busy)
+            Section(provider.title) {
+                SecureField(hasKey ? "API-Key ersetzen (optional)" : "Eigenen API-Key eingeben", text: $keyDraft)
                     .textInputAutocapitalization(.never).autocorrectionDisabled()
                 TextField("Modell-ID", text: $modelID).textInputAutocapitalization(.never).autocorrectionDisabled()
-                Button("Verfügbare Modelle laden") { app.loadOnlineModels(keyDraft: keyDraft) }
+                Button("Verfügbare Modelle laden") { app.loadOnlineModels(provider: provider, keyDraft: keyDraft) }
                 if !app.onlineModels.isEmpty {
                     Menu("Modell aus dem Konto auswählen") {
                         ForEach(app.onlineModels, id: \.self) { id in Button(id) { modelID = id } }
                     }
                 }
-                Button("Modell mit synthetischem Text testen") { app.testOnlineModel(modelID: modelID, keyDraft: keyDraft) }.disabled(modelID.isEmpty)
+                Button("Modell mit synthetischem Text testen") { app.testOnlineModel(provider: provider, modelID: modelID, keyDraft: keyDraft) }.disabled(modelID.isEmpty)
                 Text("Modelltest und Berichte verwenden deinen API-Zugang und können Kosten verursachen. Der Modelltest überträgt ausschließlich einen festen synthetischen Text.").font(.caption).foregroundStyle(.secondary)
                 if let status = app.onlineSettingsStatus { Text(status).font(.footnote) }
             }.disabled(app.busy)
             Section("Online als Standard aktivieren") {
-                Text("Mit Online aktivieren richtest du deinen OpenAI-Zugang ein. Bericht online erstellen sendet das geprüfte Transkript; Senden im Chat überträgt deine Frage, die hinzugefügten Anhänge und den Verlauf desselben Chats. Die Versanddetails findest du im Chat-Menü. Aufnahme und Transkription bleiben lokal.").font(.footnote)
-                Text("Der API-Key bleibt im Geräte-Schlüsselbund. Wir deaktivieren die abrufbare Antwortspeicherung; weitere Aufbewahrung beim Anbieter richtet sich nach deinem API-Vertrag.").font(.caption).foregroundStyle(.secondary)
-                Link("OpenAI-Datenkontrollen", destination: URL(string: "https://developers.openai.com/api/docs/guides/your-data")!)
-                Button("Online aktivieren") {
-                    app.saveOnlineConfiguration(modelID: modelID, keyDraft: keyDraft)
+                Text("Mit Online aktivieren richtest du deinen \(provider.title)-Zugang ein. Bericht online erstellen sendet das geprüfte Transkript; Senden im Chat überträgt deine Frage, die hinzugefügten Anhänge und den Verlauf desselben Chats. Die Versanddetails findest du im Chat-Menü.").font(.footnote)
+                if provider == .gemini {
+                    Text("Der API-Key bleibt im Geräte-Schlüsselbund. Für Patientendaten nur einen Key mit aktivierter Abrechnung verwenden: Im kostenlosen Kontingent darf Google Eingaben zur Produktverbesserung nutzen.").font(.caption).foregroundStyle(.secondary)
+                    Link("Gemini-API-Nutzungsbedingungen", destination: URL(string: "https://ai.google.dev/gemini-api/terms")!)
+                } else {
+                    Text("Der API-Key bleibt im Geräte-Schlüsselbund. Wir deaktivieren die abrufbare Antwortspeicherung; weitere Aufbewahrung beim Anbieter richtet sich nach deinem API-Vertrag.").font(.caption).foregroundStyle(.secondary)
+                    Link("OpenAI-Datenkontrollen", destination: URL(string: "https://developers.openai.com/api/docs/guides/your-data")!)
+                }
+                Button(app.onlineConfiguration.isEnabled && app.onlineConfiguration.activeProvider == provider ? "Konfiguration speichern" : "Online mit \(provider.title) aktivieren") {
+                    app.saveOnlineConfiguration(provider: provider, modelID: modelID, keyDraft: keyDraft)
                     if app.error == nil { keyDraft = "" }
-                }.buttonStyle(.borderedProminent).disabled(app.busy || modelID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || (!app.hasOnlineKey && keyDraft.isEmpty))
-                if app.hasOnlineKey { Button("API-Key entfernen", role: .destructive) { app.removeOnlineKey(); keyDraft = "" }.disabled(app.busy) }
+                }.buttonStyle(.borderedProminent).disabled(app.busy || modelID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || (!hasKey && keyDraft.isEmpty))
+                    .accessibilityIdentifier("save-online")
+                if hasKey { Button("\(provider.title)-API-Key entfernen", role: .destructive) { app.removeOnlineKey(provider); keyDraft = "" }.disabled(app.busy) }
                 Text("Bei Verbindungs- oder Anbieterfehlern bleibt der Auftrag lokal. Es gibt keinen automatischen Wechsel zu einem anderen Anbieter und keinen Versand bei späterer Netzrückkehr.").font(.caption).foregroundStyle(.secondary)
             }
             Section("Arzneimittelangaben im Chat") {
                 Toggle("Mit amtlichen Quellen belegen", isOn: Binding(get: { app.onlineConfiguration.sourceSearch == true }, set: { app.setSourceSearch($0) }))
-                    .disabled(app.busy).accessibilityIdentifier("source-search")
-                Text("OpenAI sucht nur in EU-Tierarzneimitteldatenbank, EMA, PharmNet.Bund, BVL und BASG. Jede Suche kostet extra.").font(.caption).foregroundStyle(.secondary)
+                    .disabled(app.busy || provider != .openai).accessibilityIdentifier("source-search")
+                Text(provider == .openai ? "OpenAI sucht nur in EU-Tierarzneimitteldatenbank, EMA, PharmNet.Bund, BVL und BASG. Jede Suche kostet extra."
+                     : "Nur mit OpenAI verfügbar. Gemini bietet keine Begrenzung auf amtliche Seiten.").font(.caption).foregroundStyle(.secondary)
                 Text("Unabhängig davon nennt der Chat Wirkstoffe eines Präparats nicht aus dem Gedächtnis. Antworten mit Arzneimittelangaben ohne amtliche Quelle werden deutlich als ungeprüft markiert.").font(.caption).foregroundStyle(.secondary)
             }
         }.themedBackground().navigationTitle("Online-Zugang")
-            .onAppear { modelID = app.onlineConfiguration.modelID }
+            .onAppear { provider = app.onlineConfiguration.activeProvider; modelID = app.onlineConfiguration.modelID }
+            .onChange(of: provider) { _, value in
+                keyDraft = ""; app.onlineModels = []
+                modelID = app.onlineConfiguration.activeProvider == value ? app.onlineConfiguration.modelID : value.defaultModel
+            }
             .onChange(of: modelID) { _, _ in app.resetOnlineModelVerification() }
             .onChange(of: keyDraft) { _, _ in app.resetOnlineModelVerification() }
+            .onDisappear { keyDraft = "" }
+    }
+}
+
+/// Gemini for speech-to-text. The key is shared with reports and chat when Gemini is chosen there.
+struct GeminiSettingsView: View {
+    @EnvironmentObject private var app: VetAppModel
+    @State private var keyDraft = ""
+    @State private var modelID = GeminiTranscriptionConfiguration.defaultModel
+    @State private var enabled = true
+    var body: some View {
+        Form {
+            Section("Gemini") {
+                SecureField(app.hasGeminiKey ? "Gemini-API-Key ersetzen (optional)" : "Gemini-API-Key eingeben", text: $keyDraft)
+                    .textInputAutocapitalization(.never).autocorrectionDisabled().accessibilityIdentifier("gemini-key")
+                TextField("Modell-ID", text: $modelID).textInputAutocapitalization(.never).autocorrectionDisabled()
+                Toggle("Für Transkription verwenden", isOn: $enabled).accessibilityIdentifier("gemini-enabled")
+                Text("Den Key erstellst du in Google AI Studio. Er bleibt im Geräte-Schlüsselbund und gilt auch für Berichte und Chat, wenn dort Gemini gewählt ist.").font(.caption).foregroundStyle(.secondary)
+                Link("Google AI Studio öffnen", destination: URL(string: "https://aistudio.google.com/apikey")!)
+            }.disabled(app.busy)
+            Section("Datenschutz") {
+                Text("Bei aktivierter Online-Transkription werden die Audioteile der Aufnahme an Google gesendet. Fälle, Transkripte und Berichte bleiben verschlüsselt auf diesem Gerät.").font(.footnote)
+                Text("Für Patienten- und Halterdaten nur einen Key mit aktivierter Abrechnung verwenden: Im kostenlosen Kontingent darf Google Eingaben zur Produktverbesserung nutzen und von Menschen prüfen lassen.").font(.caption).foregroundStyle(.secondary)
+                Link("Gemini-API-Nutzungsbedingungen", destination: URL(string: "https://ai.google.dev/gemini-api/terms")!)
+                Button("Speichern") {
+                    app.saveGeminiConfiguration(enabled: enabled, modelID: modelID, keyDraft: keyDraft)
+                    if app.error == nil { keyDraft = "" }
+                }.buttonStyle(.borderedProminent).accessibilityIdentifier("save-gemini")
+                    .disabled(app.busy || modelID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || (enabled && !app.hasGeminiKey && keyDraft.isEmpty))
+                if app.hasGeminiKey { Button("Gemini-API-Key entfernen", role: .destructive) { app.removeOnlineKey(.gemini); keyDraft = "" }.disabled(app.busy) }
+                if let status = app.onlineSettingsStatus { Text(status).font(.footnote) }
+            }
+        }.themedBackground().navigationTitle("Online-Transkription")
+            .onAppear {
+                modelID = app.geminiConfiguration.modelID
+                // Undecided means recommended: online. Saving here counts as the explicit choice.
+                enabled = app.geminiConfiguration.enabled || app.geminiConfiguration.decidedAt == nil
+            }
             .onDisappear { keyDraft = "" }
     }
 }
