@@ -347,3 +347,18 @@ Prüfung:
 - **Befund Sprachmodus:** Mit Testsprache aus einem Lautsprecher in einem lauten Raum erkannte Gemini Live Teile als Französisch bzw. Hindi und antwortete in diesen Sprachen; Raumgeräusche wurden als Eingabe gewertet.
 - **Prompt `voice-v2`:** verlangt ausschließlich Deutsch und bei fremd klingender oder unverständlicher Eingabe eine deutsche Rückfrage (ADR 0016, Grenzen). Zweiter Gerätetest im selben lauten Raum: die deutsche Fachfrage wurde richtig auf Deutsch beantwortet, Raumgespräche ebenfalls auf Deutsch; ein als „Sim.“ erkanntes Geräusch erhielt aber eine portugiesische, ein französischer Testsatz eine spanische Antwort. **Nicht abschließend geprüft:** Test in ruhiger Umgebung mit echter Stimme steht aus. Ob die Live API eine feste Ausgabesprache erlaubt, ist nicht geklärt.
 - Laborverlauf auf dem Gerät nicht geprüft.
+
+## Große Fotos im Chat stufenweise verkleinern (Android) am 13.11.2026
+
+Anlass: Ein Handyfoto vom Röntgenmonitor (Pixel, etwa 12 Megapixel) wurde mit „Das vorbereitete Bild ist zu groß“ abgewiesen. Bei 4096 px Grenze wurde ein solches Foto gar nicht verkleinert, und als JPEG mit Qualität 88 lag es wegen Rauschen und Moiré über 2 MB.
+
+Umgesetzt (nur Android, ADR 0010):
+- `AttachmentLimits.IMAGE_STEPS` probiert der Reihe nach 4096 px (Qualität 88, 78), 3072 px (85, 75) und 2048 px (85, 70), bis das Bild in 2 MB passt. Erst danach kommt die Bitte um einen Ausschnitt.
+- Die Vorschau zeigt wie bisher die tatsächlich gesendete Pixelgröße. Das Original bleibt unverändert lokal gespeichert.
+
+Prüfung:
+- `largeNoisyPhotosAreSteppedDownUntilTheyFit`: synthetisches 3072 × 4080-Rauschfoto, das bei der ersten Stufe über 2 MB liegt, wird angenommen; Versandbild ≤ 2 MB, Seitenverhältnis und gespeicherte Maße stimmen.
+- `imageStepsCompressFirstThenShrinkAndNeverGrow` prüft die Reihenfolge der Stufen.
+- Gesamt 213 Tests (2 übersprungen), Lint und Debug-Build grün.
+- Pixel 9a, echte Röntgenfotos vom Monitor im Chat angehängt (nicht gesendet): das unbeschnittene Foto (3000 × 4000) wird angenommen und als 2304 × 3072 gesendet (Stufe 3072 px); ein Ausschnitt (2361 × 2363) bleibt in voller Größe. Keine Fehlermeldung, kein Absturz; der leere Testchat ist wieder gelöscht.
+- Nicht geprüft: Antwortqualität von Gemini auf das verkleinerte Bild.

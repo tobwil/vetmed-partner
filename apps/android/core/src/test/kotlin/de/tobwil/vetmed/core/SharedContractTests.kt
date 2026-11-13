@@ -106,4 +106,11 @@ class SharedContractTests {
         val fromIos = """{"id":"9A7C3E4B-0000-4000-8000-000000000001","label":"Fall 1","species":"Hund","animalName":"","createdAt":812376000.5,"encounters":[],"futureField":true}"""
         assertEquals(Instant.parse("2026-09-29T12:00:00.500Z"), VetJson.decodeFromString(VetCase.serializer(), fromIos).createdAt)
     }
+
+    @Test fun imageStepsCompressFirstThenShrinkAndNeverGrow() {
+        val steps = AttachmentLimits.IMAGE_STEPS
+        assertEquals(AttachmentLimits.ImageStep(AttachmentLimits.MAXIMUM_IMAGE_EDGE, 88), steps.first())
+        assertEquals(AttachmentLimits.ImageStep(2048, 70), steps.last())
+        assertTrue(steps.zipWithNext().all { (a, b) -> b.edge < a.edge || (b.edge == a.edge && b.quality < a.quality) })
+    }
 }

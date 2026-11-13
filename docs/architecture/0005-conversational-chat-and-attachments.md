@@ -10,7 +10,7 @@ Entwürfe speichern automatisch. Die Eingabe wird erst geleert, wenn der neue Au
 
 ## Anhänge und Speicherung
 
-JPG, PNG und HEIC werden lokal über ImageIO vorbereitet: Orientierung anwenden, längste Kante höchstens 4096 Pixel, JPEG-Qualität 0,88, Standort-/Kamerametadaten nicht übernehmen. Maximal 20 MiB / 64 Megapixel Original und 2 MiB Versandbild; zu große Versandbilder werden mit einer verständlichen Aufforderung zu einem geeigneten Ausschnitt abgewiesen. Die Bildvorschau zeigt tatsächliche Versandmaße. Das Original bleibt erhalten. Im Bild eingebrannte Angaben werden nicht automatisch entfernt.
+JPG, PNG und HEIC werden lokal über ImageIO vorbereitet: Orientierung anwenden, längste Kante höchstens 4096 Pixel, JPEG-Qualität 0,88, Standort-/Kamerametadaten nicht übernehmen. Maximal 20 MiB / 64 Megapixel Original und 2 MiB Versandbild. Auf iOS werden zu große Versandbilder mit einer verständlichen Aufforderung zu einem geeigneten Ausschnitt abgewiesen. Android verkleinert seit 13.11.2026 stufenweise (siehe [0010](0010-android-parity.md)). Die Bildvorschau zeigt tatsächliche Versandmaße. Das Original bleibt erhalten. Im Bild eingebrannte Angaben werden nicht automatisch entfernt.
 
 PDFs (höchstens 50 Seiten) und UTF-8-Texte werden lokal ausgelesen, gescannte PDF-Seiten nötigenfalls lokal per Vision erkannt. Höchstens 100.000 Textzeichen; Zahlen/Einheiten werden nicht normalisiert, Tabellen nicht fachlich interpretiert. Vor Versand ist eine ausdrückliche Prüfung des Textes möglich und erforderlich; das PDF-Original lässt sich daneben öffnen. Gesendet wird der geprüfte Text, nicht das PDF. Original und überprüfte Fassung bleiben getrennt. Strukturierte Laborübernahme mit Quellenkoordinaten ist damit noch nicht implementiert.
 
