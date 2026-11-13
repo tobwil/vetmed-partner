@@ -29,6 +29,19 @@ object AttachmentLimits {
     const val MAXIMUM_IMAGE_BYTES = 2 * 1_048_576
     const val MAXIMUM_IMAGE_EDGE = 4096
     const val MAXIMUM_SOURCE_PIXELS = 64_000_000L
+
+    /** One try at preparing an image for upload: longest edge in pixels and JPEG quality. */
+    data class ImageStep(val edge: Int, val quality: Int)
+
+    /**
+     * Tried in order until the JPEG fits MAXIMUM_IMAGE_BYTES (ADR 0005): first a little more compression, then fewer
+     * pixels, so photos of a monitor (noise, moiré) still get through. The preview shows the size that is sent.
+     */
+    val IMAGE_STEPS = listOf(
+        ImageStep(MAXIMUM_IMAGE_EDGE, 88), ImageStep(MAXIMUM_IMAGE_EDGE, 78),
+        ImageStep(3072, 85), ImageStep(3072, 75),
+        ImageStep(2048, 85), ImageStep(2048, 70),
+    )
     fun sha256(data: ByteArray): String = MessageDigest.getInstance("SHA-256").digest(data).joinToString("") { "%02x".format(it) }
 }
 

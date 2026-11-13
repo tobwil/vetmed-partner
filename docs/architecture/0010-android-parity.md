@@ -14,6 +14,7 @@ Nach dem Android-Start ([0009](0009-android-start.md)) fehlten auf Android noch 
 - Der Chat nutzt die Responses API mit `store=false`, SSE-Streaming und dem unveränderten Prompt `shared/prompts/sparring-v1.txt`.
 - Anhänge werden vor dem Senden lokal vorbereitet:
   - Bilder werden neu als JPEG kodiert, gedreht, auf höchstens 4096 px und 2 MB gebracht und verlieren dabei alle Metadaten.
+  - Passt das Bild bei 4096 px und Qualität 88 nicht in 2 MB, versucht die App der Reihe nach Qualität 78, dann 3072 px (85, 75) und 2048 px (85, 70) (`AttachmentLimits.IMAGE_STEPS`). Erst wenn auch die letzte Stufe zu groß ist, kommt die Bitte um einen Ausschnitt. Anlass: Handyfotos vom Röntgenmonitor (Rauschen, Moiré) lagen bei rund 12 Megapixeln über 2 MB und wurden abgewiesen. Die Vorschau nennt die tatsächlich gesendete Größe. Nur Android; iOS weist weiter ab der ersten Stufe ab.
   - Texte müssen gültiges UTF-8 sein.
   - PDFs werden über die Textebene gelesen (ab API 35), sonst per ML-Kit-OCR auf dem Gerät. Eine Kürzung wird ausdrücklich vermerkt.
   - Extrahierter Text muss vor dem Senden bestätigt werden.

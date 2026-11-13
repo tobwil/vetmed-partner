@@ -185,13 +185,24 @@ class AttachmentImporter(private val context: Context, private val scratch: File
         val opaque = if (bitmap.hasAlpha()) Bitmap.createBitmap(bitmap.width, bitmap.height, Bitmap.Config.ARGB_8888).also {
             android.graphics.Canvas(it).apply { drawColor(Color.WHITE); drawBitmap(bitmap, 0f, 0f, null) }
         } else bitmap
-        val output = ByteArrayOutputStream()
-        opaque.compress(Bitmap.CompressFormat.JPEG, 88, output)
-        val bytes = output.toByteArray()
-        if (bytes.size > AttachmentLimits.MAXIMUM_IMAGE_BYTES) {
-            throw AppFailure("Das vorbereitete Bild ist zu groß. Bitte einen passenden Ausschnitt als eigenes Bild wählen. Das Original wird nicht still weiter verkleinert.")
+        val longest = maxOf(opaque.width, opaque.height)
+        var scaled = opaque
+        try {
+            for (step in AttachmentLimits.IMAGE_STEPS) {
+                if (step.edge < maxOf(scaled.width, scaled.height)) {
+                    val scale = step.edge.toFloat() / longest
+                    val next = Bitmap.createScaledBitmap(opaque, maxOf(1, (opaque.width * scale).toInt()), maxOf(1, (opaque.height * scale).toInt()), true)
+                    if (scaled !== opaque) scaled.recycle()
+                    scaled = next
+                }
+                val output = ByteArrayOutputStream()
+                scaled.compress(Bitmap.CompressFormat.JPEG, step.quality, output)
+                if (output.size() <= AttachmentLimits.MAXIMUM_IMAGE_BYTES) return Upload(output.toByteArray(), scaled.width, scaled.height)
+            }
+        } finally {
+            if (scaled !== opaque) scaled.recycle()
         }
-        return Upload(bytes, opaque.width, opaque.height)
+        throw AppFailure(TOO_LARGE)
     }
 
     private fun utf8(data: ByteArray): String = try {
@@ -273,6 +284,7 @@ class AttachmentImporter(private val context: Context, private val scratch: File
     }
 
     companion object {
+        const val TOO_LARGE = "Das Bild ist auch verkleinert noch zu groß für den Versand. Bitte einen passenden Ausschnitt als eigenes Bild wählen."
         const val MAX_PAGES = 50
         const val MAX_CHARACTERS = 100_000
     }

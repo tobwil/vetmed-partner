@@ -2,6 +2,7 @@ package de.tobwil.vetmed
 
 import android.app.Application
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Color
 import androidx.sqlite.db.SupportSQLiteOpenHelper
 import androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory
@@ -122,6 +123,32 @@ class ChatStorageTests {
         assertFails("UTF-8") { importer.prepare(byteArrayOf(0xC3.toByte(), 0x28), "kaputt.txt") }
         assertFails("Bild, PDF") { importer.prepare(byteArrayOf(1, 2, 3), "programm.exe") }
         assertFails("leer") { importer.prepare(ByteArray(0), "leer.txt") }
+    }
+
+    /** A phone photo of a monitor: about 12 MP of fine noise, which does not fit 2 MB at the first step. */
+    private fun noisyPhoto(width: Int, height: Int, amplitude: Int): ByteArray {
+        val random = java.util.Random(7)
+        val pixels = IntArray(width * height) { val v = 90 + random.nextInt(amplitude); Color.rgb(v, v, v + random.nextInt(8)) }
+        val bitmap = Bitmap.createBitmap(pixels, width, height, Bitmap.Config.ARGB_8888)
+        return ByteArrayOutputStream().also { bitmap.compress(Bitmap.CompressFormat.JPEG, 98, it) }.toByteArray()
+    }
+
+    @Test fun largeNoisyPhotosAreSteppedDownUntilTheyFit() = runTest {
+        val importer = AttachmentImporter(context, File(folder.root, "scratch"))
+        val photo = noisyPhoto(3072, 4080, 48)
+        val first = BitmapFactory.decodeByteArray(photo, 0, photo.size)
+        val firstSize = ByteArrayOutputStream().also { first.compress(Bitmap.CompressFormat.JPEG, 88, it) }.size()
+        assertTrue("Test photo must not fit at the first step: $firstSize", firstSize > AttachmentLimits.MAXIMUM_IMAGE_BYTES)
+
+        val image = importer.prepare(photo, "monitor.jpg")
+        val upload = image.upload!!
+        assertTrue(upload.size <= AttachmentLimits.MAXIMUM_IMAGE_BYTES)
+        assertEquals(upload.size, image.attachment.uploadByteCount)
+        // The preview shows what is sent: the stored size matches the JPEG, and the aspect ratio is kept.
+        val sent = BitmapFactory.decodeByteArray(upload, 0, upload.size)
+        assertEquals(sent.width, image.attachment.width); assertEquals(sent.height, image.attachment.height)
+        assertEquals(3072.0 / 4080, sent.width.toDouble() / sent.height, 0.01)
+        assertArrayEquals(photo, image.original)
     }
 
     @Test fun draftsSurviveReopeningAndStayWithTheirChat() = runTest {
